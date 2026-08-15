@@ -212,9 +212,27 @@ llm:
   provider: none
 
 summary:
-  # Constraints enforced on the short message summary. These are validated,
-  # not merely requested.
+  # Section headings in the rendered document. Rename or translate them here;
+  # the renderer never invents a heading of its own.
+  sections:
+    overview: Overview
+    covered: What we covered
+    focus: Focus areas
+    goals: Practice goals
+
+  # Emoji on theory callouts. Matching this to a docs.preserve rule is what
+  # keeps them across a later rewrite.
+  callout_icon: ""
+
+  # Constraints enforced on the parent-facing message. These are validated in
+  # code, not merely requested in a prompt — a prose instruction not to use
+  # emoji is exactly what a small model ignores.
   short_summary:
     max_lines: 5
     allow_emoji: false
     allow_links: false
+    bullet: "•"
+    labels:
+      covered: Covered
+      progress: Progress
+      homework: Practice

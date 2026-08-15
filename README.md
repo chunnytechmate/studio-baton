@@ -21,7 +21,7 @@ summary — and even that is submitted as JSON validated against a schema.
 | `baton config` | Show the configuration the tool actually resolved |
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
 | `baton learner` | Look up learners, sessions, pieces, and past work |
-| `baton lesson` | Stage a lesson, validate a model-written summary, publish it *(in progress)* |
+| `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
 | `baton send` | Send a lesson summary, refusing when required data is missing *(in progress)* |
 | `baton video` | Drive → encode → upload → link back, resumable *(in progress)* |
 | `baton calendar` | Book lessons, keeping documents and calendar in step *(in progress)* |
@@ -108,10 +108,40 @@ would go wrong silently. Ambiguity exits `3` and returns the candidates:
                             {"id": "5", "name": "Namo (drums)"}]}}
 ```
 
+**The model returns data, never prose.** A summary is the one thing Baton
+cannot script, so it is the one thing a model writes — as JSON against a schema,
+which Baton then renders itself. The loop is three commands:
+
+```bash
+baton lesson contract "Ada Whitfield"              # schema + context, in one document
+baton lesson ingest   "Ada Whitfield" --file s.json  # validated, or exit 4
+baton lesson render   "Ada Whitfield"              # deterministic preview
+baton lesson publish  "Ada Whitfield"
+```
+
+Rules a JSON Schema cannot express are checked in code, because they are exactly
+the ones a small model ignores when they are written as prose — no emoji in the
+parent's message, no links, one line per field, and every theory callout
+referenced by an id that exists. A rejection is total: nothing is stored, and
+every violation comes back at once with a pointer to it.
+
+```
+$ baton lesson ingest "Ada Whitfield" --file summary.json
+exit 4 | contract | The lesson summary does not match the required structure (3 problems).
+  /short_summary/covered     contains emoji, which this profile does not allow in messages
+  /short_summary/progress    contains a link
+  /callouts/0                `tremolo-picking` is not in this studio's theory notes
+```
+
+Callout text comes from the studio's own `theory.json`; the model supplies only
+the id. It cannot write theory content into a document at all.
+
 **A rewrite cannot destroy what it did not write.** Updating a summary replaces
 only the blocks the `docs.preserve` policy does not protect, so uploaded
-recordings, sheet-music embeds and practice-track callouts survive. The policy
-is an allowlist expressed as data:
+recordings, sheet-music embeds and practice-track callouts survive. Blocks are
+appended *before* the old ones are deleted: a failure halfway then leaves a
+duplicated section, which is recoverable, rather than an empty page with the
+recordings gone. The policy is an allowlist expressed as data:
 
 ```yaml
 docs:
@@ -195,7 +225,7 @@ diffed against the legacy scripts before the old path is retired.
 - [x] **P1** Storage and document adapters (SQLite, Supabase/PostgREST, Notion),
       the name-resolution gate, migrations, and in-memory fakes
 - [x] **P2** `baton learner` — lookups joined across both stores
-- [ ] **P3** `baton lesson`, including the JSON summary contract
+- [x] **P3** `baton lesson` — the JSON summary contract and safe publishing
 - [ ] **P4** `baton send` with the fail-closed gate; LINE and Telegram
 - [ ] **P5** `baton video`, with `--detach` wired to `baton job`
 - [ ] **P6** `baton calendar`
