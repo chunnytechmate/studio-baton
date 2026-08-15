@@ -90,6 +90,11 @@ docs:
     token_env: NOTION_API_TOKEN
     api_version: "2022-06-28"
 
+  # Concurrent document reads when joining a learner's sessions. Kept low:
+  # document APIs rate-limit, and a wider pool mostly produces more 429s for
+  # the retry layer to absorb.
+  max_parallel_reads: 4
+
   # Property names on the session page. Rename to match an existing database.
   properties:
     status: Status
