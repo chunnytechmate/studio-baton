@@ -1,0 +1,402 @@
+"""The full loop: stage → contract → ingest → render → publish.
+
+Runs the real SQLite driver and a scripted document store, so the only thing
+substituted is the network.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import textwrap
+from pathlib import Path
+
+import pytest
+
+from baton.adapters.docs.base import Block, DocStatus
+from baton.adapters.fakes import FakeDocStore
+from baton.cli.app import run
+from baton.exits import Exit
+
+MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
+
+SUMMARY = {
+    "overview": ["Held the tempo through the whole B section."],
+    "covered": [{"topic": "Blackbird bars 9-16", "detail": "Thumb-and-finger pattern"}],
+    "focus": [{"issue": "Late change to C", "fix": "Four beats each, alone"}],
+    "goals": ["Bars 9-16 at 80bpm with the backing track"],
+    "short_summary": {
+        "covered": "Blackbird bars 9 to 16",
+        "progress": "Tempo held without stopping",
+        "homework": "Bars 9-16 at 80bpm",
+    },
+}
+
+
+@pytest.fixture
+def studio(profile, monkeypatch):
+    db_path = profile / "data" / "studio.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(db_path)
+    connection.executescript((MIGRATIONS / "sqlite.sql").read_text(encoding="utf-8"))
+    connection.executescript((MIGRATIONS / "seed_example.sql").read_text(encoding="utf-8"))
+    connection.close()
+
+    (profile / "baton.yaml").write_text(
+        textwrap.dedent(
+            """
+            version: 1
+            labels:
+              learner: student
+              session: lesson
+            db:
+              driver: sqlite
+              sqlite:
+                path: data/studio.db
+            docs:
+              driver: notion
+              statuses:
+                done: Complete
+                in_progress: In progress
+                not_started: Not started
+              preserve:
+                - type: video
+                - type: embed
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (profile / "theory.json").write_text(
+        json.dumps({"vibrato": "Pick first, then oscillate from the wrist."}),
+        encoding="utf-8",
+    )
+
+    fake = FakeDocStore(
+        statuses={
+            "doc-ada-01": DocStatus(doc_id="doc-ada-01", status="Complete", date="2026-05-01"),
+            "doc-ada-02": DocStatus(doc_id="doc-ada-02", status="Complete", date="2026-06-01"),
+            "doc-ada-03": DocStatus(doc_id="doc-ada-03", status="Not started"),
+        },
+        blocks={
+            "doc-ada-03": [
+                Block(id="vid", type="video", url="https://example.invalid/watch/ada-3"),
+            ]
+        },
+    )
+    for module in ("cmd_learner", "cmd_lesson"):
+        monkeypatch.setattr(f"baton.cli.{module}.open_docs", lambda _config: fake)
+    return profile, fake
+
+
+def call(studio, *args):
+    profile, _ = studio
+    return run(["--profile", str(profile), "--json", "lesson", *args])
+
+
+def out(capsys):
+    return json.loads(capsys.readouterr().out)
+
+
+def stage_ada(studio, capsys):
+    assert call(studio, "stage", "Ada Whitfield", "--session", "3", "--context", "notes") == Exit.OK
+    return out(capsys)
+
+
+# -- stage -------------------------------------------------------------------
+
+
+def test_stage_accepts_an_explicit_session(studio, capsys):
+    assert call(studio, "stage", "Ada Whitfield", "--session", "3") == Exit.OK
+
+    assert out(capsys)["session_number"] == 3
+
+
+def test_staging_an_explicit_session_needs_no_document_reads(studio, capsys):
+    """The teacher writes the notes straight after the lesson, often on a
+    phone. When the session is named, both the number and the document id come
+    from the database — so a document-store outage must not block staging."""
+    from baton.errors import UpstreamError
+
+    _, docs = studio
+    docs.fail_with = UpstreamError("notion is down", service="notion")
+
+    assert call(studio, "stage", "Ada Whitfield", "--session", "3", "--context", "n") == Exit.OK
+    assert out(capsys)["session_number"] == 3
+
+
+def test_choosing_the_session_automatically_does_read_the_documents(studio, capsys):
+    """"Free" is a fact about the page, not the database row, so this path
+    genuinely needs the document store and must fail when it is unreachable."""
+    from baton.errors import UpstreamError
+
+    _, docs = studio
+    docs.fail_with = UpstreamError("notion is down", service="notion")
+
+    assert call(studio, "stage", "Ada Whitfield") == Exit.UPSTREAM
+
+
+def test_stage_refuses_a_session_that_does_not_exist(studio, capsys):
+    assert call(studio, "stage", "Ada Whitfield", "--session", "99") == Exit.USAGE
+
+    assert "99" in out(capsys)["message"]
+
+
+def test_stage_reads_context_from_a_file(studio, capsys, tmp_path):
+    notes = tmp_path / "notes.txt"
+    notes.write_text("worked on bars 9-16", encoding="utf-8")
+
+    call(studio, "stage", "Ada Whitfield", "--session", "3", "--context-file", str(notes))
+    capsys.readouterr()
+
+    call(studio, "show", "Ada Whitfield")
+    assert out(capsys)["context"] == "worked on bars 9-16"
+
+
+# -- contract ----------------------------------------------------------------
+
+
+def test_contract_gives_the_model_everything_it_needs(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "contract", "Ada Whitfield") == Exit.OK
+    payload = out(capsys)
+
+    assert payload["schema"]["title"] == "Lesson summary"
+    assert payload["context"]["session_number"] == 3
+    assert payload["context"]["lesson_notes"] == "notes"
+    assert payload["context"]["current_piece"]["title"] == "Blackbird"
+    assert payload["constraints"]["available_callout_ids"] == ["vibrato"]
+
+
+def test_contract_needs_a_staged_lesson_first(studio, capsys):
+    assert call(studio, "contract", "Bruno Castell") == Exit.USAGE
+
+    assert "stage" in out(capsys)["remedy"]
+
+
+# -- ingest ------------------------------------------------------------------
+
+
+def test_ingest_accepts_a_valid_summary(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY)) == Exit.OK
+    assert out(capsys)["has_summary"] is True
+
+
+def test_ingest_rejects_a_summary_with_emoji_in_the_message(studio, capsys):
+    stage_ada(studio, capsys)
+    bad = json.loads(json.dumps(SUMMARY))
+    bad["short_summary"]["progress"] = "Brilliant 🎉"
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(bad)) == Exit.CONTRACT
+
+    payload = out(capsys)
+    assert payload["error"] == "contract"
+    assert any("emoji" in v["reason"] for v in payload["details"]["violations"])
+
+
+def test_a_rejected_summary_is_not_stored(studio, capsys):
+    """Nothing partial. A rejected attempt must leave no trace, or the next
+    command would publish half-validated content."""
+    stage_ada(studio, capsys)
+    bad = {"overview": ["only this"]}
+
+    call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(bad))
+    capsys.readouterr()
+
+    call(studio, "show", "Ada Whitfield")
+    assert out(capsys)["summary"] is None
+
+
+def test_ingest_rejects_an_unknown_callout_id(studio, capsys):
+    stage_ada(studio, capsys)
+    bad = {**SUMMARY, "callouts": ["invented-technique"]}
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(bad)) == Exit.CONTRACT
+    assert any("invented-technique" in v["reason"] for v in out(capsys)["details"]["violations"])
+
+
+def test_malformed_json_is_a_contract_failure_not_a_usage_error(studio, capsys):
+    """The model produced it, so the model is what has to fix it — which means
+    exit 4, the code that tells an agent to try again."""
+    stage_ada(studio, capsys)
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", "{not json") == Exit.CONTRACT
+    assert "JSON" in out(capsys)["message"]
+
+
+def test_ingest_reads_a_file(studio, capsys, tmp_path):
+    stage_ada(studio, capsys)
+    path = tmp_path / "summary.json"
+    path.write_text(json.dumps(SUMMARY), encoding="utf-8")
+
+    assert call(studio, "ingest", "Ada Whitfield", "--file", str(path)) == Exit.OK
+
+
+# -- render ------------------------------------------------------------------
+
+
+def test_render_produces_markdown(studio, capsys):
+    stage_ada(studio, capsys)
+    call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
+    capsys.readouterr()
+
+    assert call(studio, "render", "Ada Whitfield") == Exit.OK
+    assert "Blackbird bars 9-16" in out(capsys)["markdown"]
+
+
+def test_render_produces_the_parent_message(studio, capsys):
+    stage_ada(studio, capsys)
+    call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
+    capsys.readouterr()
+
+    call(studio, "render", "Ada Whitfield", "--format", "message")
+    assert out(capsys)["message"].startswith("• Covered: Blackbird bars 9 to 16")
+
+
+def test_render_needs_an_accepted_summary(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "render", "Ada Whitfield") == Exit.USAGE
+
+
+# -- publish -----------------------------------------------------------------
+
+
+def prepared(studio, capsys):
+    stage_ada(studio, capsys)
+    call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
+    capsys.readouterr()
+
+
+def test_publish_writes_the_summary_and_keeps_the_recording(studio, capsys):
+    prepared(studio, capsys)
+    _, docs = studio
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+    payload = out(capsys)
+
+    assert payload["appended"] > 0
+    assert payload["preserved"] == 1
+    assert "vid" in {block.id for block in docs.list_blocks("doc-ada-03")}
+
+
+def test_publish_dry_run_changes_nothing(studio, capsys):
+    prepared(studio, capsys)
+    _, docs = studio
+    before = list(docs.list_blocks("doc-ada-03"))
+
+    assert call(studio, "publish", "Ada Whitfield", "--dry-run") == Exit.OK
+
+    assert out(capsys)["dry_run"] is True
+    assert docs.list_blocks("doc-ada-03") == before
+
+
+def test_publishing_twice_is_refused_by_default(studio, capsys):
+    """A second append leaves two copies of the summary on the page with
+    nothing to tell them apart."""
+    prepared(studio, capsys)
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+    _, docs = studio
+    after_first = len(docs.list_blocks("doc-ada-03"))
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["skipped"] == "already published"
+    assert len(docs.list_blocks("doc-ada-03")) == after_first
+
+
+def test_force_publishes_again(studio, capsys):
+    prepared(studio, capsys)
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+
+    assert call(studio, "publish", "Ada Whitfield", "--force") == Exit.OK
+    assert out(capsys)["appended"] > 0
+
+
+def test_a_failed_publish_is_recorded_and_can_be_retried(studio, capsys):
+    """The draft must survive the failure carrying the reason, so a re-run
+    resumes rather than starting from nothing."""
+    from baton.errors import UpstreamError
+
+    prepared(studio, capsys)
+    _, docs = studio
+    docs.fail_with = UpstreamError("notion is down", service="notion")
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.UPSTREAM
+    capsys.readouterr()
+
+    docs.fail_with = None
+    call(studio, "show", "Ada Whitfield")
+    payload = out(capsys)
+    assert payload["targets"]["docs"]["status"] == "failed"
+    assert payload["summary"] is not None  # the work was not lost
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+
+def test_publish_stores_the_message_for_the_send_step(studio, capsys):
+    """Composed once, at publish time, so what is sent later is exactly what
+    was reviewed here."""
+    profile, _ = studio
+    prepared(studio, capsys)
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+
+    records = list((profile / "state" / "published").glob("*.json"))
+    assert records
+    saved = json.loads(records[0].read_text(encoding="utf-8"))
+    assert saved["short_message"].startswith("• Covered:")
+    assert saved["session_number"] == 3
+
+
+def test_publish_needs_a_summary(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.USAGE
+
+
+# -- housekeeping ------------------------------------------------------------
+
+
+def test_list_shows_staged_lessons(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "list") == Exit.OK
+    assert out(capsys)["count"] == 1
+
+
+def test_remove_discards_a_draft(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "remove", "Ada Whitfield") == Exit.OK
+    assert out(capsys)["removed"] is True
+
+    call(studio, "list")
+    assert out(capsys)["count"] == 0
+
+
+def test_clear_requires_confirmation(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "clear") == Exit.USAGE
+    capsys.readouterr()
+
+    call(studio, "list")
+    assert out(capsys)["count"] == 1
+
+
+def test_clear_with_yes_discards_everything(studio, capsys):
+    stage_ada(studio, capsys)
+
+    assert call(studio, "clear", "--yes") == Exit.OK
+    assert out(capsys)["removed"] == 1
+
+
+def test_the_resolution_gate_applies_here_too(studio, capsys):
+    assert call(studio, "stage", "Whitfield") == Exit.NEEDS_HUMAN
+    assert out(capsys)["error"] == "needs_human"
