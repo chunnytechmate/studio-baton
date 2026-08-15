@@ -65,10 +65,23 @@ target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+# `S` (flake8-bandit) is on because Baton interpolates configured identifiers
+# into SQL and spawns processes. Those are deliberate and individually
+# justified with a noqa; the ruleset makes sure a new one cannot slip in
+# unremarked.
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "S"]
 ignore = [
   "RUF001",  # ambiguous unicode in strings — Thai and box-drawing are intentional
   "RUF003",
+  "S603",    # subprocess calls are all built from validated argv lists, never a shell string
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "S101",  # assert is the point
+  "S105",  # hardcoded "passwords" in tests are fixtures like "t"
+  "S106",
+  "S607",  # calling `pkill` by name is fine in a test cleanup
 ]
 
 [tool.mypy]

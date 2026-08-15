@@ -42,11 +42,20 @@ cd ~/my-studio
 cp .env.example .env && $EDITOR .env      # credentials
 $EDITOR baton.yaml                        # your schema, labels, contacts
 export BATON_PROFILE=~/my-studio
+
+sqlite3 data/studio.db < migrations/sqlite.sql        # schema
+sqlite3 data/studio.db < migrations/seed_example.sql  # optional sample data
+
 baton doctor
 ```
 
 `baton doctor` reports every problem at once rather than one per re-run, and
-exits `2` while anything is unresolved.
+exits `2` while anything is unresolved. It checks the schema mapping too — a
+column named in `baton.yaml` that does not exist is caught here rather than at
+2am inside a pipeline. Add `--offline` to skip the checks that need a network.
+
+Already have a database? Do **not** run the migration. Point `db.tables` and
+`db.fields` at your own names and let `baton doctor` confirm the mapping.
 
 ## Design
 
@@ -86,6 +95,36 @@ the document; it never parses prose.
 missing. There is deliberately no way to force it: the fix is to supply the
 data. This is the behaviour that made the original system trustworthy and it is
 preserved exactly.
+
+The same stance applies to names. A typed name resolves only on an exact match
+or a configured alias — a partial match never resolves, *even when it is the
+only one*, because the second person with that name is exactly the case that
+would go wrong silently. Ambiguity exits `3` and returns the candidates:
+
+```json
+{"error": "needs_human",
+ "message": "“Nam” is not an exact match for any student.",
+ "details": {"candidates": [{"id": "4", "name": "Namo (guitar)"},
+                            {"id": "5", "name": "Namo (drums)"}]}}
+```
+
+**A rewrite cannot destroy what it did not write.** Updating a summary replaces
+only the blocks the `docs.preserve` policy does not protect, so uploaded
+recordings, sheet-music embeds and practice-track callouts survive. The policy
+is an allowlist expressed as data:
+
+```yaml
+docs:
+  preserve:
+    - {type: video}
+    - {type: embed}
+    - {type: callout, icon: "🎧"}
+```
+
+**Reads fall over; writes never do.** With `db.fallback` set, a read served
+during an outage comes from the secondary store. A write does not: a write that
+lands only in a replica is a permanent divergence that nothing reconciles, so
+it fails loudly instead.
 
 **Long jobs resume.** Video processing and publishing record each completed step
 atomically, so a crash mid-run is re-runnable without re-uploading a video or
@@ -136,7 +175,8 @@ diffed against the legacy scripts before the old path is retired.
 
 - [x] **P0** Package skeleton, configuration, state layer, exit contract, CI
 - [x] **P0.5** Detached jobs (`baton job`), run locking, orphan detection
-- [ ] **P1** Storage and document adapters (SQLite, Supabase/PostgREST, Notion)
+- [x] **P1** Storage and document adapters (SQLite, Supabase/PostgREST, Notion),
+      the name-resolution gate, migrations, and in-memory fakes
 - [ ] **P2** `baton learner`
 - [ ] **P3** `baton lesson`, including the JSON summary contract
 - [ ] **P4** `baton send` with the fail-closed gate; LINE and Telegram

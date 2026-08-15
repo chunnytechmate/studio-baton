@@ -426,7 +426,7 @@ class JobRunner:
                 # then force it.
                 with suppress(OSError):
                     subprocess.run(
-                        ["taskkill", "/PID", str(pid), "/T"],
+                        ["taskkill", "/PID", str(pid), "/T"],  # noqa: S607 - on PATH by definition on Windows
                         capture_output=True,
                         check=False,
                     )
@@ -435,7 +435,7 @@ class JobRunner:
                     return settled
                 with suppress(OSError):
                     subprocess.run(
-                        ["taskkill", "/PID", str(pid), "/T", "/F"],
+                        ["taskkill", "/PID", str(pid), "/T", "/F"],  # noqa: S607
                         capture_output=True,
                         check=False,
                     )
