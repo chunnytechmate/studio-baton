@@ -52,7 +52,7 @@ def tracked_files(root: Path) -> list[Path]:
     """Files git knows about, falling back to a walk outside a repository."""
     try:
         out = subprocess.run(
-            ["git", "ls-files", "-z"],
+            ["git", "ls-files", "-z"],  # noqa: S607 - developer tool; git is on PATH or we fall back
             cwd=root,
             capture_output=True,
             text=True,

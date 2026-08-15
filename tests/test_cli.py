@@ -66,7 +66,7 @@ def test_config_subcommand_is_required(profile, capsys):
 
 
 def test_doctor_fails_when_credentials_are_absent(profile, capsys):
-    code = run(["--profile", str(profile), "doctor"])
+    code = run(["--profile", str(profile), "doctor", "--offline"])
 
     # chat.driver is webhook and BATON_WEBHOOK_URL is unset in the isolated env.
     assert code == Exit.CONFIG
@@ -78,7 +78,8 @@ def test_doctor_passes_once_credentials_are_present(profile, monkeypatch, capsys
     monkeypatch.setenv("NOTION_API_TOKEN", "t")
     monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
 
-    code = run(["--profile", str(profile), "doctor"])
+    # --offline: the suite must never depend on reaching Notion or a database.
+    code = run(["--profile", str(profile), "doctor", "--offline"])
 
     assert code == Exit.OK
     assert "✗" not in capsys.readouterr().out
@@ -88,7 +89,7 @@ def test_doctor_json_lists_every_check(profile, monkeypatch, capsys):
     monkeypatch.setenv("NOTION_API_TOKEN", "t")
     monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
 
-    code = run(["--profile", str(profile), "--json", "doctor"])
+    code = run(["--profile", str(profile), "--json", "doctor", "--offline"])
 
     assert code == Exit.OK
     payload = json.loads(capsys.readouterr().out)
@@ -97,10 +98,36 @@ def test_doctor_json_lists_every_check(profile, monkeypatch, capsys):
     assert all("name" in check for check in payload["checks"])
 
 
+def test_doctor_checks_the_schema_mapping_without_a_network(profile, monkeypatch, capsys):
+    """The most common misconfiguration — a column that does not exist — is
+    caught offline, so it can be checked on a laptop before a deploy."""
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+    monkeypatch.setenv("BATON__DB__TABLES__LEARNERS", "not a table name")
+
+    code = run(["--profile", str(profile), "--json", "doctor", "--offline"])
+
+    assert code == Exit.CONFIG
+    payload = json.loads(capsys.readouterr().out)
+    failed = [c["name"] for c in payload["checks"] if not c["passed"]]
+    assert any("schema mapping" in name for name in failed)
+
+
+def test_doctor_offline_skips_the_reachability_checks(profile, monkeypatch, capsys):
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+
+    run(["--profile", str(profile), "--json", "doctor", "--offline"])
+    names = [c["name"] for c in json.loads(capsys.readouterr().out)["checks"]]
+
+    assert not any("reachable" in name for name in names)
+    assert any("schema mapping" in name for name in names)
+
+
 def test_doctor_rejects_an_unknown_driver(profile, monkeypatch, capsys):
     monkeypatch.setenv("BATON__DB__DRIVER", "mysql")
 
-    code = run(["--profile", str(profile), "--json", "doctor"])
+    code = run(["--profile", str(profile), "--json", "doctor", "--offline"])
 
     assert code == Exit.CONFIG
     payload = json.loads(capsys.readouterr().out)
@@ -111,7 +138,7 @@ def test_doctor_rejects_an_unknown_driver(profile, monkeypatch, capsys):
 def test_doctor_rejects_an_unknown_timezone(profile, monkeypatch, capsys):
     monkeypatch.setenv("BATON__TIMEZONE", "Mars/Olympus")
 
-    code = run(["--profile", str(profile), "--json", "doctor"])
+    code = run(["--profile", str(profile), "--json", "doctor", "--offline"])
 
     assert code == Exit.CONFIG
     payload = json.loads(capsys.readouterr().out)
@@ -122,7 +149,7 @@ def test_progress_output_never_pollutes_json_stdout(profile, monkeypatch, capsys
     monkeypatch.setenv("NOTION_API_TOKEN", "t")
     monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
 
-    run(["--profile", str(profile), "--json", "doctor"])
+    run(["--profile", str(profile), "--json", "doctor", "--offline"])
 
     # Parsing the whole of stdout must succeed — nothing else may be written there.
     json.loads(capsys.readouterr().out)

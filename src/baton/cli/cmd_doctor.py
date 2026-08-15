@@ -16,14 +16,17 @@ import zoneinfo
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ..adapters import db as db_adapters
+from ..adapters import docs as doc_adapters
 from ..core import i18n
+from ..errors import BatonError
 from ..exits import Exit
 
 if TYPE_CHECKING:
     from .app import Context
 
-KNOWN_DB_DRIVERS = ("sqlite", "supabase", "postgrest")
-KNOWN_DOC_DRIVERS = ("notion",)
+KNOWN_DB_DRIVERS = db_adapters.DRIVERS
+KNOWN_DOC_DRIVERS = doc_adapters.DRIVERS
 KNOWN_CHAT_DRIVERS = ("line", "telegram", "webhook")
 KNOWN_CALENDAR_DRIVERS = ("google",)
 
@@ -63,6 +66,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--strict",
         action="store_true",
         help="Also require credentials for drivers that are configured but not currently selected.",
+    )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Skip the checks that contact a service. Config and schema mapping are still checked.",
     )
     parser.set_defaults(handler=handle)
 
@@ -105,6 +113,73 @@ def _check_driver(
             remedy=f"Set `{dotted}` to a supported driver.",
         )
     return driver
+
+
+def _check_schema(ctx: Context, report: Report) -> None:
+    """Resolve the configured table and column names without touching a service.
+
+    Catches the single most common misconfiguration — a column renamed in
+    baton.yaml that does not exist, or a name that is not a legal identifier —
+    while still working on a laptop with no network.
+    """
+    from ..adapters.db.mapping import Schema
+
+    try:
+        Schema.from_config(ctx.config)
+        report.add("Database schema mapping is complete and valid", passed=True)
+    except BatonError as err:
+        report.add(
+            "Database schema mapping is complete and valid",
+            passed=False,
+            detail=err.message,
+            remedy=err.remedy or "",
+        )
+
+    try:
+        doc_adapters.PreservePolicy.from_config(ctx.config.get("docs.preserve", []))
+        report.add("Document preserve rules parse", passed=True)
+    except BatonError as err:
+        report.add(
+            "Document preserve rules parse",
+            passed=False,
+            detail=err.message,
+            remedy=err.remedy or "",
+        )
+
+
+def _check_reachable(ctx: Context, report: Report) -> None:
+    """Open each store and prove it answers.
+
+    The database check reads one row from every configured table, so a table
+    that exists under a different name fails here rather than at 2am inside a
+    pipeline.
+    """
+    store = None
+    try:
+        store = db_adapters.open_store(ctx.config)
+        store.health()
+        report.add("Database is reachable and every table resolves", passed=True)
+    except BatonError as err:
+        report.add(
+            "Database is reachable and every table resolves",
+            passed=False,
+            detail=err.message,
+            remedy=err.remedy or "",
+        )
+    finally:
+        if store is not None:
+            store.close()
+
+    try:
+        doc_adapters.open_docs(ctx.config).health()
+        report.add("Document store accepts the credentials", passed=True)
+    except BatonError as err:
+        report.add(
+            "Document store accepts the credentials",
+            passed=False,
+            detail=err.message,
+            remedy=err.remedy or "",
+        )
 
 
 def handle(ctx: Context) -> Exit:
@@ -165,6 +240,10 @@ def handle(ctx: Context) -> Exit:
     for section, keys in selected.items():
         for key in keys:
             _check_secret(ctx, report, t, f"{section}.{key}", required=True)
+
+    _check_schema(ctx, report)
+    if not ctx.args.offline:
+        _check_reachable(ctx, report)
 
     if ctx.args.strict:
         for kind, drivers in (

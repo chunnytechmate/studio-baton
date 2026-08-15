@@ -32,7 +32,8 @@ def backoff_delay(attempt: int, *, base: float = 2.0, cap: float = 30.0) -> floa
     every worker retries on the same tick and re-creates the burst that caused
     the rate limit.
     """
-    return min(cap, base * (2**attempt)) + random.uniform(0, 1)
+    # Not a security decision: this jitter only decorrelates retry timing.
+    return min(cap, base * (2**attempt)) + random.uniform(0, 1)  # noqa: S311
 
 
 def retry(
@@ -113,7 +114,8 @@ def http_request(
 
     for attempt in range(attempts):
         try:
-            response = requests.request(method, url, **kwargs)
+            # A timeout is always present: kwargs.setdefault above guarantees it.
+            response = requests.request(method, url, **kwargs)  # noqa: S113
             if response.status_code in retry_on_status and attempt + 1 < attempts:
                 delay = backoff_delay(attempt, base=base_delay, cap=max_delay)
                 if on_retry:
