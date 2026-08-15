@@ -1,0 +1,40 @@
+# Thai message catalogue — a full translation, kept in step with en.yaml.
+
+doctor.title: "ตรวจสอบการตั้งค่า"
+doctor.profile: "โปรไฟล์"
+doctor.locale: "ภาษา"
+doctor.timezone: "เขตเวลา"
+doctor.pass: "ผ่านทุกข้อ"
+doctor.fail: "ไม่ผ่าน {failed} จาก {total} ข้อ"
+doctor.check.config: "ไฟล์ตั้งค่าโหลดได้และเป็น version 1"
+doctor.check.locale: "มีไฟล์ภาษาให้ใช้"
+doctor.check.timezone: "เขตเวลาเป็นชื่อ IANA ที่รู้จัก"
+doctor.check.state_dir: "เขียนไดเรกทอรี state ได้"
+doctor.check.secret: "ตั้งค่า {env} แล้ว"
+doctor.check.driver: "ไดรเวอร์ {kind} ชื่อ `{driver}` รู้จัก"
+
+config.effective: "การตั้งค่าที่ใช้จริง"
+config.source: "โหลดจาก {path}"
+
+error.unknown_command: "ไม่รู้จักคำสั่ง `{command}`"
+error.unknown_command.remedy: "รัน `baton --help` เพื่อดูคำสั่งทั้งหมด"
+error.interrupted: "ถูกยกเลิก"
+
+resolve.ambiguous: "ชื่อ `{name}` ตรงกับ{label}มากกว่าหนึ่งคน"
+resolve.ambiguous.remedy: "ถามให้ชัดว่าหมายถึงใคร แล้วรันใหม่ด้วยชื่อเต็ม"
+resolve.not_found: "ไม่พบ{label}ที่ชื่อ `{name}`"
+resolve.not_found.remedy: "ตรวจตัวสะกด หรือดูรายชื่อด้วย `baton learner list`"
+
+gate.blocked: "ไม่ส่ง เพราะข้อมูลที่จำเป็นไม่ครบ"
+gate.blocked.remedy: "เติมข้อมูลที่ขาดแล้วรันใหม่ ข้อนี้ข้ามไม่ได้"
+
+contract.invalid: "เนื้อหาที่ส่งมาไม่ตรงกับโครงสร้างที่กำหนด"
+contract.invalid.remedy: "แก้ฟิลด์ที่แจ้งแล้วส่งใหม่"
+
+job.spawned: "งาน {id} เริ่มทำงานในเบื้องหลังแล้ว"
+job.still_running: "งาน {id} ยังทำงานอยู่"
+job.unknown: "ไม่พบงานที่มี id `{id}`"
+job.orphaned: "งาน {id} หยุดโดยไม่ได้บันทึกผล"
+job.orphaned.remedy: "รันคำสั่งเดิมซ้ำได้ pipeline ที่ resume ได้จะทำต่อจากขั้นที่เสร็จแล้ว"
+job.busy: "มีงานอื่นถือล็อก {lock} อยู่"
+job.busy.remedy: "รอให้จบ (`baton job list`) หรือหยุดมัน (`baton job stop <id>`) แล้วค่อยรันใหม่"

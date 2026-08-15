@@ -1,0 +1,41 @@
+# English message catalogue — the reference for message ids.
+# Keys are stable; wording may change between releases.
+
+doctor.title: "Configuration check"
+doctor.profile: "Profile"
+doctor.locale: "Locale"
+doctor.timezone: "Timezone"
+doctor.pass: "All checks passed."
+doctor.fail: "{failed} of {total} checks failed."
+doctor.check.config: "Configuration file loads and is version 1"
+doctor.check.locale: "Locale catalogue is available"
+doctor.check.timezone: "Timezone is a known IANA name"
+doctor.check.state_dir: "State directory is writable"
+doctor.check.secret: "Credential {env} is set"
+doctor.check.driver: "{kind} driver `{driver}` is known"
+
+config.effective: "Effective configuration"
+config.source: "Loaded from {path}"
+
+error.unknown_command: "Unknown command `{command}`."
+error.unknown_command.remedy: "Run `baton --help` to list available commands."
+error.interrupted: "Interrupted."
+
+resolve.ambiguous: "The name `{name}` matches more than one {label}."
+resolve.ambiguous.remedy: "Ask which one is meant, then re-run with the exact name."
+resolve.not_found: "No {label} matches `{name}`."
+resolve.not_found.remedy: "Check the spelling, or list them with `baton learner list`."
+
+gate.blocked: "Refusing to send: required information is missing."
+gate.blocked.remedy: "Add the missing items, then re-run. This check cannot be overridden."
+
+contract.invalid: "The submitted content does not match the required structure."
+contract.invalid.remedy: "Correct the reported fields and submit again."
+
+job.spawned: "Job {id} started in the background."
+job.still_running: "Job {id} is still running."
+job.unknown: "No job matches id `{id}`."
+job.orphaned: "Job {id} died without recording an outcome."
+job.orphaned.remedy: "Re-run the command that started it; resumable pipelines continue from the steps that finished."
+job.busy: "Another run already holds {lock}."
+job.busy.remedy: "Wait for it (`baton job list`) or stop it (`baton job stop <id>`), then re-run."

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets and per-installation state. A profile's baton.yaml is meant to be
+# committed (to a *private* repo); the credentials beside it never are.
+.env
+*.env
+!.env.example
+secrets/
+state/
+data/
+*.db
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Never commit these: they are what made the original workspace impossible to
+# open-source without a scrubbing pass.
+*.bak
+*.bak.*
+*.orig
+tmp/
