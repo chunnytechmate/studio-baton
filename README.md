@@ -20,7 +20,7 @@ summary — and even that is submitted as JSON validated against a schema.
 | `baton doctor` | Check config, credentials, and drivers before anything runs |
 | `baton config` | Show the configuration the tool actually resolved |
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
-| `baton learner` | Look up learners, sessions, pieces, and past work *(in progress)* |
+| `baton learner` | Look up learners, sessions, pieces, and past work |
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it *(in progress)* |
 | `baton send` | Send a lesson summary, refusing when required data is missing *(in progress)* |
 | `baton video` | Drive → encode → upload → link back, resumable *(in progress)* |
@@ -126,6 +126,23 @@ during an outage comes from the secondary store. A write does not: a write that
 lands only in a replica is a permanent divergence that nothing reconciles, so
 it fails loudly instead.
 
+**"Latest" means the newest session that happened, never the highest number.**
+Sessions get skipped — illness, cancellations, pages created in advance — so
+session 12 existing says nothing about whether session 12 took place. And the
+next free session must be both unstarted *and* empty: a page marked "not
+started" that already has blocks on it is someone's work in progress, and
+handing it back as free is how a summary overwrites a draft.
+
+```bash
+baton learner latest "Ada Whitfield"   # newest done, by document date
+baton learner next   "Ada Whitfield"   # lowest unstarted *and* empty
+baton learner in-progress              # everyone mid-session, this morning
+```
+
+A status the profile does not describe — a studio adds "Cancelled" — maps to
+*unknown* rather than being filed as one of the three. Unknown is never offered
+as the next free session.
+
 **Long jobs resume.** Video processing and publishing record each completed step
 atomically, so a crash mid-run is re-runnable without re-uploading a video or
 duplicating a page block.
@@ -177,7 +194,7 @@ diffed against the legacy scripts before the old path is retired.
 - [x] **P0.5** Detached jobs (`baton job`), run locking, orphan detection
 - [x] **P1** Storage and document adapters (SQLite, Supabase/PostgREST, Notion),
       the name-resolution gate, migrations, and in-memory fakes
-- [ ] **P2** `baton learner`
+- [x] **P2** `baton learner` — lookups joined across both stores
 - [ ] **P3** `baton lesson`, including the JSON summary contract
 - [ ] **P4** `baton send` with the fail-closed gate; LINE and Telegram
 - [ ] **P5** `baton video`, with `--detach` wired to `baton job`
