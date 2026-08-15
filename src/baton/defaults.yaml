@@ -1,0 +1,215 @@
+# Packaged defaults. A profile's baton.yaml is deep-merged over this file, so a
+# profile only needs to state what differs. Nothing here is secret: credentials
+# are named by environment variable, never by value.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Presentation
+# ---------------------------------------------------------------------------
+locale: en          # message catalogue: en | th (see src/baton/locale/)
+timezone: UTC       # IANA name; every date Baton prints or writes uses it
+
+# Domain vocabulary. Baton's model is "one person, taught one-to-one, across
+# numbered sessions" — these labels rename that model for your studio without
+# touching code. They affect human-readable output only; JSON keys are stable.
+labels:
+  learner: student
+  learners: students
+  session: week
+  sessions: weeks
+  piece: song
+  pieces: songs
+  work: work
+  works: works
+
+# ---------------------------------------------------------------------------
+# Learner records
+# ---------------------------------------------------------------------------
+db:
+  driver: sqlite          # sqlite | supabase | postgrest
+
+  sqlite:
+    path: data/baton.db   # relative paths resolve inside the profile directory
+
+  supabase:
+    url_env: SUPABASE_PROJECT_URL
+    key_env: SUPABASE_PROJECT_API
+
+  postgrest:
+    url_env: POSTGREST_URL
+    jwt_env: POSTGREST_JWT
+    schema: public
+
+  # Optional secondary store used only when the primary is unreachable. Set to
+  # a driver block of the same shape to enable. Read paths fall over to it;
+  # writes never do, so the two stores cannot silently diverge.
+  fallback: null
+
+  tables:
+    learners: learners
+    sessions: sessions
+    pieces: pieces
+    works: works
+
+  # Column names, so an existing schema can be adopted without migrating it.
+  fields:
+    learner:
+      id: id
+      name: name
+      instrument: instrument
+      tone: tone
+      has_instrument: has_instrument
+      current_piece_id: current_piece_id
+    session:
+      id: id
+      learner_id: learner_id
+      number: number
+      doc_id: doc_id
+    piece:
+      id: id
+      title: title
+      source_link: source_link
+      practice_track: practice_track
+      sheet_link: sheet_link
+    work:
+      id: id
+      learner_id: learner_id
+      title: title
+      type: type
+      video_link: video_link
+      performed_date: performed_date
+
+# ---------------------------------------------------------------------------
+# Session documents (the per-session page a learner and their family read)
+# ---------------------------------------------------------------------------
+docs:
+  driver: notion
+
+  notion:
+    token_env: NOTION_API_TOKEN
+    api_version: "2022-06-28"
+
+  # Property names on the session page. Rename to match an existing database.
+  properties:
+    status: Status
+    titles: Titles
+    date: Date
+
+  # Values of the status property. Session resolution keys off these.
+  statuses:
+    done: Done
+    in_progress: In progress
+    not_started: Not started
+
+  # Selective-update policy. When a summary is rewritten, blocks matching any
+  # rule below survive; everything else is replaced. This encodes what used to
+  # be a prose instruction ("never clear the whole page") as data the script
+  # enforces, so uploaded videos and sheet links cannot be destroyed by an edit.
+  preserve:
+    - type: video
+    - type: embed
+    - type: bookmark
+    - type: file
+    # Example of a content-sensitive rule; add your own markers here.
+    # - {type: callout, icon: "🎧"}
+    # - {type: heading_3, startswith: "🎵"}
+
+# ---------------------------------------------------------------------------
+# Messaging
+# ---------------------------------------------------------------------------
+chat:
+  driver: line            # line | telegram | webhook
+
+  line:
+    token_env: LINE_CHANNEL_ACCESS_TOKEN
+    api_url: https://api.line.me/v2/bot/message/push
+
+  telegram:
+    token_env: TELEGRAM_BOT_TOKEN
+    api_url: https://api.telegram.org
+
+  webhook:
+    url_env: BATON_WEBHOOK_URL
+    # Optional shared secret sent as X-Baton-Signature when set.
+    secret_env: BATON_WEBHOOK_SECRET
+
+  # Named recipients. `id_env` holds the platform user/chat id; `aliases` are
+  # the words a person might actually type. Resolution is exact-or-alias only —
+  # a partial match is reported as ambiguous rather than guessed.
+  contacts: {}
+  # contacts:
+  #   owner:
+  #     id_env: BATON_CONTACT_OWNER
+  #     aliases: [me, teacher]
+  #   manager:
+  #     id_env: BATON_CONTACT_MANAGER
+  #     aliases: [boss]
+
+# ---------------------------------------------------------------------------
+# Video
+# ---------------------------------------------------------------------------
+media:
+  drive:
+    folder_id_env: BATON_DRIVE_FOLDER_ID
+    download_retries: 3
+  youtube:
+    refresh_token_env: YOUTUBE_REFRESH_TOKEN
+    client_id_env: GOOGLE_CLIENT_ID
+    client_secret_env: GOOGLE_CLIENT_SECRET
+    privacy: unlisted
+    category_id: "22"
+    max_parallel_uploads: 3
+  encode:
+    profile: auto           # auto | passthrough | 1080p
+    timeout_minutes: 30
+
+# ---------------------------------------------------------------------------
+# Calendar
+# ---------------------------------------------------------------------------
+calendar:
+  driver: google
+  google:
+    credentials_file: secrets/credential_calendar.json
+    token_file: secrets/token_calendar.json
+    calendar_id: primary
+  # Emoji prefixed to a lesson event, chosen by the learner's instrument.
+  # The key is matched case-insensitively against the instrument field.
+  event_emoji: {}
+  default_event_emoji: ""
+  # A lesson event is only created after the session document update succeeds,
+  # so the calendar can never disagree with the documents. Turning this off is
+  # possible but reintroduces that drift.
+  require_doc_update: true
+
+# ---------------------------------------------------------------------------
+# Fail-closed gates
+# ---------------------------------------------------------------------------
+gates:
+  # Fields that must be present before a lesson message is sent. Any missing
+  # field blocks the send with exit code 5. There is no override flag.
+  send_lesson_required:
+    - doc_link
+    - short_summary
+    - session_number
+  # Fields worth warning about but not worth blocking on.
+  send_lesson_optional:
+    - practice_track
+    - video_link
+
+# ---------------------------------------------------------------------------
+# Content authored by a model
+# ---------------------------------------------------------------------------
+llm:
+  # Baton does not call a model. Summaries are written by whichever agent is
+  # driving the CLI and submitted as JSON validated against a schema. Leaving
+  # this as "none" is what lets a local model of any size drive Baton safely.
+  provider: none
+
+summary:
+  # Constraints enforced on the short message summary. These are validated,
+  # not merely requested.
+  short_summary:
+    max_lines: 5
+    allow_emoji: false
+    allow_links: false

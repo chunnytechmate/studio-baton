@@ -1,0 +1,141 @@
+"""Retry helpers with exponential backoff and jitter.
+
+Ported from the original ``scripts/utils.py``. The behaviour that matters and
+is preserved verbatim: a non-retryable HTTP response is *returned* so the
+caller can branch on its status, while only exhausted retries raise. Silently
+swallowing a 401 as "transient" is how a pipeline ends up looping against a
+revoked token.
+"""
+
+from __future__ import annotations
+
+import random
+import time
+from collections.abc import Callable, Sequence
+from contextlib import suppress
+from typing import Any, TypeVar
+
+import requests
+
+from ..errors import UpstreamError
+
+T = TypeVar("T")
+
+#: Statuses worth trying again: rate limiting and the 5xx family.
+RETRYABLE_STATUS: tuple[int, ...] = (429, 500, 502, 503, 504)
+
+
+def backoff_delay(attempt: int, *, base: float = 2.0, cap: float = 30.0) -> float:
+    """Delay before retry ``attempt`` (0-indexed), capped, with jitter added.
+
+    Jitter matters when several students are pushed in parallel: without it,
+    every worker retries on the same tick and re-creates the burst that caused
+    the rate limit.
+    """
+    return min(cap, base * (2**attempt)) + random.uniform(0, 1)
+
+
+def retry(
+    fn: Callable[[], T],
+    *,
+    attempts: int = 3,
+    base_delay: float = 2.0,
+    max_delay: float = 30.0,
+    exceptions: tuple[type[BaseException], ...] = (Exception,),
+    on_retry: Callable[[BaseException, int, float], None] | None = None,
+) -> T:
+    """Call ``fn`` until it succeeds or ``attempts`` is exhausted.
+
+    Args:
+        fn: Zero-argument callable to run.
+        attempts: Total tries, including the first.
+        base_delay: Base for the exponential backoff.
+        max_delay: Ceiling applied before jitter.
+        exceptions: Exception types treated as transient.
+        on_retry: Notified as ``(exc, attempt_number, delay)`` before sleeping.
+
+    Returns:
+        Whatever ``fn`` returned on its first success.
+
+    Raises:
+        The last exception, once every attempt has been used.
+    """
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except exceptions as exc:
+            if attempt + 1 >= attempts:
+                raise
+            delay = backoff_delay(attempt, base=base_delay, cap=max_delay)
+            if on_retry:
+                # A broken callback must not mask the retry it was reporting on.
+                with suppress(Exception):
+                    on_retry(exc, attempt + 1, delay)
+            time.sleep(delay)
+    raise AssertionError("unreachable: retry loop exited without returning or raising")
+
+
+def http_request(
+    method: str,
+    url: str,
+    *,
+    service: str = "upstream",
+    timeout: float = 30.0,
+    attempts: int = 3,
+    base_delay: float = 2.0,
+    max_delay: float = 30.0,
+    retry_on_status: Sequence[int] = RETRYABLE_STATUS,
+    on_retry: Callable[[Any, int, float], None] | None = None,
+    **kwargs: Any,
+) -> requests.Response:
+    """``requests.request`` with a mandatory timeout and transient-fault retries.
+
+    Args:
+        method: HTTP verb.
+        url: Target URL.
+        service: Name used in the raised :class:`UpstreamError` so operators can
+            tell Notion from YouTube at a glance.
+        timeout: Per-attempt timeout. Always applied — an un-timed request is
+            how a nightly job hangs until someone notices the next morning.
+        attempts: Total tries, including the first.
+        retry_on_status: Statuses that trigger another attempt.
+        **kwargs: Forwarded to ``requests.request``.
+
+    Returns:
+        The final response, including non-retryable error responses.
+
+    Raises:
+        UpstreamError: Connection or timeout faults persisted across attempts.
+    """
+    kwargs.setdefault("timeout", timeout)
+    transient = (requests.exceptions.ConnectionError, requests.exceptions.Timeout)
+    last_exc: BaseException | None = None
+
+    for attempt in range(attempts):
+        try:
+            response = requests.request(method, url, **kwargs)
+            if response.status_code in retry_on_status and attempt + 1 < attempts:
+                delay = backoff_delay(attempt, base=base_delay, cap=max_delay)
+                if on_retry:
+                    with suppress(Exception):
+                        on_retry(response, attempt + 1, delay)
+                time.sleep(delay)
+                continue
+            return response
+        except transient as exc:
+            last_exc = exc
+            if attempt + 1 >= attempts:
+                break
+            delay = backoff_delay(attempt, base=base_delay, cap=max_delay)
+            if on_retry:
+                with suppress(Exception):
+                    on_retry(exc, attempt + 1, delay)
+            time.sleep(delay)
+
+    raise UpstreamError(
+        f"{service} did not respond after {attempts} attempts: {last_exc}",
+        service=service,
+        attempts=attempts,
+        remedy="Check network access and the service status page, then re-run — "
+        "resumable pipelines skip the steps that already succeeded.",
+    )

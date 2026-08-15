@@ -1,0 +1,75 @@
+# Example profile — a guitar teacher running everything locally.
+#
+# Copy this directory, edit the values, and point BATON_PROFILE at it. Only the
+# settings that differ from src/baton/defaults.yaml need to appear here; run
+# `baton config show` to see the merged result.
+#
+# No credential values belong in this file. Settings ending in `_env` name the
+# environment variable that holds the secret — see .env.example.
+
+version: 1
+
+locale: en
+timezone: Europe/London
+
+labels:
+  learner: student
+  learners: students
+  session: lesson
+  sessions: lessons
+  piece: piece
+  pieces: pieces
+
+db:
+  driver: sqlite
+  sqlite:
+    path: data/studio.db
+
+docs:
+  driver: notion
+  properties:
+    status: Status
+    titles: Repertoire
+    date: Lesson date
+  statuses:
+    done: Complete
+    in_progress: In progress
+    not_started: Not started
+  preserve:
+    - type: video
+    - type: embed
+    - type: bookmark
+    - type: file
+    - type: callout
+      icon: "🎧"
+
+chat:
+  driver: telegram
+  contacts:
+    me:
+      id_env: BATON_CONTACT_ME
+      aliases: [me, myself]
+    studio_manager:
+      id_env: BATON_CONTACT_MANAGER
+      aliases: [manager, office]
+
+calendar:
+  driver: google
+  google:
+    calendar_id: primary
+  event_emoji:
+    guitar: "🎸"
+    bass: "🎸"
+    drums: "🥁"
+    piano: "🎹"
+    voice: "🎤"
+  default_event_emoji: "🎵"
+
+gates:
+  send_lesson_required:
+    - doc_link
+    - short_summary
+    - session_number
+  send_lesson_optional:
+    - practice_track
+    - video_link
