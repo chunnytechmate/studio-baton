@@ -190,9 +190,27 @@ media:
 calendar:
   driver: google
   google:
-    credentials_file: secrets/credential_calendar.json
-    token_file: secrets/token_calendar.json
     calendar_id: primary
+    refresh_token_env: GOOGLE_CALENDAR_REFRESH_TOKEN
+    client_id_env: GOOGLE_CLIENT_ID
+    client_secret_env: GOOGLE_CLIENT_SECRET
+
+  # How long a lesson runs when no end time is given.
+  default_minutes: 60
+
+  # Words your studio types for relative days, mapped to a day offset.
+  # `today`, `tomorrow`, `yesterday` and signed offsets like `+2` always work.
+  # Date arithmetic is done in code rather than by a model, so an off-by-one
+  # cannot book a lesson on the wrong day.
+  date_shorthand: {}
+  # date_shorthand:
+  #   พน: 1        # tomorrow
+  #   วน: 0        # today
+  #   มร: 2        # the day after tomorrow
+
+  # How far from today a cancel may reach. Rewriting a past week's records is
+  # usually a mistake rather than an intention, so it is refused past this.
+  rollback_window_days: 1
   # Emoji prefixed to a lesson event, chosen by the learner's instrument.
   # The key is matched case-insensitively against the instrument field.
   event_emoji: {}
