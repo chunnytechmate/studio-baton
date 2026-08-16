@@ -126,7 +126,7 @@ def test_staging_an_explicit_session_needs_no_document_reads(studio, capsys):
 
 
 def test_choosing_the_session_automatically_does_read_the_documents(studio, capsys):
-    """"Free" is a fact about the page, not the database row, so this path
+    """ "Free" is a fact about the page, not the database row, so this path
     genuinely needs the document store and must fail when it is unreachable."""
     from baton.errors import UpstreamError
 

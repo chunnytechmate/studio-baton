@@ -16,6 +16,7 @@ import zoneinfo
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ..adapters import chat as chat_adapters
 from ..adapters import db as db_adapters
 from ..adapters import docs as doc_adapters
 from ..core import i18n
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 KNOWN_DB_DRIVERS = db_adapters.DRIVERS
 KNOWN_DOC_DRIVERS = doc_adapters.DRIVERS
-KNOWN_CHAT_DRIVERS = ("line", "telegram", "webhook")
+KNOWN_CHAT_DRIVERS = chat_adapters.DRIVERS
 KNOWN_CALENDAR_DRIVERS = ("google",)
 
 

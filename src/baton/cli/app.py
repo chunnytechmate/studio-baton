@@ -89,9 +89,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Registered here rather than auto-discovered: an explicit list means a
     # half-finished command module cannot accidentally ship as a real command.
-    from . import cmd_config, cmd_doctor, cmd_job, cmd_learner, cmd_lesson
+    from . import cmd_config, cmd_doctor, cmd_job, cmd_learner, cmd_lesson, cmd_send
 
-    for module in (cmd_doctor, cmd_config, cmd_learner, cmd_lesson, cmd_job):
+    for module in (cmd_doctor, cmd_config, cmd_learner, cmd_lesson, cmd_send, cmd_job):
         module.register(subparsers)
 
     return parser
