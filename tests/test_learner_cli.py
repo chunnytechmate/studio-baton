@@ -14,12 +14,13 @@ from pathlib import Path
 
 import pytest
 
+import baton
 from baton.adapters.docs.base import Block, DocStatus
 from baton.adapters.fakes import FakeDocStore
 from baton.cli.app import run
 from baton.exits import Exit
 
-MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
+MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 
 # Ada has sessions 1-3; Bruno 1-2; Clara 1; Devon 1. Seeded doc ids are
 # predictable, so the document states can be scripted precisely.
