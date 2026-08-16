@@ -105,6 +105,28 @@ def _require_subcommand(ctx: Context) -> Exit:
     )
 
 
+def _mirror_exit(code: int | None) -> Exit | int:
+    """A waiter's exit code, from the supervised command's own.
+
+    Codes inside the contract keep their meaning. Anything else — ffmpeg's
+    1, a script's 9, a shell's 127 — is passed through as-is, which is what
+    "the waiter inherits the job's own verdict" has always promised; mapping
+    them onto a contract code would tell an agent the job was a *config*
+    problem when it was no such thing.
+
+    A child killed by a signal reports a negative code from ``wait()``; the
+    shell convention (128 + signal) is what an operator expects to read.
+    """
+    if code is None:
+        return Exit.OK
+    if code < 0:
+        code = 128 - code
+    try:
+        return Exit(code)
+    except ValueError:
+        return code
+
+
 def _runner(ctx: Context) -> JobRunner:
     config = ctx.config
     return JobRunner(config.state_dir, config.config_file)
@@ -187,7 +209,7 @@ def handle_status(ctx: Context) -> Exit:
     return Exit.OK
 
 
-def handle_wait(ctx: Context) -> Exit:
+def handle_wait(ctx: Context) -> Exit | int:
     runner = _runner(ctx)
     _lookup(ctx, ctx.args.id)
     info = runner.wait(ctx.args.id, timeout=ctx.args.timeout)
@@ -215,8 +237,8 @@ def handle_wait(ctx: Context) -> Exit:
     )
     # The waiter inherits the job's own verdict — including non-zero codes, so
     # an agent waiting on `video run --detach` sees exactly what a foreground
-    # run would have exited with.
-    return Exit(info.exit_code if info.exit_code is not None else Exit.OK)
+    # run would have exited with. The real code is in the result payload too.
+    return _mirror_exit(info.exit_code)
 
 
 def handle_stop(ctx: Context) -> Exit:
@@ -257,7 +279,7 @@ def handle_prune(ctx: Context) -> Exit:
     return Exit.OK
 
 
-def handle_supervise(ctx: Context) -> Exit:
+def handle_supervise(ctx: Context) -> Exit | int:
     """Internal: run as the detached supervisor and mirror the child's exit."""
     runner = _runner(ctx)
-    return Exit(runner.supervise(ctx.args.id, list(ctx.args.argv)))
+    return _mirror_exit(runner.supervise(ctx.args.id, list(ctx.args.argv)))

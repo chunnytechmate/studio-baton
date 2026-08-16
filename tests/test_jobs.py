@@ -301,3 +301,41 @@ def test_pid_alive_rejects_nonsense():
     assert pid_alive(None) is False
     assert pid_alive(0) is False
     assert pid_alive(-1) is False
+
+
+def test_wait_mirrors_an_exit_code_outside_the_contract(profile, capsys):
+    """ffmpeg and shell scripts exit with codes the contract does not name.
+    `job wait` must still report the job's own verdict — as a number, not a
+    ValueError traceback with no envelope."""
+    job_id = _spawn(
+        profile,
+        capsys,
+        """
+        import sys
+        sys.exit(9)
+        """,
+    )
+
+    code = run(["--profile", str(profile), "--json", "job", "wait", job_id, "--timeout", "60"])
+
+    assert code == 9
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert payload["exit_code"] == 9
+
+
+def test_wait_reports_a_signal_death_as_the_shell_would(profile, capsys):
+    job_id = _spawn(
+        profile,
+        capsys,
+        """
+        import os, signal
+        os.kill(os.getpid(), signal.SIGKILL)
+        """,
+    )
+
+    code = run(["--profile", str(profile), "--json", "job", "wait", job_id, "--timeout", "60"])
+
+    assert code == 137  # 128 + SIGKILL, the convention an operator reads
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["exit_code"] == -9  # wait()'s raw verdict is preserved in the record

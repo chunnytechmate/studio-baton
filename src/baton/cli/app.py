@@ -22,7 +22,7 @@ from ..core.output import Reporter, format_error
 from ..errors import BatonError, UsageError
 from ..exits import Exit
 
-Handler = Callable[["Context"], Exit]
+Handler = Callable[["Context"], "Exit | int"]
 
 
 @dataclass
@@ -179,10 +179,77 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _offending_token(argv: Sequence[str]) -> str:
+    """Best-effort name of what the person got wrong, for the envelope.
+
+    A flag after a valid command ("learner --nope") is the offender; with no
+    such flag, the command itself is ("frobnicate"). Global flags and their
+    values are noise either way.
+    """
+    value_flags = {"--profile"}
+    switches = {"--json", "--quiet"}
+    cleaned: list[str] = []
+    skip_value = False
+    for part in argv:
+        if skip_value:
+            skip_value = False
+            continue
+        if part in value_flags:
+            skip_value = True
+            continue
+        if part in switches:
+            continue
+        cleaned.append(part)
+
+    positional = next((part for part in cleaned if not part.startswith("-")), "")
+    later_flag = ""
+    if positional:
+        rest = cleaned[cleaned.index(positional) + 1 :]
+        later_flag = next((part for part in rest if part.startswith("-")), "")
+    return later_flag or positional or (cleaned[0] if cleaned else "")
+
+
+def _usage_failure(argv: Sequence[str]) -> tuple[Reporter, dict[str, Any]]:
+    """A usage error caught at parse time, as the envelope every other
+    failure already emits.
+
+    argparse prints its own line to stderr and raises ``SystemExit(2)``;
+    left alone, that escapes as a bare exit 2 — the code the contract
+    reserves for *configuration* problems, which is exactly the
+    misdiagnosis an agent branching on exit codes would make.
+    """
+    # The flags could not be parsed, so --json cannot be known for sure;
+    # a --json anywhere in the line is the honest guess.
+    report = Reporter(json_mode="--json" in argv, quiet=False)
+
+    try:
+        locale = config_module.load(None).locale
+    except BatonError:
+        locale = "en"
+    t = translator(locale)
+
+    payload: dict[str, Any] = {
+        "ok": False,
+        "error": "usage",
+        "exit_code": int(Exit.USAGE),
+        "message": t("error.unknown_command", command=_offending_token(argv) or "?"),
+        "remedy": t("error.unknown_command.remedy"),
+    }
+    return report, payload
+
+
 def run(argv: Sequence[str] | None = None) -> int:
     """Parse ``argv``, dispatch, and translate the outcome into an exit code."""
     parser = build_parser()
-    args = parser.parse_args(argv)
+    tokens = list(sys.argv[1:]) if argv is None else list(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        if exc.code != 2:
+            raise  # --help and --version exit 0 by design
+        report, payload = _usage_failure(tokens)
+        report.failure(payload, human=format_error(payload))
+        return int(Exit.USAGE)
 
     report = Reporter(json_mode=args.json_mode, quiet=args.quiet)
 

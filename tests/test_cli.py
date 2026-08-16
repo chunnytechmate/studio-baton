@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from baton.cli.app import run
 from baton.exits import Exit
 
@@ -194,3 +196,43 @@ def test_flags_work_at_the_third_level_too(profile, capsys):
 
     assert code == Exit.OK
     assert "jobs" in json.loads(capsys.readouterr().out)
+
+
+# -- usage errors get the contract's exit code, not argparse's ---------------
+
+
+def test_an_unknown_command_exits_usage_not_config(profile, capsys):
+    """argparse raises SystemExit(2) — the code the contract reserves for
+    configuration problems. An agent branching on exit codes would diagnose a
+    typo as a broken baton.yaml."""
+    from baton.exits import Exit
+
+    assert run(["frobnicate"]) == int(Exit.USAGE)
+
+    err = capsys.readouterr().err
+    assert "Unknown command `frobnicate`" in err
+
+
+def test_an_unknown_flag_after_a_valid_command_exits_usage(profile, capsys):
+    from baton.exits import Exit
+
+    assert run(["learner", "--nope"]) == int(Exit.USAGE)
+
+    err = capsys.readouterr().err
+    assert "--nope" in err
+
+
+def test_a_usage_error_still_emits_a_json_envelope(profile, capsys):
+    assert run(["--json", "frobnicate"]) == int(Exit.USAGE)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["error"] == "usage"
+    assert payload["exit_code"] == 1
+    assert "frobnicate" in payload["message"]
+
+
+def test_help_and_version_still_exit_through_argparse(profile, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        run(["--version"])
+    assert excinfo.value.code == 0
