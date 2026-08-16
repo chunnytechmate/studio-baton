@@ -248,6 +248,41 @@ class NotionDocStore:
             chunk = blocks[start : start + MAX_CHILDREN_PER_REQUEST]
             self._request("PATCH", f"/blocks/{doc_id}/children", {"children": chunk})
 
+    def create_page(self, parent_id: str, title: str, blocks: list[dict[str, Any]]) -> DocStatus:
+        """Create a sub-page, then append anything past the first request.
+
+        Notion accepts at most 100 children when creating a page, so a longer
+        note is created with the first batch and topped up — rather than the
+        caller being told to shorten it.
+        """
+        batches = [
+            blocks[index : index + MAX_CHILDREN_PER_REQUEST]
+            for index in range(0, len(blocks), MAX_CHILDREN_PER_REQUEST)
+        ] or [[]]
+
+        created = self._request(
+            "POST",
+            "/pages",
+            {
+                "parent": {"page_id": parent_id},
+                "properties": {"title": {"title": [{"text": {"content": title[:2000]}}]}},
+                "children": batches[0],
+            },
+        )
+        page_id = str(created.get("id", ""))
+        if not page_id:
+            raise UpstreamError("Notion created a page but returned no id.", service="notion")
+
+        for batch in batches[1:]:
+            self.append_blocks(page_id, batch)
+
+        return DocStatus(
+            doc_id=page_id,
+            titles=title,
+            block_count=len(blocks),
+            url=str(created.get("url", "")),
+        )
+
     def delete_blocks(self, block_ids: list[str]) -> int:
         deleted = 0
         for block_id in block_ids:

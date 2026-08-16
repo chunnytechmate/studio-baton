@@ -25,7 +25,7 @@ summary — and even that is submitted as JSON validated against a schema.
 | `baton send` | Send a lesson summary, refusing when required data is missing |
 | `baton video` | Collect recordings → encode → publish → link back, resumable |
 | `baton calendar` | Book lessons, keeping documents and calendar in step |
-| `baton notes` | Push a note or a Markdown file to a documents page *(in progress)* |
+| `baton notes` | Push a note or a Markdown file to a documents page |
 
 ## Install
 
@@ -159,6 +159,20 @@ exit 4 | contract | The lesson summary does not match the required structure (3 
 
 Callout text comes from the studio's own `theory.json`; the model supplies only
 the id. It cannot write theory content into a document at all.
+
+The same reasoning covers notes. The skill this replaces handed a model the
+API shape and a `curl` invocation and asked it to build the block JSON, split
+it at the store's 100-child ceiling, and retry — all mechanical, and all
+invisible when done wrong, because a note that lost a line just looks shorter
+than you remembered. It is a parser now:
+
+```bash
+baton notes preview --file today.md   # what it becomes, touching nothing
+baton notes push --file today.md
+```
+
+The conversion is total: every line produces exactly one block, and anything
+unrecognised becomes a paragraph rather than being dropped.
 
 **A rewrite cannot destroy what it did not write.** Updating a summary replaces
 only the blocks the `docs.preserve` policy does not protect, so uploaded

@@ -150,6 +150,7 @@ class FakeDocStore:
         self.blocks = {key: list(value) for key, value in (blocks or {}).items()}
         self.preserve = preserve or PreservePolicy(rules=())
         self.appended: list[dict[str, Any]] = []
+        self.created_pages: list[dict[str, Any]] = []
         self.fail_with: Exception | None = None
         self._ids = itertools.count(start=1)
 
@@ -185,14 +186,21 @@ class FakeDocStore:
         return list(self.blocks.get(doc_id, []))
 
     def append_blocks(self, doc_id: str, blocks: list[dict[str, Any]]) -> None:
+        """Append, splitting into request-sized batches like the real store.
+
+        The per-request ceiling is a transport detail the adapter hides, so the
+        fake hides it too — a fake that refuses what production accepts sends
+        tests chasing a limit that is not really there. Each batch is recorded
+        in `appended`, so a test can still assert that the split happened.
+        """
         self._check()
-        if len(blocks) > self.MAX_CHILDREN_PER_REQUEST:
-            raise UpstreamError(
-                f"Cannot append {len(blocks)} blocks in one request "
-                f"(limit {self.MAX_CHILDREN_PER_REQUEST}).",
-                service="fake",
+        for start in range(0, len(blocks), self.MAX_CHILDREN_PER_REQUEST):
+            self.appended.append(
+                {
+                    "doc_id": doc_id,
+                    "count": len(blocks[start : start + self.MAX_CHILDREN_PER_REQUEST]),
+                }
             )
-        self.appended.append({"doc_id": doc_id, "count": len(blocks)})
         created = [
             Block(
                 id=f"new-{next(self._ids)}",
@@ -204,6 +212,22 @@ class FakeDocStore:
             for block in blocks
         ]
         self.blocks.setdefault(doc_id, []).extend(created)
+
+    def create_page(self, parent_id: str, title: str, blocks: list[dict[str, Any]]) -> DocStatus:
+        self._check()
+        page_id = f"page-{next(self._ids)}"
+        self.created_pages.append({"parent_id": parent_id, "title": title, "id": page_id})
+        self.blocks[page_id] = []
+        if blocks:
+            self.append_blocks(page_id, blocks)
+        status = DocStatus(
+            doc_id=page_id,
+            titles=title,
+            block_count=len(blocks),
+            url=f"https://example.invalid/{page_id}",
+        )
+        self.statuses[page_id] = status
+        return status
 
     def delete_blocks(self, block_ids: list[str]) -> int:
         self._check()
