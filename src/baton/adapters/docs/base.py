@@ -153,6 +153,10 @@ class DocStore(Protocol):
         """Append blocks, chunking to respect the store's per-request limit."""
         ...
 
+    def create_page(self, parent_id: str, title: str, blocks: list[dict[str, Any]]) -> DocStatus:
+        """Create a sub-page under ``parent_id`` and return its identity."""
+        ...
+
     def delete_blocks(self, block_ids: list[str]) -> int:
         """Delete blocks by id. Returns how many were removed."""
         ...

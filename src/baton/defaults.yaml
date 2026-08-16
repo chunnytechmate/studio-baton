@@ -221,6 +221,15 @@ calendar:
   require_doc_update: true
 
 # ---------------------------------------------------------------------------
+# Quick notes
+# ---------------------------------------------------------------------------
+notes:
+  # The page new notes are created under. Markdown is converted to blocks by
+  # Baton — the conversion is mechanical, and a model that drops a line while
+  # doing it produces a note that simply looks shorter than you remembered.
+  parent_id_env: BATON_NOTES_PARENT
+
+# ---------------------------------------------------------------------------
 # Fail-closed gates
 # ---------------------------------------------------------------------------
 gates:

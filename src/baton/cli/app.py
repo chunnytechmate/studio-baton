@@ -96,6 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_job,
         cmd_learner,
         cmd_lesson,
+        cmd_notes,
         cmd_send,
         cmd_video,
     )
@@ -108,6 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_send,
         cmd_video,
         cmd_calendar,
+        cmd_notes,
         cmd_job,
     ):
         module.register(subparsers)
