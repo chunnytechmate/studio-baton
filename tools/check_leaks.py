@@ -23,11 +23,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Checked in code only. A hardcoded harness path in a module is why the
+# original scripts could not be installed anywhere else; the same path in a
+# document is an installation instruction for that harness, which is useful.
 FORBIDDEN_PATHS = [
     (re.compile(r"\.openclaw/workspace"), "harness-specific path"),
     (re.compile(r"/home/node\b"), "container-specific absolute path"),
     (re.compile(r"/home/[a-z][a-z0-9_-]*/(?!\.\.)"), "developer home directory"),
 ]
+
+#: Extensions treated as code for the path checks above.
+CODE_SUFFIXES = frozenset({".py", ".sql", ".yaml", ".yml", ".toml", ".cfg", ".sh", ".json"})
 
 # Prefixes published by the vendors themselves as identifying a live credential.
 SECRET_PATTERNS = [
@@ -108,10 +114,12 @@ def scan(root: Path) -> list[str]:
         except (OSError, UnicodeDecodeError):
             continue
 
+        is_code = path.suffix.lower() in CODE_SUFFIXES
         for number, line in enumerate(text.splitlines(), start=1):
-            for regex, label in FORBIDDEN_PATHS:
-                if regex.search(line):
-                    findings.append(f"{relative}:{number}: {label} — {line.strip()[:80]}")
+            if is_code:
+                for regex, label in FORBIDDEN_PATHS:
+                    if regex.search(line):
+                        findings.append(f"{relative}:{number}: {label} — {line.strip()[:80]}")
             for regex, label in SECRET_PATTERNS:
                 if regex.search(line):
                     findings.append(f"{relative}:{number}: possible {label}")

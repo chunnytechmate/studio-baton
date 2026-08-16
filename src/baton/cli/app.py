@@ -93,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_calendar,
         cmd_config,
         cmd_doctor,
+        cmd_init,
         cmd_job,
         cmd_learner,
         cmd_lesson,
@@ -102,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     for module in (
+        cmd_init,
         cmd_doctor,
         cmd_config,
         cmd_learner,

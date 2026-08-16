@@ -9,13 +9,14 @@ from pathlib import Path
 
 import pytest
 
+import baton
 from baton.adapters.db import open_store
 from baton.adapters.db.sqlite import SqliteStore
 from baton.core import config as config_module
 from baton.domain.models import Work
 from baton.errors import ConfigError
 
-MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
+MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 
 
 @pytest.fixture

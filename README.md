@@ -10,13 +10,15 @@ and fails quietly when it is not. Everything that can be a script here is a
 script, so the model is left with the one job only a model can do — writing the
 summary — and even that is submitted as JSON validated against a schema.
 
-> **Status: early.** The foundation (configuration, state, CLI contract) is in
-> place; the pipelines are being ported. See [Roadmap](#roadmap).
+> **Status: usable, not yet 1.0.** Every pipeline is ported and tested; the
+> configuration format is versioned and will not change shape without saying
+> so. See [Roadmap](#roadmap).
 
 ## What it does
 
 | Command | Job |
 | --- | --- |
+| `baton init` | Create a profile that already runs |
 | `baton doctor` | Check config, credentials, and drivers before anything runs |
 | `baton config` | Show the configuration the tool actually resolved |
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
@@ -37,17 +39,18 @@ pip install "studio-baton[google]" # plus Drive, YouTube, Calendar
 ## Quickstart
 
 ```bash
-cp -r profiles/example ~/my-studio
-cd ~/my-studio
-cp .env.example .env && $EDITOR .env      # credentials
-$EDITOR baton.yaml                        # your schema, labels, contacts
+baton init ~/my-studio --sample-data
 export BATON_PROFILE=~/my-studio
-
-sqlite3 data/studio.db < migrations/sqlite.sql        # schema
-sqlite3 data/studio.db < migrations/seed_example.sql  # optional sample data
-
+cd ~/my-studio && cp .env.example .env && $EDITOR .env
 baton doctor
+baton learner list
 ```
+
+`init` asks a handful of questions — your language, timezone, where records
+live, how messages are sent, what you call a student and a session — and writes
+a config, an `.env` listing exactly the variables *that* profile needs, and a
+database with the schema already in it. Pass every answer as a flag with
+`--yes` to run it unattended.
 
 `baton doctor` reports every problem at once rather than one per re-run, and
 exits `2` while anything is unresolved. It checks the schema mapping too — a
@@ -55,7 +58,9 @@ column named in `baton.yaml` that does not exist is caught here rather than at
 2am inside a pipeline. Add `--offline` to skip the checks that need a network.
 
 Already have a database? Do **not** run the migration. Point `db.tables` and
-`db.fields` at your own names and let `baton doctor` confirm the mapping.
+`db.fields` at your own names and let `baton doctor` confirm the mapping — see
+[Adopting a database you already have](docs/adopting-an-existing-schema.md).
+`baton schema postgres` prints the reference SQL if you want to compare.
 
 ## Design
 
@@ -354,6 +359,14 @@ diffed against the legacy scripts before the old path is retired.
 - [ ] **P7** `baton notes`
 - [ ] **P8** Agent skill definitions (`skills/`)
 - [ ] **P9** `baton init`, migrations, docs
+
+## Documentation
+
+- [Setting up Notion](docs/notion-setup.md) — including the sharing step that
+  makes every request 404 until you do it
+- [Adopting a database you already have](docs/adopting-an-existing-schema.md)
+- [Running a private deployment](docs/private-overlay.md) — one public
+  codebase, a config-only private overlay
 
 ## Development
 

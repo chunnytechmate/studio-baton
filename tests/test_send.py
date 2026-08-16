@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+import baton
 from baton.adapters.chat.base import SendOutcome
 from baton.adapters.docs.base import Block, DocStatus
 from baton.adapters.fakes import FakeDocStore, FakeLearnerStore
@@ -24,7 +25,7 @@ from baton.errors import GateError, NeedsHumanError, UpstreamError
 from baton.exits import Exit
 from baton.pipelines.send import compose_message, gate_check, gather_context, send_lesson
 
-MIGRATIONS = Path(__file__).resolve().parent.parent / "migrations"
+MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 
 PUBLISHED = {
     "learner_id": "1",

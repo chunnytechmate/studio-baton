@@ -57,7 +57,7 @@ packages = ["src/baton"]
 
 [tool.hatch.build]
 # Locale catalogues and packaged config defaults ship inside the wheel.
-include = ["src/baton/**/*.yaml", "src/baton/**/*.json"]
+include = ["src/baton/**/*.yaml", "src/baton/**/*.json", "src/baton/**/*.sql"]
 
 [tool.ruff]
 line-length = 100
