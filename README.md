@@ -360,6 +360,23 @@ diffed against the legacy scripts before the old path is retired.
 - [ ] **P8** Agent skill definitions (`skills/`)
 - [ ] **P9** `baton init`, migrations, docs
 
+## Replacing something that already works
+
+A rewrite is trustworthy when it gives the same answers as the thing it
+replaces, on that studio's own data — not when its own tests pass. Tests were
+written from the same understanding as the code, so they share its blind spots.
+The old script does not.
+
+```bash
+tools/parity.py --spec parity.yaml
+```
+
+It runs both sides of each case and diffs the fields that matter. Read-only by
+design: lookups, never a send, a publish, or an upload. Run it daily until the
+answers have agreed for long enough to trust, retiring the read-only paths
+first and the ones that message families last — a wrong lookup is noticed, a
+wrong message to a parent is not recoverable.
+
 ## Documentation
 
 - [Setting up Notion](docs/notion-setup.md) — including the sharing step that
