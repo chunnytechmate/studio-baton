@@ -317,6 +317,25 @@ baton config show                 # whole tree
 baton config show docs.properties # one branch
 ```
 
+## Driving it from an agent
+
+`skills/` holds a wrapper per pipeline for harnesses that load skill files
+(Claude Code, OpenClaw, and anything with the same convention):
+
+```bash
+ln -s "$PWD/skills/"* ~/.claude/skills/
+```
+
+Each is a decision table — a trigger, the exact command, and what to do about
+each exit code — not a manual. None of them contains an API call, a JSON
+payload, or a `python3 -c`: everything a model would otherwise assemble by hand
+is a subcommand instead, which is what the CLI underneath is for.
+
+`tests/test_skills.py` keeps them honest. It fails if a skill names a command
+or subcommand the CLI does not have, if a raw API call reappears, if a skill
+stops documenting its exit codes, or if one grows past 120 lines — the original
+ran to 400 lines of prose, which is how its rules stopped being followed.
+
 ## Roadmap
 
 The port from the original skills runs in phases; each lands behind tests and is
