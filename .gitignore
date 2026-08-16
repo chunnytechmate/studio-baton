@@ -33,3 +33,7 @@ data/
 *.bak.*
 *.orig
 tmp/
+
+# Sidecar lock files from the atomic-write layer. They are transient and
+# occasionally survive a killed process; they must never be committed.
+*.lock
