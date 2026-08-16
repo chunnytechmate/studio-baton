@@ -1,0 +1,362 @@
+"""Collecting recordings, combining them, publishing, and linking back.
+
+The pipeline is per-learner and every step is recorded before the next begins,
+so a crash anywhere is re-runnable. Three properties are load-bearing, and each
+one exists because its absence caused a real loss:
+
+**Nothing is deleted until everything else succeeded.** Source clips are moved
+to the trash as the last step, after the upload and the document link. Deleting
+earlier means a crash between the delete and the upload loses the recording
+permanently — the studio has no copy, and neither does anyone else.
+
+**A completed upload is never repeated.** ``uploaded`` is recorded with the
+video id the moment YouTube returns it. A resume that re-uploaded would leave
+two copies of a child's lesson online with no way to tell which link was sent.
+
+**One learner's failure does not stop the others.** Each is wrapped, and the
+run reports per learner. A phone that produced a corrupt clip must not mean
+nobody's recording goes out that night.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from ..adapters.db.base import LearnerStore
+from ..adapters.docs.base import DocStore
+from ..adapters.media.base import (
+    EncodeProfile,
+    MediaSource,
+    SourceClip,
+    UploadResult,
+    VideoEncoder,
+    VideoPublisher,
+)
+from ..core import jsonio
+from ..domain.models import Learner
+from ..domain.resolve import normalise
+from ..errors import BatonError, StateError
+
+#: The steps, in order. A run resumes at the first one not recorded.
+STEPS = (
+    "downloaded",
+    "combined",
+    "session_resolved",
+    "uploaded",
+    "doc_linked",
+    "cleaned",
+    "source_trashed",
+)
+
+_SAFE = re.compile(r"[^A-Za-z0-9_.-]")
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _slug(value: str) -> str:
+    cleaned = _SAFE.sub("_", str(value)).strip("._") or "unknown"
+    return cleaned[:100]
+
+
+@dataclass
+class VideoJob:
+    """Per-learner progress through the pipeline, persisted atomically."""
+
+    learner_folder: str
+    learner_id: str = ""
+    learner_name: str = ""
+    session_number: int = 0
+    doc_id: str = ""
+    clip_ids: list[str] = field(default_factory=list)
+    video_id: str = ""
+    video_url: str = ""
+    steps: dict[str, dict[str, Any]] = field(default_factory=dict)
+    status: str = "in_progress"
+    error: str = ""
+    updated_at: str = field(default_factory=_now)
+
+    def done(self, step: str) -> bool:
+        return bool(self.steps.get(step, {}).get("done"))
+
+    def record(self, step: str, **detail: Any) -> None:
+        self.steps[step] = {"done": True, "at": _now(), **detail}
+        self.updated_at = _now()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "learner_folder": self.learner_folder,
+            "learner_id": self.learner_id,
+            "learner_name": self.learner_name,
+            "session_number": self.session_number,
+            "doc_id": self.doc_id,
+            "clip_ids": self.clip_ids,
+            "video_id": self.video_id,
+            "video_url": self.video_url,
+            "steps": self.steps,
+            "status": self.status,
+            "error": self.error,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VideoJob:
+        return cls(
+            learner_folder=str(data.get("learner_folder", "")),
+            learner_id=str(data.get("learner_id", "")),
+            learner_name=str(data.get("learner_name", "")),
+            session_number=int(data.get("session_number", 0) or 0),
+            doc_id=str(data.get("doc_id", "")),
+            clip_ids=[str(item) for item in data.get("clip_ids", [])],
+            video_id=str(data.get("video_id", "")),
+            video_url=str(data.get("video_url", "")),
+            steps=dict(data.get("steps", {})),
+            status=str(data.get("status", "in_progress")),
+            error=str(data.get("error", "")),
+            updated_at=str(data.get("updated_at", _now())),
+        )
+
+
+class VideoJobStore:
+    """Job files, one per learner folder."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root)
+
+    def _path(self, learner_folder: str) -> Path:
+        return self.root / f"{_slug(learner_folder)}.json"
+
+    def get(self, learner_folder: str) -> VideoJob | None:
+        data = jsonio.read_json(self._path(learner_folder), None)
+        return VideoJob.from_dict(data) if isinstance(data, dict) else None
+
+    def save(self, job: VideoJob) -> None:
+        jsonio.write_json(self._path(job.learner_folder), job.to_dict())
+
+    def list(self) -> list[VideoJob]:
+        if not self.root.is_dir():
+            return []
+        jobs = []
+        for path in sorted(self.root.glob("*.json")):
+            data = jsonio.read_json(path, None)
+            if isinstance(data, dict):
+                jobs.append(VideoJob.from_dict(data))
+        return jobs
+
+    def remove(self, learner_folder: str) -> bool:
+        path = self._path(learner_folder)
+        existed = path.exists()
+        for candidate in (path, jsonio.backup_path(path)):
+            candidate.unlink(missing_ok=True)
+        return existed
+
+
+@dataclass
+class VideoPipeline:
+    """Runs the whole thing for every learner with pending clips."""
+
+    source: MediaSource
+    encoder: VideoEncoder
+    publisher: VideoPublisher
+    store: LearnerStore
+    docs: DocStore
+    jobs: VideoJobStore
+    workdir: Path
+    profile: EncodeProfile = field(default_factory=EncodeProfile)
+    privacy: str = "unlisted"
+    session_label: str = "week"
+    resolve_session: Any = None
+    """Callable ``(learner) -> (number, doc_id) | None``, injected by the CLI so
+    the pipeline does not need to know how sessions are chosen."""
+
+    # -- helpers -----------------------------------------------------------
+
+    def _match_learner(self, folder: str) -> Learner | None:
+        """Match a Drive folder name to a learner, exactly or not at all.
+
+        The same stance as everywhere else: a folder called "Ada" does not
+        resolve to "Ada Whitfield". Uploading one child's lesson to another
+        child's page is not a mistake worth risking for the convenience.
+        """
+        wanted = normalise(folder)
+        for learner in self.store.list_learners():
+            if normalise(learner.name) == wanted:
+                return learner
+        return None
+
+    def _clip_dir(self, folder: str) -> Path:
+        return self.workdir / _slug(folder)
+
+    def _already_linked(self, doc_id: str, url: str) -> bool:
+        """Whether this exact video is already on the document.
+
+        Guards the case where the link succeeded but the step record did not
+        survive — re-linking would put the same video on the page twice.
+        """
+        for block in self.docs.list_blocks(doc_id):
+            if block.type == "video" and block.url == url:
+                return True
+        return False
+
+    # -- steps -------------------------------------------------------------
+
+    def _download(self, job: VideoJob, clips: list[SourceClip]) -> list[Path]:
+        target = self._clip_dir(job.learner_folder)
+        paths = []
+        for clip in clips:
+            destination = target / _slug(clip.name)
+            if not destination.exists():
+                self.source.download(clip, destination)
+            paths.append(destination)
+        job.clip_ids = [clip.id for clip in clips]
+        job.record("downloaded", count=len(paths))
+        return paths
+
+    def _combine(self, job: VideoJob, paths: list[Path]) -> Path:
+        output = self._clip_dir(job.learner_folder) / "combined.mp4"
+        if not output.exists():
+            self.encoder.combine(sorted(paths), output, self.profile)
+        job.record("combined", output=str(output))
+        return output
+
+    def _resolve(self, job: VideoJob, learner: Learner) -> None:
+        resolved = self.resolve_session(learner) if self.resolve_session else None
+        if not resolved:
+            raise StateError(
+                f"No session to attach {learner.name}'s recording to.",
+                remedy=f"Create the next {self.session_label} for them, then re-run.",
+            )
+        number, doc_id = resolved
+        job.session_number = int(number)
+        job.doc_id = str(doc_id)
+        job.learner_id = learner.id
+        job.learner_name = learner.name
+        job.record("session_resolved", session_number=job.session_number, doc_id=job.doc_id)
+
+    def _upload(self, job: VideoJob, path: Path) -> UploadResult:
+        if job.video_id:
+            # Recorded already: never upload a second copy.
+            return UploadResult(video_id=job.video_id, url=job.video_url)
+        title = f"{job.learner_name} — {self.session_label} {job.session_number}"
+        result = self.publisher.upload(path, title=title, privacy=self.privacy)
+        job.video_id = result.video_id
+        job.video_url = result.url
+        # Recorded immediately, before anything else can fail.
+        job.record("uploaded", video_id=result.video_id, url=result.url)
+        return result
+
+    def _link(self, job: VideoJob) -> None:
+        if not self._already_linked(job.doc_id, job.video_url):
+            self.docs.append_blocks(
+                job.doc_id,
+                [
+                    {
+                        "object": "block",
+                        "type": "video",
+                        "video": {"type": "external", "external": {"url": job.video_url}},
+                    }
+                ],
+            )
+        job.record("doc_linked", url=job.video_url)
+
+    def _clean(self, job: VideoJob) -> None:
+        target = self._clip_dir(job.learner_folder)
+        if target.is_dir():
+            for item in sorted(target.rglob("*"), reverse=True):
+                if item.is_file():
+                    item.unlink(missing_ok=True)
+            target.rmdir()
+        job.record("cleaned")
+
+    def _trash(self, job: VideoJob) -> None:
+        moved = self.source.trash(job.clip_ids) if job.clip_ids else 0
+        job.record("source_trashed", moved=moved)
+
+    # -- run ---------------------------------------------------------------
+
+    def run_one(self, folder: str, clips: list[SourceClip]) -> VideoJob:
+        """Run (or resume) the pipeline for one learner folder."""
+        job = self.jobs.get(folder) or VideoJob(learner_folder=folder)
+        job.status = "in_progress"
+        job.error = ""
+
+        learner = self._match_learner(folder)
+        if learner is None:
+            job.status = "skipped"
+            job.error = f"No learner is named exactly “{folder}”."
+            self.jobs.save(job)
+            return job
+
+        try:
+            paths = (
+                [p for p in sorted(self._clip_dir(folder).glob("*")) if p.name != "combined.mp4"]
+                if job.done("downloaded")
+                else self._download(job, clips)
+            )
+            self.jobs.save(job)
+
+            combined = self._clip_dir(folder) / "combined.mp4"
+            if not job.done("combined"):
+                combined = self._combine(job, paths)
+                self.jobs.save(job)
+
+            if not job.done("session_resolved"):
+                self._resolve(job, learner)
+                self.jobs.save(job)
+
+            if not job.done("uploaded"):
+                self._upload(job, combined)
+                self.jobs.save(job)
+
+            if not job.done("doc_linked"):
+                self._link(job)
+                self.jobs.save(job)
+
+            if not job.done("cleaned"):
+                self._clean(job)
+                self.jobs.save(job)
+
+            # Last, and only now: the source is the only remaining copy until
+            # this point.
+            if not job.done("source_trashed"):
+                self._trash(job)
+
+            job.status = "done"
+            self.jobs.save(job)
+            return job
+
+        except BatonError as exc:
+            job.status = "failed"
+            job.error = exc.message
+            self.jobs.save(job)
+            return job
+
+    def run(self, *, only: list[str] | None = None) -> list[VideoJob]:
+        """Run every learner folder that has clips waiting.
+
+        Args:
+            only: Restrict to these folder names.
+
+        Returns:
+            One job per folder attempted, whatever its outcome.
+        """
+        pending = self.source.list_pending()
+        grouped: dict[str, list[SourceClip]] = {}
+        for clip in pending:
+            grouped.setdefault(clip.learner_folder, []).append(clip)
+
+        if only:
+            wanted = {normalise(name) for name in only}
+            grouped = {k: v for k, v in grouped.items() if normalise(k) in wanted}
+
+        return [self.run_one(folder, clips) for folder, clips in sorted(grouped.items())]
+
+    def resume(self) -> list[VideoJob]:
+        """Continue every job that did not finish, without collecting new clips."""
+        unfinished = [job for job in self.jobs.list() if job.status not in ("done", "skipped")]
+        return [self.run_one(job.learner_folder, []) for job in unfinished]

@@ -155,9 +155,19 @@ chat:
 # Video
 # ---------------------------------------------------------------------------
 media:
+  # Where recordings arrive.
+  source:
+    driver: gdrive        # gdrive | local
+    local:
+      path: clips         # one subdirectory per learner, named exactly as they are
+
   drive:
     folder_id_env: BATON_DRIVE_FOLDER_ID
     download_retries: 3
+
+  publish:
+    driver: youtube
+
   youtube:
     refresh_token_env: YOUTUBE_REFRESH_TOKEN
     client_id_env: GOOGLE_CLIENT_ID
@@ -166,8 +176,13 @@ media:
     category_id: "22"
     max_parallel_uploads: 3
   encode:
+    driver: ffmpeg
+    binary: ffmpeg
     profile: auto           # auto | passthrough | 1080p
+    # A wedged encode holds the whole run, so every invocation is killed after
+    # this long rather than waiting for someone to notice in the morning.
     timeout_minutes: 30
+    extra_args: []
 
 # ---------------------------------------------------------------------------
 # Calendar

@@ -23,7 +23,7 @@ summary — and even that is submitted as JSON validated against a schema.
 | `baton learner` | Look up learners, sessions, pieces, and past work |
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
 | `baton send` | Send a lesson summary, refusing when required data is missing |
-| `baton video` | Drive → encode → upload → link back, resumable *(in progress)* |
+| `baton video` | Collect recordings → encode → publish → link back, resumable |
 | `baton calendar` | Book lessons, keeping documents and calendar in step *(in progress)* |
 | `baton notes` | Push a note or a Markdown file to a documents page *(in progress)* |
 
@@ -200,6 +200,39 @@ as the next free session.
 **Long jobs resume.** Video processing and publishing record each completed step
 atomically, so a crash mid-run is re-runnable without re-uploading a video or
 duplicating a page block.
+
+Three properties hold the video pipeline together, each because its absence
+loses or duplicates a recording:
+
+- **Nothing is deleted until everything else succeeded.** Source clips are
+  trashed last, after the upload and the link. Until then they are the only
+  copy, and a crash before the upload would lose the lesson permanently.
+- **A completed upload is never repeated.** The video id is recorded the
+  moment the platform returns it, so a resume cannot publish a second copy of
+  a child's lesson with no way to tell which link was sent.
+- **One learner's failure does not stop the others.** A corrupt clip from one
+  phone must not mean nobody's recording goes out that night.
+
+```bash
+baton video run --dry-run     # what is waiting
+baton video run --detach      # background, survives the session
+baton video status            # per-learner progress through the steps
+baton video resume            # continue whatever did not finish
+```
+
+```
+  ✗ Ada Whitfield        ##.....  failed
+      ffmpeg failed: Invalid data found when processing input
+      next step: combined
+
+  steps: downloaded → combined → session_resolved → uploaded → doc_linked → cleaned → source_trashed
+```
+
+Clips arrive from Google Drive or a watched local directory
+(`media.source.driver`), so the pipeline can be tried without a Google
+account. A source folder resolves to a learner by exact name only — the same
+stance as everywhere else, because uploading one child's lesson onto another
+child's page is not worth the convenience.
 
 **Long jobs also detach.** Encoding and uploading run for tens of minutes —
 longer than an agent session, an SSH connection, or anyone's patience. Any
