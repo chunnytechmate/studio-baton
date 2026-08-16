@@ -22,7 +22,7 @@ summary — and even that is submitted as JSON validated against a schema.
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
 | `baton learner` | Look up learners, sessions, pieces, and past work |
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
-| `baton send` | Send a lesson summary, refusing when required data is missing *(in progress)* |
+| `baton send` | Send a lesson summary, refusing when required data is missing |
 | `baton video` | Drive → encode → upload → link back, resumable *(in progress)* |
 | `baton calendar` | Book lessons, keeping documents and calendar in step *(in progress)* |
 | `baton notes` | Push a note or a Markdown file to a documents page *(in progress)* |
@@ -94,7 +94,31 @@ the document; it never parses prose.
 **Gates fail closed.** A lesson message is not sent when a required field is
 missing. There is deliberately no way to force it: the fix is to supply the
 data. This is the behaviour that made the original system trustworthy and it is
-preserved exactly.
+preserved exactly:
+
+```
+$ baton send lesson "Ada Whitfield" --to me
+✗ Refusing to send the lesson message for Ada Whitfield: missing doc_link.
+
+  missing:
+    - doc_link: `doc_link` is empty
+
+  Nothing was sent. Supply the missing items, then re-run. There is no flag to bypass this check.
+exit=5
+```
+
+What counts as required is configuration (`gates.send_lesson_required`), so a
+studio sets its own standard of completeness; the block itself is not
+negotiable. What is sent is what was *published* — the message comes from the
+record stored at publish time, and the links are Baton's own, which is why
+links are forbidden inside the summary a model writes.
+
+Several learners go through one invocation. A refusal for one does not abandon
+the rest, and the exit code plus the report say exactly which did not go:
+
+```bash
+baton send batch --to me --learner "Ada" --learner "Bruno" --learner "Clara"
+```
 
 The same stance applies to names. A typed name resolves only on an exact match
 or a configured alias — a partial match never resolves, *even when it is the
@@ -226,6 +250,7 @@ diffed against the legacy scripts before the old path is retired.
       the name-resolution gate, migrations, and in-memory fakes
 - [x] **P2** `baton learner` — lookups joined across both stores
 - [x] **P3** `baton lesson` — the JSON summary contract and safe publishing
+- [x] **P4** `baton send` — the fail-closed gate; LINE, Telegram, and webhook drivers
 - [ ] **P4** `baton send` with the fail-closed gate; LINE and Telegram
 - [ ] **P5** `baton video`, with `--detach` wired to `baton job`
 - [ ] **P6** `baton calendar`
