@@ -372,7 +372,9 @@ tools/parity.py --spec parity.yaml
 ```
 
 It runs both sides of each case and diffs the fields that matter. Read-only by
-design: lookups, never a send, a publish, or an upload. Run it daily until the
+design: lookups, never a send, a publish, or an upload. When one side cannot
+run it is reported as a difference, never as agreement — a harness that scores
+silence as a pass would give the go-ahead to retire a working system. Run it daily until the
 answers have agreed for long enough to trust, retiring the read-only paths
 first and the ones that message families last — a wrong lookup is noticed, a
 wrong message to a parent is not recoverable.
