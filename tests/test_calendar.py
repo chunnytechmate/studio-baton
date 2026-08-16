@@ -302,3 +302,113 @@ def test_only_this_learners_events_are_cancelled():
     scheduler.cancel(ADA, SESSION, TODAY, today=TODAY)
 
     assert [event.title for event in calendar.events] == ["Bruno Castell (lesson 1)"]
+
+
+# -- a name that is a prefix of another name ---------------------------------
+
+
+def test_cancelling_ann_does_not_touch_anna():
+    """Substring matching made "Ann" a match for "Anna (lesson 3)"; the title
+    Baton writes is `Name (label N)`, so the match anchors on that shape."""
+    scheduler, calendar, _docs = build()
+    ann = Learner(id="1", name="Ann")
+    anna = Learner(id="2", name="Anna")
+    scheduler.book(ann, Session(id="s1", learner_id="1", number=1, doc_id="doc-3"), TODAY, "17:00")
+    scheduler.book(
+        anna, Session(id="s2", learner_id="2", number=3, doc_id="doc-3"), TODAY, "18:00"
+    )
+
+    scheduler.cancel(ann, Session(id="s1", learner_id="1", number=1, doc_id="doc-3"),
+                     TODAY, today=TODAY)
+
+    assert [event.title for event in calendar.events] == ["Anna (lesson 3)"]
+
+
+def test_the_exact_match_still_works_with_an_instrument_emoji():
+    scheduler = Scheduler(
+        FakeCalendar(),
+        FakeDocStore(statuses={"doc-3": DocStatus(doc_id="doc-3", status="Not started")}),
+        VOCAB,
+        timezone="Asia/Bangkok",
+        session_label="lesson",
+        event_emoji={"piano": "🎹"},
+        default_emoji="🎵",
+    )
+    ada = Learner(id="1", name="Ada", instrument="piano")
+    adrian = Learner(id="2", name="Adrian", instrument="piano")
+    scheduler.book(ada, SESSION, TODAY, "17:00")
+    scheduler.book(
+        adrian, Session(id="s2", learner_id="2", number=1, doc_id="doc-3"), TODAY, "18:00"
+    )
+
+    scheduler.cancel(adrian, Session(id="s2", learner_id="2", number=1, doc_id="doc-3"),
+                     TODAY, today=TODAY)
+
+    assert [event.title for event in scheduler.calendar.events] == ["🎹 Ada (lesson 3)"]
+
+
+def test_cancelling_a_session_with_no_document_removes_the_event():
+    """`doc_id=""` is the schema's default; reading its status asked the store
+    for a page id that is empty and reported a sharing problem."""
+    scheduler, calendar, docs = build()
+    bare = Session(id="s9", learner_id="1", number=9, doc_id="")
+    scheduler.book(ADA, bare, TODAY, "17:00", dry_run=False)
+
+    result = scheduler.cancel(ADA, bare, TODAY, today=TODAY)
+
+    assert result["deleted"]
+    assert calendar.events == []
+    # The other session's document was never read or reset.
+    assert docs.statuses["doc-3"].status == "Not started"
+
+
+# -- times that are not a real lesson ----------------------------------------
+
+
+def test_a_reversed_range_is_refused_rather_than_booked():
+    scheduler, _calendar, _docs = build()
+
+    with pytest.raises(UsageError) as excinfo:
+        scheduler.book(ADA, SESSION, date(2026, 8, 20), "18:00", "17:00")
+
+    assert "cannot end" in str(excinfo.value)
+
+
+def test_a_late_start_crossing_midnight_ends_the_next_day():
+    """23:30 + 60 minutes is 00:30 tomorrow. Comparing bare `time` values
+    rolled it back to 00:30 the same day — an event that ended before it
+    began."""
+    scheduler, _calendar, _docs = build()
+
+    result = scheduler.book(ADA, SESSION, date(2026, 8, 20), "23:30")
+
+    assert result.event is not None
+    assert result.event.end.startswith("2026-08-21T00:30")
+    assert result.event.end > result.event.start
+
+
+def test_an_equal_start_and_end_is_refused():
+    scheduler, _calendar, _docs = build()
+
+    with pytest.raises(UsageError):
+        scheduler.book(ADA, SESSION, date(2026, 8, 20), "17:00", "17:00")
+
+
+def test_a_schedule_with_one_name_twice_is_refused(profile):
+    """Two slots for one learner hand `_pick_session` the same in-progress
+    session twice and put the lesson on the calendar twice; the send batch
+    has refused this from the start."""
+    from baton.cli.app import run as cli_run
+
+    # The duplicate check sits before any store is opened, so a loadable
+    # profile is all the state this needs.
+    code = cli_run(
+        [
+            "--profile", str(profile),
+            "calendar", "schedule",
+            "--date", "2026-08-20",
+            "--text", "17:00 Ada Whitfield\n18:00 ada whitfield",
+        ]
+    )
+
+    assert code == Exit.USAGE

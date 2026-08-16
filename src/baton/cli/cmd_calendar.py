@@ -210,6 +210,21 @@ def handle_schedule(ctx: Context) -> Exit:
     slots = parse_schedule(
         text, default_minutes=int(ctx.config.get("calendar.default_minutes", 60))
     )
+
+    # The same guard the send batch already has: a name twice in one day would
+    # have `_pick_session` hand the same in-progress session to two slots and
+    # put one learner's lesson on the calendar twice.
+    counts: dict[str, int] = {}
+    for _start, _end, name in slots:
+        counts[name.casefold()] = counts.get(name.casefold(), 0) + 1
+    duplicates = sorted(name for name, count in counts.items() if count > 1)
+    if duplicates:
+        raise UsageError(
+            f"One name appears more than once in this schedule: {', '.join(duplicates)}.",
+            remedy="A duplicate books the same lesson twice in one day. "
+            "Fix the name, or remove the extra slot.",
+        )
+
     if not slots:
         ctx.report.result(
             {"date": day.isoformat(), "booked": [], "blocked": []},

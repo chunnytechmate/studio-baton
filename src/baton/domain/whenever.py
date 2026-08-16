@@ -178,7 +178,9 @@ def parse_schedule(
         if index + 1 < len(rows):
             end = rows[index + 1][0]
         else:
-            end_dt = datetime.combine(date.today(), start) + timedelta(minutes=default_minutes)
-            end = end_dt.time()
+            # datetime arithmetic on an arbitrary anchor date: the date itself
+            # is irrelevant, only the midnight crossing of `time` matters, and
+            # tying it to "today" implied a timezone that never existed here.
+            end = (datetime.combine(date.min, start) + timedelta(minutes=default_minutes)).time()
         booked.append((start, end, name))
     return booked

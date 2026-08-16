@@ -29,7 +29,7 @@ from ..adapters.docs.base import DocStore
 from ..domain.models import Learner, Session
 from ..domain.status import DONE, IN_PROGRESS, NOT_STARTED, StatusVocabulary
 from ..domain.whenever import combine, parse_time
-from ..errors import GateError, StateError
+from ..errors import GateError, StateError, UsageError
 
 
 @dataclass
@@ -114,16 +114,23 @@ class Scheduler:
         """Mark the session in progress, then put it on the calendar.
 
         Raises:
+            UsageError: The times are not a real lesson — an explicit end at or
+                before the start.
             StateError: The document update failed, so no event was created.
         """
-        start_time = parse_time(start)
+        # Datetimes, not times: a 23:30 start with a 60-minute default ends at
+        # 00:30 *the next day*, and only datetime arithmetic knows that.
+        start_dt = combine(day, parse_time(start), self.timezone)
         if end:
-            end_time = parse_time(end)
+            end_dt = combine(day, parse_time(end), self.timezone)
+            if end_dt <= start_dt:
+                raise UsageError(
+                    f"The lesson cannot end at {end} when it starts at {start}.",
+                    remedy="Check the times, or pass only the start and let "
+                    f"{self.default_minutes} default minutes apply.",
+                )
         else:
-            end_dt = combine(day, start_time, self.timezone) + timedelta(
-                minutes=self.default_minutes
-            )
-            end_time = end_dt.time()
+            end_dt = start_dt + timedelta(minutes=self.default_minutes)
 
         title = event_title(
             learner,
@@ -142,8 +149,8 @@ class Scheduler:
                 event=CalendarEvent(
                     id="",
                     title=title,
-                    start=combine(day, start_time, self.timezone).isoformat(),
-                    end=combine(day, end_time, self.timezone).isoformat(),
+                    start=start_dt.isoformat(),
+                    end=end_dt.isoformat(),
                 ),
                 title=title,
             )
@@ -168,8 +175,8 @@ class Scheduler:
             CalendarEvent(
                 id="",
                 title=title,
-                start=combine(day, start_time, self.timezone).isoformat(),
-                end=combine(day, end_time, self.timezone).isoformat(),
+                start=start_dt.isoformat(),
+                end=end_dt.isoformat(),
                 description=f"{learner.name} — {self.session_label} {session.number}",
             )
         )
@@ -224,7 +231,13 @@ class Scheduler:
                 "usually a mistake rather than an intention.",
             )
 
-        current = self.vocabulary.canonical(self.docs.get_status(session.doc_id).status)
+        # A session with no document has no status to consult; cancelling it
+        # is just removing the event. Reading `get_status("")` instead would
+        # ask the document store for a page id that is empty — a 404 dressed
+        # up as a sharing problem.
+        current = ""
+        if session.doc_id:
+            current = self.vocabulary.canonical(self.docs.get_status(session.doc_id).status)
         if current == DONE:
             raise GateError(
                 f"{learner.name}'s {self.session_label} {session.number} is already done.",
@@ -264,9 +277,25 @@ class Scheduler:
         }
 
     def _events_for(self, learner: Learner, day: date) -> list[CalendarEvent]:
-        """This learner's events on one day, matched by name in the title."""
+        """This learner's events on one day, matched against the title's shape.
+
+        A plain substring cannot tell "Ann (lesson 1)" from "Anna (lesson 3)"
+        — the shorter name is inside the longer one, and a cancel for Ann
+        would delete Anna's lesson too. Baton writes every title itself as
+        ``[icon ]Name (label N)``, so the match anchors on that exact shape:
+        an optional configured icon, then the name, then the opening
+        parenthesis of the session part. The legacy calendar skill learned
+        the same lesson and switched to prefix matching for the same reason.
+        """
         start = combine(day, parse_time("00:00"), self.timezone).isoformat()
         end = combine(day + timedelta(days=1), parse_time("00:00"), self.timezone).isoformat()
-        return [
-            event for event in self.calendar.list_between(start, end) if learner.name in event.title
-        ]
+        bare = f"{learner.name} ("
+        icons = {str(value) for value in self.event_emoji.values()}
+        if self.default_emoji:
+            icons.add(self.default_emoji)
+        with_icon = [f"{icon} {bare}" for icon in icons if icon]
+
+        def ours(title: str) -> bool:
+            return title.startswith(bare) or any(title.startswith(prefix) for prefix in with_icon)
+
+        return [event for event in self.calendar.list_between(start, end) if ours(event.title)]
