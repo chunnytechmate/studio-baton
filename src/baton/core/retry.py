@@ -10,6 +10,7 @@ revoked token.
 from __future__ import annotations
 
 import random
+import re
 import time
 from collections.abc import Callable, Sequence
 from contextlib import suppress
@@ -23,6 +24,19 @@ T = TypeVar("T")
 
 #: Statuses worth trying again: rate limiting and the 5xx family.
 RETRYABLE_STATUS: tuple[int, ...] = (429, 500, 502, 503, 504)
+
+#: A Telegram bot token travels in the URL path (``/bot<id>:<secret>/...``),
+#: and requests embeds the full URL in its connection errors. One dropped
+#: connection would otherwise print the credential to stderr, into a JSON
+#: envelope, and into a job log that outlives the run.
+_CREDENTIAL_IN_URL = re.compile(r"\b(bot|access_token|api_key|token)=[^&\s]+")
+_BOT_TOKEN_IN_PATH = re.compile(r"/bot\d+:[A-Za-z0-9_-]+")
+
+
+def redact(text: str) -> str:
+    """Hide credentials that can ride inside a URL before it reaches a message."""
+    text = _BOT_TOKEN_IN_PATH.sub("/bot***", text)
+    return _CREDENTIAL_IN_URL.sub(r"\1=***", text)
 
 
 def backoff_delay(attempt: int, *, base: float = 2.0, cap: float = 30.0) -> float:
@@ -135,7 +149,7 @@ def http_request(
             time.sleep(delay)
 
     raise UpstreamError(
-        f"{service} did not respond after {attempts} attempts: {last_exc}",
+        redact(f"{service} did not respond after {attempts} attempts: {last_exc}"),
         service=service,
         attempts=attempts,
         remedy="Check network access and the service status page, then re-run — "

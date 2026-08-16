@@ -271,10 +271,90 @@ def test_an_alias_resolves_to_its_contact():
         def section(self, _name):
             return {"office": {"id_env": "BATON_A", "aliases": ["boss", "manager"]}}
 
-    key, env_name = resolve_contact(FakeConfig(), "boss")  # type: ignore[arg-type]
+        def secret(self, _key, *, required=True):
+            return "U123office"
 
+    key, recipient_id = resolve_contact(FakeConfig(), "boss")  # type: ignore[arg-type]
+
+    # The platform id, not the name of the variable holding it: what leaves
+    # this function is what a driver puts in the payload.
     assert key == "office"
-    assert env_name == "BATON_A"
+    assert recipient_id == "U123office"
+
+
+def test_a_contact_whose_id_env_is_unset_is_a_config_problem():
+    from baton.adapters.chat.base import resolve_contact
+    from baton.errors import ConfigError
+
+    class FakeConfig:
+        def section(self, _name):
+            return {"office": {"id_env": "BATON_A", "aliases": []}}
+
+        def secret(self, key, *, required=True):
+            raise ConfigError(
+                "Environment variable BATON_A is not set.",
+                remedy="Export BATON_A (or add it to your .env) and re-run.",
+            )
+
+    with pytest.raises(ConfigError) as excinfo:
+        resolve_contact(FakeConfig(), "office")  # type: ignore[arg-type]
+
+    assert "BATON_A" in str(excinfo.value)
+
+
+def test_an_unset_id_env_does_not_leak_the_variable_name_into_a_payload(monkeypatch):
+    """End to end for the dereference: a real Config, a real env var."""
+    from baton.adapters.chat.base import resolve_contact
+    from baton.core.config import Config
+
+    config = Config(
+        data={"chat": {"contacts": {"office": {"id_env": "BATON_OFFICE_ID", "aliases": []}}}},
+        config_file=Path("baton.yaml"),
+        profile_dir=Path("."),
+    )
+
+    monkeypatch.delenv("BATON_OFFICE_ID", raising=False)
+    with pytest.raises(Exception) as unset:
+        resolve_contact(config, "office")
+    assert "BATON_OFFICE_ID" in str(unset.value)
+
+    monkeypatch.setenv("BATON_OFFICE_ID", "U8800office")
+    key, recipient_id = resolve_contact(config, "office")
+    assert (key, recipient_id) == ("office", "U8800office")
+
+
+def test_a_duplicate_alias_under_one_contact_is_one_match():
+    """The same alias written twice is a typo in baton.yaml, not an ambiguity."""
+    from baton.adapters.chat.base import resolve_contact
+
+    class FakeConfig:
+        def section(self, _name):
+            return {"me": {"id_env": "BATON_A", "aliases": ["boss", "boss"]}}
+
+        def secret(self, _key, *, required=True):
+            return "U1"
+
+    key, recipient_id = resolve_contact(FakeConfig(), "boss")  # type: ignore[arg-type]
+
+    assert (key, recipient_id) == ("me", "U1")
+
+
+def test_a_contacts_own_key_wins_over_another_contacts_alias():
+    from baton.adapters.chat.base import resolve_contact
+
+    class FakeConfig:
+        def section(self, _name):
+            return {
+                "dad": {"id_env": "BATON_DAD", "aliases": ["mum"]},
+                "mum": {"id_env": "BATON_MUM", "aliases": []},
+            }
+
+        def secret(self, key, *, required=True):
+            return {"chat.contacts.dad.id_env": "Udad", "chat.contacts.mum.id_env": "Umum"}[key]
+
+    key, recipient_id = resolve_contact(FakeConfig(), "mum")  # type: ignore[arg-type]
+
+    assert (key, recipient_id) == ("mum", "Umum")
 
 
 def test_a_contact_without_an_id_env_is_a_config_problem():
@@ -471,3 +551,105 @@ def test_contacts_lists_what_is_configured(studio, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["contacts"][0]["name"] == "teacher"
     assert "me" in payload["contacts"][0]["aliases"]
+
+
+# -- the webhook driver --------------------------------------------------------
+
+
+class _Captured:
+    """Stands in for http_request, recording what the driver would send."""
+
+    def __init__(self, status_code: int = 200) -> None:
+        self.status_code = status_code
+        self.text = ""
+        self.kwargs: dict | None = None
+
+    def __call__(self, _method, _url, **kwargs):
+        self.kwargs = kwargs
+        return self
+
+
+def test_a_signed_webhook_sends_the_bytes_it_signed(monkeypatch):
+    """The signature must be over the exact wire bytes, not a re-serialisation:
+    separators and escaping differ between any two serialisations, so signing
+    one and sending another verifies nowhere."""
+    import hashlib
+    import hmac as hmac_mod
+
+    from baton.adapters.chat import drivers
+
+    captured = _Captured()
+    monkeypatch.setattr(drivers, "http_request", captured)
+
+    messenger = drivers.WebhookMessenger(
+        "https://example.invalid/hook", secret="s3cret", config=None
+    )
+    messenger.send("ทดสอบ", "สวัสดี")
+
+    assert captured.kwargs is not None
+    sent = captured.kwargs["data"]
+    assert "json" not in captured.kwargs  # one serialisation, not two
+    assert captured.kwargs["headers"]["Content-Type"] == "application/json"
+
+    expected = hmac_mod.new(b"s3cret", sent, hashlib.sha256).hexdigest()
+    assert captured.kwargs["headers"]["X-Baton-Signature"] == expected
+
+    import json as json_mod
+
+    assert json_mod.loads(sent) == {"recipient": "ทดสอบ", "text": "สวัสดี"}
+
+
+def test_an_unsigned_webhook_lets_the_http_layer_serialise(monkeypatch):
+    from baton.adapters.chat import drivers
+
+    captured = _Captured()
+    monkeypatch.setattr(drivers, "http_request", captured)
+
+    messenger = drivers.WebhookMessenger("https://example.invalid/hook", config=None)
+    messenger.send("teacher", "hello")
+
+    assert captured.kwargs["json"] == {"recipient": "teacher", "text": "hello"}
+    assert "X-Baton-Signature" not in captured.kwargs["headers"]
+
+
+def test_a_refused_webhook_reports_the_status(monkeypatch):
+    from baton.adapters.chat import drivers
+
+    captured = _Captured(status_code=500)
+    monkeypatch.setattr(drivers, "http_request", captured)
+    messenger = drivers.WebhookMessenger(
+        "https://example.invalid/hook", secret="s", config=None
+    )
+
+    with pytest.raises(UpstreamError) as excinfo:
+        messenger.send("teacher", "hello")
+    assert "HTTP 500" in str(excinfo.value)
+
+
+def test_a_connection_error_never_prints_a_bot_token():
+    """A Telegram token rides in the URL path; requests embeds the URL in its
+    connection errors. One failed connection must not write the credential
+    into an error message that ends up on stderr and in job logs."""
+    import socket
+
+    from baton.core.retry import http_request, redact
+
+    # A closed port on localhost: refused instantly, no external service touched.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+
+    with pytest.raises(UpstreamError) as excinfo:
+        http_request(
+            "POST",
+            f"https://127.0.0.1:{port}/bot123456:SECRETTOKEN/sendMessage",
+            service="telegram",
+            timeout=0.2,
+            attempts=1,
+        )
+
+    assert "SECRETTOKEN" not in str(excinfo.value)
+    assert "/bot***/sendMessage" in str(excinfo.value)
+    assert redact("https://x.invalid/bot1:abc?token=zzz&api_key=qqq") == (
+        "https://x.invalid/bot***?token=***&api_key=***"
+    )

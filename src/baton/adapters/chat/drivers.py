@@ -9,6 +9,7 @@ looked.
 from __future__ import annotations
 
 import hmac
+import json
 from typing import Any
 from urllib.parse import quote
 
@@ -57,15 +58,23 @@ class _HttpMessenger:
 
     def send(self, recipient_id: str, text: str) -> SendOutcome:
         body = self._payload(recipient_id, text)
-        headers = self._headers()
-        self._sign(body, headers)
+        headers = dict(self._headers())
+        encoded = self._encode(body)
+        if encoded is not None:
+            # The driver owns the exact bytes on the wire, so what is signed
+            # is what is sent — a receiver verifying the raw body agrees.
+            self._sign(encoded, headers)
+            request_kwargs: dict[str, Any] = {"data": encoded}
+        else:
+            self._sign(None, headers)
+            request_kwargs = {"json": body}
         response = http_request(
             "POST",
             self._endpoint(recipient_id),
             service=self.service,
             headers=headers,
-            json=body,
             timeout=self.timeout,
+            **request_kwargs,
         )
         problem = self._check(response.status_code, response.text)
         if problem:
@@ -80,7 +89,18 @@ class _HttpMessenger:
             )
         return SendOutcome(sent=True, recipient=recipient_id)
 
-    def _sign(self, body: dict[str, Any], _headers: dict[str, str]) -> None:
+    def _encode(self, _body: dict[str, Any]) -> bytes | None:
+        """The exact wire bytes, when the driver must own them. ``None`` defers.
+
+        A driver returning ``None`` lets the HTTP layer serialise with
+        ``json=``, which is fine whenever nobody has to verify the body
+        afterwards. The webhook driver cannot afford that luxury: a signature
+        computed over one serialisation and sent over another verifies
+        nowhere.
+        """
+        return None
+
+    def _sign(self, _encoded: bytes | None, _headers: dict[str, str]) -> None:
         """Hook for drivers that authenticate the request body."""
 
     def health(self) -> None:
@@ -206,18 +226,23 @@ class WebhookMessenger(_HttpMessenger):
     def _payload(self, recipient_id: str, text: str) -> dict[str, Any]:
         return {"recipient": recipient_id, "text": text}
 
-    def _sign(self, body: dict[str, Any], headers: dict[str, str]) -> None:
-        """Sign the serialised body, so the receiver can verify the request.
-
-        The body is serialised the same way the HTTP layer serialises it
-        (``json=`` uses compact separators), which is what makes the signature
-        verifiable on the other end.
-        """
+    def _encode(self, body: dict[str, Any]) -> bytes | None:
+        """Serialise once, only when there is a secret to sign those bytes."""
         if not self.secret:
-            return
-        import json as _json
+            return None
+        return json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode()
 
-        encoded = _json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode()
+    def _sign(self, encoded: bytes | None, headers: dict[str, str]) -> None:
+        """Sign the exact bytes that will be sent.
+
+        The receiver verifies HMAC-SHA256 over the raw request body, so the
+        signature is computed over the same ``bytes`` object handed to the
+        HTTP layer — never over a second serialisation of the same payload,
+        which is guaranteed to differ in separators or escaping and verify
+        nowhere.
+        """
+        if not self.secret or encoded is None:
+            return
         headers["X-Baton-Signature"] = hmac.new(self.secret.encode(), encoded, "sha256").hexdigest()
 
     def _check(self, response_status: int, body: str) -> str | None:

@@ -71,10 +71,14 @@ def resolve_contact(config: Config, query: str) -> tuple[str, str]:
 
     Returns:
         ``(contact_key, recipient_id)`` — the key names the contact in
-        configuration, the id is what a driver delivers to.
+        configuration; the id is the *value* of the environment variable named
+        by that contact's ``id_env``, ready for a driver to deliver to. The
+        name of the variable is never what gets sent.
 
     Raises:
         NeedsHumanError: No match, or several. Carries the candidates.
+        ConfigError: The matched contact's ``id_env`` names a variable that is
+            not set — the same failure every other credential reports.
     """
     contacts = config.section("chat.contacts")
     if not contacts:
@@ -85,33 +89,36 @@ def resolve_contact(config: Config, query: str) -> tuple[str, str]:
         )
 
     wanted = query.strip().casefold()
-    exact: list[tuple[str, dict[str, Any]]] = []
+    # Keyed by contact key, not a list: the same alias written twice under one
+    # contact is one match, not two — a duplicate would report an ambiguity
+    # that does not exist. A contact whose *key* matches wins outright.
+    exact: dict[str, dict[str, Any]] = {}
     for key, entry in contacts.items():
         if not isinstance(entry, dict):
             continue
-        if str(key).casefold() == wanted:
-            exact = [(str(key), entry)]
+        name = str(key)
+        if name.casefold() == wanted:
+            exact = {name: entry}
             break
         for alias in entry.get("aliases", []) or []:
             if str(alias).strip().casefold() == wanted:
-                exact.append((str(key), entry))
+                exact.setdefault(name, entry)
 
     if len(exact) == 1:
-        key, entry = exact[0]
-        recipient_id = str(entry.get("id_env", ""))
-        if not recipient_id:
+        key, entry = next(iter(exact.items()))
+        if not str(entry.get("id_env", "")).strip():
             raise NeedsHumanError(
                 f"Contact `{key}` has no id_env.",
                 candidates=[],
                 remedy=f"Set chat.contacts.{key}.id_env to the environment variable "
                 "holding their platform id.",
             )
-        return key, recipient_id
+        return key, str(config.secret(f"chat.contacts.{key}.id_env"))
 
     if len(exact) > 1:
         raise NeedsHumanError(
             f"“{query}” matches more than one contact.",
-            candidates=[{"name": key} for key, _ in exact],
+            candidates=[{"name": key} for key in exact],
             remedy="Use the contact's exact name from baton.yaml.",
         )
 
