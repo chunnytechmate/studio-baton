@@ -1,0 +1,103 @@
+"""What the video pipeline needs from the outside world.
+
+Three separate concerns, three protocols: somewhere clips arrive, something
+turns several clips into one file, somewhere the result is published. Keeping
+them apart is what lets the orchestrator be tested end to end without ffmpeg,
+a Google account, or a network.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class SourceClip:
+    """One video file waiting to be collected."""
+
+    id: str
+    name: str
+    learner_folder: str
+    size_bytes: int = 0
+    created_at: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "learner_folder": self.learner_folder,
+            "size_bytes": self.size_bytes,
+        }
+
+
+@dataclass(frozen=True)
+class UploadResult:
+    """Where a published video ended up."""
+
+    video_id: str
+    url: str
+    title: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"video_id": self.video_id, "url": self.url, "title": self.title}
+
+
+@dataclass
+class EncodeProfile:
+    """How to turn source clips into one deliverable file."""
+
+    name: str = "auto"
+    timeout_seconds: int = 1800
+    extra_args: list[str] = field(default_factory=list)
+
+
+@runtime_checkable
+class MediaSource(Protocol):
+    """Where recordings arrive — a Drive folder, a watched directory."""
+
+    def list_pending(self) -> list[SourceClip]:
+        """Every clip currently waiting, across all learner folders."""
+        ...
+
+    def download(self, clip: SourceClip, destination: Path) -> Path:
+        """Fetch one clip. Implementations verify the size after transfer."""
+        ...
+
+    def trash(self, clip_ids: list[str]) -> int:
+        """Move clips out of the way. Returns how many were moved.
+
+        Called only after everything else for that learner has succeeded —
+        see :mod:`baton.pipelines.video` on deferred trashing.
+        """
+        ...
+
+    def health(self) -> None: ...
+
+
+@runtime_checkable
+class VideoEncoder(Protocol):
+    """Combines and normalises clips."""
+
+    def combine(self, inputs: list[Path], output: Path, profile: EncodeProfile) -> Path:
+        """Produce one file from several.
+
+        Must write atomically: a killed encode leaves no partial file at
+        ``output``, because a partial file is indistinguishable from a finished
+        one on the next run.
+        """
+        ...
+
+    def health(self) -> None: ...
+
+
+@runtime_checkable
+class VideoPublisher(Protocol):
+    """Publishes the finished file and returns a link."""
+
+    def upload(
+        self, path: Path, *, title: str, description: str = "", privacy: str = "unlisted"
+    ) -> UploadResult: ...
+
+    def health(self) -> None: ...

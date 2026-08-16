@@ -198,6 +198,8 @@ class FakeDocStore:
                 id=f"new-{next(self._ids)}",
                 type=str(block.get("type", "paragraph")),
                 text=_plain_text(block),
+                url=_block_url(block),
+                raw=block,
             )
             for block in blocks
         ]
@@ -227,4 +229,122 @@ def _plain_text(block: dict[str, Any]) -> str:
     return "".join(part.get("text", {}).get("content", "") for part in body.get("rich_text", []))
 
 
-__all__ = ["FakeDocStore", "FakeLearnerStore", "LearnerStore"]
+def _block_url(block: dict[str, Any]) -> str:
+    """Pull the URL out of a link-bearing block payload.
+
+    The real store keeps this, so the fake must too: a fake that quietly drops
+    a field makes a test fail for a reason production never would.
+    """
+    kind = str(block.get("type", ""))
+    body = block.get(kind, {}) or {}
+    if not isinstance(body, dict):
+        return ""
+    source = body.get("external") or body.get("file") or {}
+    if isinstance(source, dict) and source.get("url"):
+        return str(source["url"])
+    return str(body.get("url", ""))
+
+
+class FakeMediaSource:
+    """Clips held in memory, with real files written on download.
+
+    Records every trash call, because *when* the source is discarded is the
+    property the video pipeline's tests exist to pin down.
+    """
+
+    driver = "fake"
+
+    def __init__(self, clips: list[Any] | None = None) -> None:
+        self.clips = list(clips or [])
+        self.downloaded: list[str] = []
+        self.trashed: list[str] = []
+        self.fail_with: Exception | None = None
+
+    def _check(self) -> None:
+        if self.fail_with is not None:
+            raise self.fail_with
+
+    def list_pending(self) -> list[Any]:
+        self._check()
+        return list(self.clips)
+
+    def download(self, clip: Any, destination: Any) -> Any:
+        self._check()
+        from pathlib import Path
+
+        path = Path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fake-video-bytes")
+        self.downloaded.append(clip.id)
+        return path
+
+    def trash(self, clip_ids: list[str]) -> int:
+        self._check()
+        self.trashed.extend(clip_ids)
+        return len(clip_ids)
+
+    def health(self) -> None:
+        self._check()
+
+
+class FakeEncoder:
+    """Writes a placeholder output file, atomically enough for tests."""
+
+    driver = "fake"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[str], str]] = []
+        self.fail_with: Exception | None = None
+
+    def combine(self, inputs: list[Any], output: Any, profile: Any) -> Any:
+        if self.fail_with is not None:
+            raise self.fail_with
+        from pathlib import Path
+
+        path = Path(output)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"combined")
+        self.calls.append(([str(i) for i in inputs], str(output)))
+        return path
+
+    def health(self) -> None:
+        pass
+
+
+class FakePublisher:
+    """Hands out sequential video ids and counts uploads.
+
+    The upload count is what proves a resumed run does not publish a second
+    copy of a child's lesson.
+    """
+
+    driver = "fake"
+
+    def __init__(self) -> None:
+        self.uploads: list[dict[str, Any]] = []
+        self.fail_with: Exception | None = None
+        self._ids = itertools.count(start=1)
+
+    def upload(
+        self, path: Any, *, title: str = "", description: str = "", privacy: str = "unlisted"
+    ) -> Any:
+        if self.fail_with is not None:
+            raise self.fail_with
+        from .media.base import UploadResult
+
+        video_id = f"vid{next(self._ids)}"
+        self.uploads.append({"path": str(path), "title": title, "privacy": privacy})
+        return UploadResult(video_id=video_id, url=f"https://youtu.be/{video_id}", title=title)
+
+    def health(self) -> None:
+        pass
+
+
+__all__ = [
+    "FakeDocStore",
+    "FakeEncoder",
+    "FakeLearnerStore",
+    "FakeMediaSource",
+    "FakePublisher",
+    "LearnerStore",
+]
