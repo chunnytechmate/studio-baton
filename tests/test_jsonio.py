@@ -16,14 +16,14 @@ from baton.core import jsonio
 
 def test_round_trip_preserves_non_ascii(tmp_path):
     target = tmp_path / "state.json"
-    payload = {"learner": "น้องจี", "week": 3, "titles": ["Enemy"]}
+    payload = {"learner": "น้องมานี", "week": 3, "titles": ["Enemy"]}
 
     jsonio.write_json(target, payload)
 
     assert jsonio.read_json(target) == payload
     # Thai must survive as characters, not \u escapes — the file is read by
     # people as often as by code.
-    assert "น้องจี" in target.read_text(encoding="utf-8")
+    assert "น้องมานี" in target.read_text(encoding="utf-8")
 
 
 def test_write_creates_parent_directories(tmp_path):
