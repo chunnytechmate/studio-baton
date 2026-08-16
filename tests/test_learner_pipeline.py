@@ -299,3 +299,121 @@ def _block(block_id: str):
     from baton.adapters.docs.base import Block
 
     return Block(id=block_id, type="paragraph", text="already written")
+
+
+# -- one bad row must not sink the rest --------------------------------------
+
+
+def test_an_unreadable_document_does_not_break_the_whole_learner():
+    """Found by running against real data: one truncated page id made all
+    twelve of a learner's sessions unusable. A single bad row must cost that
+    row only."""
+    from baton.errors import UpstreamError
+
+    store = FakeLearnerStore(
+        learners=[ADA],
+        sessions=[
+            Session(id="a", learner_id="1", number=1, doc_id="good-1"),
+            Session(id="b", learner_id="1", number=2, doc_id="broken"),
+            Session(id="c", learner_id="1", number=3, doc_id="good-3"),
+        ],
+    )
+
+    class OneBadDocument(FakeDocStore):
+        def get_status(self, doc_id):
+            if doc_id == "broken":
+                raise UpstreamError("page_id is not a valid uuid", service="notion")
+            return super().get_status(doc_id)
+
+    docs = OneBadDocument(
+        statuses={
+            "good-1": DocStatus(doc_id="good-1", status="Done", date="2026-01-01"),
+            "good-3": DocStatus(doc_id="good-3", status="Not started"),
+        }
+    )
+    history = LearnerHistory(store, docs, VOCAB)
+
+    views = history.sessions(ADA)
+
+    assert len(views) == 3
+    assert history.latest_done(views).number == 1
+    assert history.next_empty(views).number == 3
+
+
+def test_an_unreadable_session_is_reported_rather_than_swallowed():
+    """Degrading quietly would hide a broken row forever."""
+    history = _history_with_one_bad_row()
+    views = history.sessions(ADA)
+
+    broken = next(view for view in views if view.number == 5)
+    assert broken.unreadable
+    assert broken.to_dict(VOCAB)["unreadable"]
+    assert history.summarise(ADA, views)["sessions"]["unreadable"][0]["number"] == 5
+
+
+def test_an_unreadable_session_is_never_treated_as_done_or_free():
+    """Unknown state, and the existing rules already refuse to act on it."""
+    history = _history_with_one_bad_row()
+    views = history.sessions(ADA)
+
+    broken = next(view for view in views if view.number == 5)
+    assert broken.state == ""
+    # The good session is done; the broken one is neither done nor free.
+    assert history.latest_done(views).number == 1
+    assert history.next_empty(views) is None
+
+
+def _history_with_one_bad_row() -> LearnerHistory:
+    """A learner with one good session and one whose page id is malformed —
+    the exact shape found in the real data."""
+    from baton.errors import UpstreamError
+
+    store = FakeLearnerStore(
+        learners=[ADA],
+        sessions=[
+            Session(id="a", learner_id="1", number=1, doc_id="good"),
+            Session(id="b", learner_id="1", number=5, doc_id="broken"),
+        ],
+    )
+
+    class OneBadRow(FakeDocStore):
+        def get_status(self, doc_id):
+            if doc_id == "broken":
+                raise UpstreamError("page_id is not a valid uuid", service="notion")
+            return super().get_status(doc_id)
+
+    docs = OneBadRow(statuses={"good": DocStatus(doc_id="good", status="Done", date="2026-01-01")})
+    return LearnerHistory(store, docs, VOCAB)
+
+
+def test_every_document_failing_is_an_outage_not_an_empty_answer():
+    """The distinction that matters: one bad row degrades, but a total outage
+    must not come back as "no free session" — a confident wrong answer at
+    exactly the moment nothing can be trusted."""
+    from baton.errors import UpstreamError
+
+    store = FakeLearnerStore(
+        learners=[ADA],
+        sessions=[
+            Session(id="a", learner_id="1", number=1, doc_id="d1"),
+            Session(id="b", learner_id="1", number=2, doc_id="d2"),
+        ],
+    )
+    docs = FakeDocStore()
+    docs.fail_with = UpstreamError("notion is down", service="notion")
+    history = LearnerHistory(store, docs, VOCAB)
+
+    with pytest.raises(UpstreamError) as excinfo:
+        history.sessions(ADA)
+
+    assert "outage" in (excinfo.value.remedy or "")
+
+
+def test_sessions_without_a_document_do_not_count_towards_the_outage_check():
+    """A learner whose sessions have no page ids yet is not an outage."""
+    store = FakeLearnerStore(
+        learners=[ADA], sessions=[Session(id="a", learner_id="1", number=1, doc_id="")]
+    )
+    history = LearnerHistory(store, FakeDocStore(), VOCAB)
+
+    assert history.sessions(ADA)[0].state == "not_started"
