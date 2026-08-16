@@ -189,7 +189,8 @@ def _env_template(answers: dict[str, str]) -> str:
         "# Credentials for this profile. Baton reads these from the environment;",
         "# it never stores a secret in baton.yaml.",
         "#",
-        "# Keep this file out of version control. `.gitignore` already excludes it.",
+        "# Keep this file out of version control. Nothing here excludes it for you:",
+        "# add `.env` to the .gitignore of whatever repository this profile lives in.",
         "",
     ]
     groups = [

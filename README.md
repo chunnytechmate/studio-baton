@@ -336,10 +336,12 @@ each exit code — not a manual. None of them contains an API call, a JSON
 payload, or a `python3 -c`: everything a model would otherwise assemble by hand
 is a subcommand instead, which is what the CLI underneath is for.
 
-`tests/test_skills.py` keeps them honest. It fails if a skill names a command
-or subcommand the CLI does not have, if a raw API call reappears, if a skill
-stops documenting its exit codes, or if one grows past 120 lines — the original
-ran to 400 lines of prose, which is how its rules stopped being followed.
+`tests/test_skills.py` keeps them honest. It fails if a raw API call reappears,
+if a skill stops documenting its exit codes, or if one grows past 120 lines —
+the original ran to 400 lines of prose, which is how its rules stopped being
+followed. It also checks that the commands a skill names exist and parse, but
+only for lines that *begin* with `baton ` — a command written inside a markdown
+table is not checked today, which is most of `student-lookup`.
 
 ## Roadmap
 
@@ -353,12 +355,18 @@ diffed against the legacy scripts before the old path is retired.
 - [x] **P2** `baton learner` — lookups joined across both stores
 - [x] **P3** `baton lesson` — the JSON summary contract and safe publishing
 - [x] **P4** `baton send` — the fail-closed gate; LINE, Telegram, and webhook drivers
-- [ ] **P4** `baton send` with the fail-closed gate; LINE and Telegram
-- [ ] **P5** `baton video`, with `--detach` wired to `baton job`
-- [ ] **P6** `baton calendar`
-- [ ] **P7** `baton notes`
-- [ ] **P8** Agent skill definitions (`skills/`)
-- [ ] **P9** `baton init`, migrations, docs
+- [x] **P5** `baton video`, with `--detach` wired to `baton job`
+- [x] **P6** `baton calendar`
+- [x] **P7** `baton notes`
+- [x] **P8** Agent skill definitions (`skills/`)
+- [x] **P9** `baton init`, migrations, docs
+- [x] **P10** The parity harness (`tools/parity.py`)
+
+Every phase has landed. Nothing here has run against a live studio yet: the
+drivers that talk to LINE, Telegram, Notion, Google, and ffmpeg are covered by
+fakes and have not been exercised against the real services. Treat the parity
+run below — and a first send to yourself, never to a family — as the gate
+before any of this is trusted with a real lesson.
 
 ## Replacing something that already works
 
@@ -378,6 +386,27 @@ silence as a pass would give the go-ahead to retire a working system. Run it dai
 answers have agreed for long enough to trust, retiring the read-only paths
 first and the ones that message families last — a wrong lookup is noticed, a
 wrong message to a parent is not recoverable.
+
+`parity.yaml` is not in this repository, and no example of it could be: it
+names the paths of *your* legacy scripts and the fields of *your* schema. Write
+your own — the format, with a worked case, is documented at the top of
+`tools/parity.py`.
+
+Three things about running the old system will look like disagreements when
+they are really setup problems. All three cost a run to find:
+
+- **Imports resolve against the legacy workspace, not yours.** Set `PYTHONPATH`
+  to the directory the old scripts assume they live under, or every case fails
+  identically on an import.
+- **A read gate can expire mid-run.** If the legacy side is behind a gate with
+  a window (fifteen minutes, in the system this replaces), a run longer than
+  the window turns every remaining learner into a difference. Widen the window
+  to longer than the run takes, or re-seed it before starting. The harness is
+  right to report those as differences rather than agreement — that property is
+  pinned by its own tests — so the fix belongs in the setup, not the harness.
+- **The old side may need dependencies Baton does not have.** `httpx` and
+  `supabase` are not Baton's, and the legacy scripts will not start without
+  them.
 
 ## Documentation
 

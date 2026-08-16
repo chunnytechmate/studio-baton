@@ -4,8 +4,11 @@ This is the merged descendant of the per-skill preflight scripts. It runs every
 cheap check that can fail at 2am and reports all of them at once, because
 finding three problems in one run beats discovering them one re-run at a time.
 
-Doctor never mutates anything and never falls back to a secondary store: its
-job is to notice that the primary is down, not to paper over it.
+Doctor changes nothing a caller can observe and never falls back to a secondary
+store: its job is to notice that the primary is down, not to paper over it. The
+one thing it writes is a probe file under the state directory, created and
+deleted again to prove the directory is writable — which also creates the state
+directory if it is missing.
 """
 
 from __future__ import annotations
@@ -66,7 +69,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Also require credentials for drivers that are configured but not currently selected.",
+        help="Also require credentials for every database and chat driver this build knows, "
+        "not only the selected pair.",
     )
     parser.add_argument(
         "--offline",

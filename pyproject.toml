@@ -49,8 +49,8 @@ dev = [
 baton = "baton.cli.app:main"
 
 [project.urls]
-Homepage = "https://github.com/chunny/studio-baton"
-Issues = "https://github.com/chunny/studio-baton/issues"
+Homepage = "https://github.com/chunnytechmate/studio-baton"
+Issues = "https://github.com/chunnytechmate/studio-baton/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/baton"]

@@ -10,8 +10,19 @@ my-studio/                 # private
 ├── theory.json            # your teaching notes, referenced by callout id
 ├── state/                 # drafts, published records, job state
 ├── data/                  # SQLite, if that is your driver
-└── requirements.txt       # studio-baton==0.4.0
+└── requirements.txt       # how you pin Baton itself — see below
 ```
+
+Baton has not been released to PyPI yet (`0.1.0.dev0`), so pin it by git ref
+until it has been:
+
+```
+studio-baton @ git+https://github.com/chunnytechmate/studio-baton@main
+```
+
+Pin a tag rather than `main` as soon as there is one: a private overlay that
+tracks a moving branch will one day pick up a change to the config schema
+between two runs of the same nightly job.
 
 ## Install it
 

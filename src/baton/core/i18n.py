@@ -1,12 +1,20 @@
 """Message catalogues.
 
-Every string a person reads comes from a catalogue keyed by a stable id. The
-English catalogue is the reference for *keys*; the Thai catalogue is a
+Strings a person reads are meant to come from a catalogue keyed by a stable id.
+The English catalogue is the reference for *keys*; the Thai catalogue is a
 first-class translation, not a stub — the studio these pipelines came from runs
 in Thai, and a half-translated tool is worse than an untranslated one.
 
 Missing keys fall back to English and then to the key itself, so an incomplete
 translation degrades to readable output instead of a crash.
+
+**Only `doctor` and `config show` read from here today.** Both catalogues carry
+keys for resolution, gates, contracts, and jobs — `resolve.*`, `gate.blocked`,
+`contract.invalid`, `job.*`, `error.unknown_command` — and nothing calls them
+yet, so those messages reach the user in English whatever the configured
+locale. The catalogues are ahead of the wiring, not behind it: the work left is
+routing the errors in :mod:`baton.errors` and the command modules through a
+translator, not writing Thai.
 """
 
 from __future__ import annotations
