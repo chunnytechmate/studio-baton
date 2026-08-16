@@ -1,0 +1,55 @@
+---
+name: video-pipeline
+description: "Collect lesson recordings, combine them, publish, and link them to the session page. Long-running. Use when asked to process videos, upload recordings, or run the video pipeline."
+---
+
+# Video pipeline
+
+Runs for tens of minutes. Start it detached and report the job id; do not sit
+and wait for it.
+
+## Triggers
+
+- "process the videos", "upload the recordings"
+- "run the video pipeline", "did the videos finish"
+
+## Commands
+
+```bash
+baton video run --dry-run --json        # what is waiting, changes nothing
+baton video run --detach --json         # start it; returns a job id at once
+baton job wait <id> --timeout 600 --json
+baton job logs <id> --tail 50
+baton video status --json               # per-learner progress
+baton video resume --detach --json      # continue whatever did not finish
+```
+
+## Rules
+
+**Always `--detach`.** A foreground run outlives no session. Report the job id
+and the two follow-up commands to the user.
+
+**`job wait` exits with the job's own exit code.** Exit `8` means it is still
+running — that is not a failure, report it and offer to keep waiting.
+
+**Re-running is safe and is the correct response to most failures.** A finished
+upload is never repeated, and source clips are only discarded once everything
+else succeeded. Use `baton video resume`.
+
+**Never use `baton video forget`** unless the user explicitly asks and
+understands it: if the upload already happened, starting over publishes a
+second copy.
+
+**A skipped learner is not a failure.** It means no learner is named exactly
+like that source folder. Report the folder name and ask which learner it is —
+do not guess, and do not rename anything yourself.
+
+## Exit codes
+
+| Code | Do this |
+| --- | --- |
+| `0` | Report per-learner results |
+| `2` | Run `baton doctor`; credentials or ffmpeg are missing |
+| `6` | Some learners failed. Report them, suggest `baton video resume` |
+| `7` | A job died without recording an outcome. Report; re-running is safe |
+| `8` | Still running. Report the job id |
