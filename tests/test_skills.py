@@ -164,3 +164,36 @@ def test_skills_stay_short_enough_to_be_read(path):
     lines = path.read_text(encoding="utf-8").splitlines()
 
     assert len(lines) < 120, f"{path.parent.name} is {len(lines)} lines"
+
+
+@pytest.mark.parametrize("path", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_every_invocation_in_a_skill_actually_parses(path):
+    """Names existing is not enough: a skill that documents a flag in a
+    position the parser rejects sends an agent into a loop against exit 2.
+    Every command line in the skills is parsed for real."""
+    import contextlib
+    import io
+    import shlex
+
+    parser = build_parser()
+    text = path.read_text(encoding="utf-8")
+
+    for line in text.splitlines():
+        stripped = line.strip().removeprefix("$ ")
+        if not stripped.startswith("baton "):
+            continue
+        # Skip continuations and placeholder-only lines; the point is flag
+        # placement, not whether a made-up name resolves.
+        if stripped.endswith("\\"):
+            continue
+        try:
+            # shlex drops the trailing `# comment` that makes an example
+            # readable, so the line parses as it would when actually typed.
+            argv = shlex.split(stripped, comments=True)[1:]
+        except ValueError:
+            continue
+
+        with contextlib.suppress(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            parser.parse_args(argv)
+            continue
+        raise AssertionError(f"{path.parent.name}: `{stripped}` does not parse")

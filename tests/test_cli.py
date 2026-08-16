@@ -153,3 +153,44 @@ def test_progress_output_never_pollutes_json_stdout(profile, monkeypatch, capsys
 
     # Parsing the whole of stdout must succeed — nothing else may be written there.
     json.loads(capsys.readouterr().out)
+
+
+# -- global flags anywhere ---------------------------------------------------
+
+
+def test_json_works_before_and_after_the_subcommand(profile, capsys):
+    """`baton learner list --json` is what people type and what every skill
+    documents. It failing with exit 2 sends an agent into a retry loop."""
+    leading = run(["--profile", str(profile), "--json", "config", "show", "docs.driver"])
+    first = json.loads(capsys.readouterr().out)
+
+    trailing = run(["--profile", str(profile), "config", "show", "docs.driver", "--json"])
+    second = json.loads(capsys.readouterr().out)
+
+    assert leading == trailing == Exit.OK
+    assert first == second
+
+
+def test_a_trailing_flag_does_not_undo_a_leading_one(profile, capsys):
+    """The subtle half: a subparser's own default must not overwrite a value
+    already set at the top level, or the leading form would silently stop
+    working the moment the flags were duplicated."""
+    code = run(["--profile", str(profile), "--json", "config", "show", "docs.driver"])
+
+    assert code == Exit.OK
+    json.loads(capsys.readouterr().out)  # still JSON, not human output
+
+
+def test_quiet_and_profile_are_accepted_after_the_subcommand(profile, capsys):
+    code = run(["config", "show", "docs.driver", "--profile", str(profile), "--quiet", "--json"])
+
+    assert code == Exit.OK
+    assert json.loads(capsys.readouterr().out)["value"] == "notion"
+
+
+def test_flags_work_at_the_third_level_too(profile, capsys):
+    """Sub-subcommands are where this is easiest to get wrong."""
+    code = run(["--profile", str(profile), "job", "list", "--json"])
+
+    assert code == Exit.OK
+    assert "jobs" in json.loads(capsys.readouterr().out)
