@@ -340,7 +340,52 @@ class FakePublisher:
         pass
 
 
+class FakeCalendar:
+    """Events in memory, with ids handed out in order."""
+
+    driver = "fake"
+
+    def __init__(self, events: list[Any] | None = None) -> None:
+        self.events: list[Any] = list(events or [])
+        self.deleted: list[str] = []
+        self.fail_with: Exception | None = None
+        self._ids = itertools.count(start=1)
+
+    def _check(self) -> None:
+        if self.fail_with is not None:
+            raise self.fail_with
+
+    def create(self, event: Any) -> Any:
+        self._check()
+        from .cal.base import CalendarEvent
+
+        created = CalendarEvent(
+            id=f"ev{next(self._ids)}",
+            title=event.title,
+            start=event.start,
+            end=event.end,
+            description=event.description,
+        )
+        self.events.append(created)
+        return created
+
+    def list_between(self, start: str, end: str) -> list[Any]:
+        self._check()
+        found = [event for event in self.events if start <= event.start < end]
+        return sorted(found, key=lambda event: event.start)
+
+    def delete(self, event_id: str) -> None:
+        self._check()
+        # Already gone is the desired state, matching the real driver.
+        self.events = [event for event in self.events if event.id != event_id]
+        self.deleted.append(event_id)
+
+    def health(self) -> None:
+        self._check()
+
+
 __all__ = [
+    "FakeCalendar",
     "FakeDocStore",
     "FakeEncoder",
     "FakeLearnerStore",

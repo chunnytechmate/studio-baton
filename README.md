@@ -24,7 +24,7 @@ summary — and even that is submitted as JSON validated against a schema.
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
 | `baton send` | Send a lesson summary, refusing when required data is missing |
 | `baton video` | Collect recordings → encode → publish → link back, resumable |
-| `baton calendar` | Book lessons, keeping documents and calendar in step *(in progress)* |
+| `baton calendar` | Book lessons, keeping documents and calendar in step |
 | `baton notes` | Push a note or a Markdown file to a documents page *(in progress)* |
 
 ## Install
@@ -173,6 +173,37 @@ docs:
     - {type: video}
     - {type: embed}
     - {type: callout, icon: "🎧"}
+```
+
+**Booking happens in an order that cannot leave two records disagreeing.**
+A lesson is marked in progress on its document *first*; the calendar event is
+created only if that succeeded. Creating the event first and then failing on
+the document leaves a lesson the sessions know nothing about — the teacher
+trusts the calendar, the pipeline trusts the documents, and they drift apart
+until someone reconciles them by hand. Cancelling runs the chain backwards for
+the same reason, and refuses to reach further back than
+`calendar.rollback_window_days`, because rewriting last week's records is
+usually a mistake rather than an intention.
+
+**Date arithmetic is code, not a model's job.** An off-by-one books a lesson
+on the wrong day and nobody finds out until a family arrives to an empty room:
+
+```bash
+$ baton calendar date พน      # shorthand tokens are configuration
+2026-08-17
+$ baton calendar date "next tuesday"
+✗ `next tuesday` is not a date Baton understands.
+  Use YYYY-MM-DD, a signed offset like +2, or one of: today, tomorrow, yesterday, พน, มร, วน, สน.
+```
+
+A whole day is booked from the list a teacher actually writes. A slot ends
+when the next begins, and a free period is skipped but still bounds the slot
+before it — without that, the lesson before an hour off silently doubles:
+
+```bash
+baton calendar schedule tomorrow --text "17:00 Ada Whitfield
+18:00 -
+19:00 Bruno Castell"
 ```
 
 **Reads fall over; writes never do.** With `db.fallback` set, a read served
