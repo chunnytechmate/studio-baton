@@ -87,7 +87,9 @@ class NotionDocStore:
             "Accept": "application/json",
         }
 
-    def _request(self, method: str, path: str, json_body: Any = None) -> dict[str, Any]:
+    def _request(
+        self, method: str, path: str, json_body: Any = None, *, op: str = "page"
+    ) -> dict[str, Any]:
         headers = self._headers
         if json_body is not None:
             headers["Content-Type"] = "application/json"
@@ -107,10 +109,26 @@ class NotionDocStore:
                 remedy="Check the token named by docs.notion.token_env.",
             )
         if response.status_code == 404:
+            if op == "block-delete":
+                # The block is already gone — deleted by a person in Notion,
+                # or by an earlier run of this same publish that died before
+                # recording it. Deletion is idempotent; refusing here is what
+                # used to wedge a publish halfway with no way to resume.
+                # A page-access 404 cannot reach this branch: publishing
+                # appends to the page before it deletes, so access to the
+                # page is already proven by the time a block is deleted.
+                return {}
+            parts = path.strip("/").split("/")
+            page_id = parts[1] if len(parts) > 1 else path
             raise ConfigError(
-                "Notion returned 404 for this page.",
-                remedy="A 404 here usually means the page exists but is not "
-                "shared with the integration. Share it, then retry.",
+                f"Notion cannot see page `{page_id}` (404).",
+                remedy="Two causes, in order of likelihood. The page is not shared "
+                "with the integration — in Notion, open the page, ⋯ → Connections, "
+                "add this integration — or the page was deleted and the session "
+                "points at a stale id. Share the page or fix the id, then re-run: "
+                "a publish that failed here had already appended, and re-running "
+                "replaces cleanly.",
+                details={"page_id": page_id, "status_code": 404},
             )
         if response.status_code >= 400:
             detail = response.text[:300]
@@ -286,7 +304,7 @@ class NotionDocStore:
     def delete_blocks(self, block_ids: list[str]) -> int:
         deleted = 0
         for block_id in block_ids:
-            self._request("DELETE", f"/blocks/{block_id}")
+            self._request("DELETE", f"/blocks/{block_id}", op="block-delete")
             deleted += 1
         return deleted
 

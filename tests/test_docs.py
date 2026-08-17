@@ -173,3 +173,57 @@ def test_missing_property_config_names_the_setting_to_add():
         store._property_name("status")
 
     assert "docs.properties.status" in (excinfo.value.remedy or "")
+
+
+# -- Notion 404s: page-access vs block-already-gone ---------------------------
+
+
+class _Reply:
+    """The two shapes a Notion reply needs for the error paths."""
+
+    def __init__(self, status_code: int, payload: dict | None = None) -> None:
+        self.status_code = status_code
+        self._payload = payload or {}
+        self.text = str(self._payload)
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def test_a_page_404_names_the_page_and_both_ways_to_fix_it(monkeypatch):
+    """One code, two causes, one order. The remedy must let a person fix the
+    sharing (or an agent re-check the id) without a debugging session — the
+    old message stopped at "usually not shared"."""
+    import baton.adapters.docs.notion as notion_module
+
+    store = NotionDocStore(token="t", properties={})
+
+    def refused(*_args, **_kwargs):
+        return _Reply(404, {"object": "error", "code": "object_not_found"})
+
+    monkeypatch.setattr(notion_module, "http_request", refused)
+
+    with pytest.raises(ConfigError) as excinfo:
+        store.get_status("abc123")
+
+    assert "abc123" in excinfo.value.message
+    remedy = excinfo.value.remedy or ""
+    assert "Connections" in remedy
+    assert "stale id" in remedy
+    assert excinfo.value.details["page_id"] == "abc123"
+
+
+def test_deleting_a_block_that_is_already_gone_counts_as_deleted(monkeypatch):
+    """A publish that died mid-delete leaves blocks already removed; the
+    re-run must not wedge on them. Deleting a block that no longer exists is
+    the outcome the delete wanted, not an error."""
+    import baton.adapters.docs.notion as notion_module
+
+    store = NotionDocStore(token="t", properties={})
+
+    def gone(*_args, **_kwargs):
+        return _Reply(404, {"object": "error", "code": "object_not_found"})
+
+    monkeypatch.setattr(notion_module, "http_request", gone)
+
+    assert store.delete_blocks(["b1", "b2"]) == 2
