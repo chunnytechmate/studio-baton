@@ -228,14 +228,21 @@ class PublishedRecord:
         return data if isinstance(data, dict) else None
 
     def latest(self, learner_id: str) -> dict[str, Any] | None:
-        """The most recently published session for a learner."""
+        """The most recently published session for a learner.
+
+        The filename prefix alone cannot separate `ada` from `ada-1`: the
+        shorter id is a prefix of the longer one, so a glob for one sweeps in
+        the other's records — and the wrong learner's message would be sent.
+        The learner id stored inside each record is the identity; the filename
+        is only the index.
+        """
         if not self.root.is_dir():
             return None
         prefix = f"{_slug(learner_id)}-"
         records = []
         for path in self.root.glob(f"{prefix}*.json"):
             data = jsonio.read_json(path, None)
-            if isinstance(data, dict):
+            if isinstance(data, dict) and str(data.get("learner_id", "")) == str(learner_id):
                 records.append(data)
         if not records:
             return None
