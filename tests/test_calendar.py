@@ -178,6 +178,54 @@ def test_booking_marks_the_document_then_creates_the_event():
     assert calendar.events[0].start.startswith("2026-08-20T17:00:00+07:00")
 
 
+def test_booking_the_same_session_twice_in_one_day_is_refused():
+    """A re-submitted booking used to leave two identical events, and a later
+    cancel removed only one of them — the calendar said the lesson existed
+    after it had been cancelled."""
+    scheduler, calendar, _docs = build()
+
+    scheduler.book(ADA, SESSION, date(2026, 8, 20), "17:00")
+
+    with pytest.raises(GateError) as excinfo:
+        scheduler.book(ADA, SESSION, date(2026, 8, 20), "18:00")
+
+    assert len(calendar.events) == 1
+    assert "already" in excinfo.value.message
+    assert "Nothing was booked twice" in (excinfo.value.remedy or "")
+    assert f"event {calendar.events[0].id}" in excinfo.value.message
+
+
+def test_a_dry_run_reports_the_duplicate_it_would_refuse():
+    scheduler, calendar, _docs = build()
+
+    scheduler.book(ADA, SESSION, date(2026, 8, 20), "17:00")
+
+    with pytest.raises(GateError):
+        scheduler.book(ADA, SESSION, date(2026, 8, 20), "18:00", dry_run=True)
+
+    assert len(calendar.events) == 1
+
+
+def test_a_second_different_session_the_same_day_is_a_real_double_lesson():
+    """Two lessons in one day is a real studio arrangement; only a second
+    copy of the *same* session is a re-submission."""
+    docs = FakeDocStore(
+        statuses={
+            "doc-3": DocStatus(doc_id="doc-3", status="In progress"),
+            "doc-4": DocStatus(doc_id="doc-4", status="Not started"),
+        }
+    )
+    calendar = FakeCalendar()
+    scheduler = Scheduler(calendar, docs, VOCAB, timezone="Asia/Bangkok", session_label="lesson")
+    later = Session(id="s4", learner_id="1", number=4, doc_id="doc-4")
+    scheduler.book(ADA, SESSION, date(2026, 8, 20), "17:00")
+
+    result = scheduler.book(ADA, later, date(2026, 8, 20), "10:00")
+
+    assert result.event is not None
+    assert len(calendar.events) == 2
+
+
 def test_no_event_is_created_when_the_document_update_fails():
     """The property this ordering exists for. An event with no matching session
     is the drift that made the original system untrustworthy."""

@@ -140,6 +140,35 @@ class Scheduler:
             default_emoji=self.default_emoji,
         )
 
+        # The same session twice in one day is almost always a re-submitted
+        # booking rather than a second lesson: two identical events, both of
+        # which a later cancel removes only one of. A second *different*
+        # session for the same learner on the same day is a real double
+        # lesson and stays allowed. Checked before the dry-run branch so a
+        # dry run reports the refusal it would refuse.
+        marker = f"({self.session_label} {session.number})"
+        clash = next(
+            (event for event in self._events_for(learner, day) if event.title.endswith(marker)),
+            None,
+        )
+        if clash:
+            raise GateError(
+                f"{learner.name}'s {self.session_label} {session.number} is already "
+                f"on the calendar on {day.isoformat()} at {(clash.start or '')[11:16]} "
+                f"(event {clash.id}).",
+                missing=[
+                    {
+                        "field": "date",
+                        "reason": "this session is booked on that day already",
+                        "how_to_fix": "Cancel that booking first if the time is wrong, "
+                        "then book the new time in its place.",
+                    }
+                ],
+                remedy="Nothing was booked twice. Keeping one event per session per "
+                "day is what a later cancel relies on to remove exactly the right "
+                "lesson.",
+            )
+
         if dry_run:
             return BookingResult(
                 learner_name=learner.name,
