@@ -323,6 +323,10 @@ class FakeEncoder:
     def combine(self, inputs: list[Any], output: Any, profile: Any) -> Any:
         if self.fail_with is not None:
             raise self.fail_with
+        # The real encoder refuses an empty input list; a fake that accepted
+        # one let a resume with zero clips complete and mark itself done.
+        if not inputs:
+            raise ConfigError("Cannot combine an empty list of clips.")
         from pathlib import Path
 
         path = Path(output)

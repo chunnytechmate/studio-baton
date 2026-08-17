@@ -15,10 +15,7 @@ from pathlib import Path
 
 from ...core.config import Config
 from ...errors import ConfigError
-from .base import SourceClip
-
-#: Extensions treated as video. Anything else in the folder is left alone.
-VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"})
+from .base import VIDEO_SUFFIXES, SourceClip
 
 COLLECTED_DIRNAME = ".collected"
 
@@ -43,15 +40,21 @@ class LocalSource:
             if not folder.is_dir() or folder.name == COLLECTED_DIRNAME:
                 continue
             for item in sorted(folder.iterdir()):
-                if item.is_file() and item.suffix.lower() in VIDEO_SUFFIXES:
-                    clips.append(
-                        SourceClip(
-                            id=str(item.resolve()),
-                            name=item.name,
-                            learner_folder=folder.name,
-                            size_bytes=item.stat().st_size,
-                        )
+                if not item.is_file() or item.suffix.lower() not in VIDEO_SUFFIXES:
+                    continue
+                try:
+                    size = item.stat().st_size
+                except OSError:
+                    # Removed between listing and stat; not this run's clip.
+                    continue
+                clips.append(
+                    SourceClip(
+                        id=str(item.resolve()),
+                        name=item.name,
+                        learner_folder=folder.name,
+                        size_bytes=size,
                     )
+                )
         return clips
 
     def download(self, clip: SourceClip, destination: Path) -> Path:

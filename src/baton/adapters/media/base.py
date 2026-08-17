@@ -12,6 +12,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+#: Extensions treated as video, shared by every source driver. Anything else
+#: in a source folder — a photo, a note, a stray pdf — is not a clip, and a
+#: driver that picks it up sends it to ffmpeg as one.
+VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"})
+
 
 @dataclass(frozen=True)
 class SourceClip:

@@ -314,3 +314,145 @@ def test_work_files_are_kept_after_a_failure_so_a_resume_can_use_them(pipeline, 
     built.run()
 
     assert (tmp_path / "work" / "Ada_Whitfield" / "combined.mp4").exists()
+
+
+# -- resume honesty ----------------------------------------------------------
+
+from pathlib import Path as _Path  # noqa: E402  (used by the tests below)
+
+
+def test_resuming_a_job_that_never_downloaded_is_an_error_not_a_poisoned_record(
+    pipeline, tmp_path
+):
+    """A crash before the download finished used to resume with clips=[], mark
+    `downloaded` done over zero files, and leave every later run skipping the
+    download forever. The failure must be loud and the step record untouched."""
+    built, _source, _encoder, _publisher, _docs, jobs = pipeline
+    from baton.pipelines.video import VideoJob
+
+    jobs.save(VideoJob(learner_folder="Ada Whitfield", status="in_progress"))
+
+    job = built.resume()[0]
+
+    assert job.status == "failed"
+    assert "none were downloaded" in job.error
+    assert not jobs.get("Ada Whitfield").done("downloaded")
+
+
+def test_a_stale_download_step_with_no_files_names_the_job_file(pipeline, tmp_path):
+    """`downloaded` recorded but the directory empty: the job file is the lie,
+    and the error must say so rather than fail in the encoder."""
+    built, _source, _encoder, _publisher, _docs, jobs = pipeline
+    from baton.pipelines.video import VideoJob
+
+    job = VideoJob(learner_folder="Ada Whitfield", status="in_progress")
+    job.record("downloaded", count=0)
+    jobs.save(job)
+
+    result = built.resume()[0]
+
+    assert result.status == "failed"
+    assert "working directory holds no clips" in result.error
+
+
+def test_a_partial_file_from_a_killed_run_is_downloaded_again(pipeline, tmp_path):
+    """Existing-but-wrong files were treated as complete downloads. A one-byte
+    leftover used to become the lesson video and then trash the only other
+    copy of the recording."""
+    built, source, _encoder, _publisher, _docs, _jobs = pipeline
+    clip_dir = built._clip_dir("Ada Whitfield")
+    clip_dir.mkdir(parents=True)
+    (clip_dir / "IMG_001.MOV").write_bytes(b"x")  # 1 byte, clip says 10
+
+    built.run_one("Ada Whitfield", list(CLIPS))
+
+    assert source.downloaded, "the partial file must not satisfy the download"
+
+
+def test_a_complete_file_from_a_earlier_run_is_not_downloaded_again(pipeline):
+    built, source, _encoder, _publisher, _docs, _jobs = pipeline
+    clip_dir = built._clip_dir("Ada Whitfield")
+    clip_dir.mkdir(parents=True)
+    (clip_dir / "IMG_001.MOV").write_bytes(b"0123456789")  # exactly 10 bytes
+
+    built.run_one("Ada Whitfield", [CLIPS[0]])
+
+    assert not source.downloaded
+
+
+def test_workdir_strays_never_become_concat_inputs(pipeline):
+    """ffmpeg's interrupted temp file is dot-prefixed and lives in the same
+    directory; a bare glob used to hand it to the concat filter."""
+    built, _source, encoder, _publisher, _docs, jobs = pipeline
+    from baton.pipelines.video import VideoJob
+
+    job = VideoJob(learner_folder="Ada Whitfield", status="in_progress")
+    job.record("downloaded", count=2)
+    jobs.save(job)
+    clip_dir = built._clip_dir("Ada Whitfield")
+    clip_dir.mkdir(parents=True)
+    (clip_dir / "clip1.mp4").write_bytes(b"a")
+    (clip_dir / "clip2.mp4").write_bytes(b"b")
+    (clip_dir / ".baton-encode-tmp123.mp4").write_bytes(b"junk")
+    (clip_dir / "notes.txt").write_bytes(b"not a video")
+
+    built.resume()
+
+    inputs = encoder.calls[0][0] if encoder.calls else []
+    assert [_Path(name).name for name in inputs] == ["clip1.mp4", "clip2.mp4"]
+
+
+def test_clips_concatenate_in_human_order_not_text_order(pipeline):
+    built, _source, encoder, _publisher, _docs, jobs = pipeline
+    from baton.pipelines.video import VideoJob
+
+    clip_dir = built._clip_dir("Ada Whitfield")
+    clip_dir.mkdir(parents=True)
+    for name in ("clip1.mp4", "clip10.mp4", "clip9.mp4", "clip2.mp4"):
+        (clip_dir / name).write_bytes(b"x")
+    job = VideoJob(learner_folder="Ada Whitfield", status="in_progress")
+    job.record("downloaded", count=4)
+    jobs.save(job)
+
+    built.resume()
+
+    inputs = [_Path(name).name for name in encoder.calls[0][0]]
+    assert inputs == ["clip1.mp4", "clip2.mp4", "clip9.mp4", "clip10.mp4"]
+
+
+def test_the_fake_encoder_refuses_an_empty_input_list_like_the_real_one(tmp_path):
+    from baton.errors import ConfigError
+
+    with pytest.raises(ConfigError):
+        FakeEncoder().combine([], tmp_path / "nowhere.mp4", EncodeProfile(name="auto"))
+
+
+def test_gdrive_list_pending_skips_non_video_files():
+    """The local source always filtered by extension; Drive did not, so a
+    photo or note in a learner's folder became a clip."""
+    from baton.adapters.media.google import DriveSource
+
+    class FakeDrive(DriveSource):
+        def __init__(self):  # no super(): no credentials needed for this test
+            self.folder_id = "root"
+            self._listing = {
+                "root": [
+                    {"id": "f1", "name": "Ada Whitfield"},
+                ],
+                "f1": [
+                    {"id": "a", "name": "lesson.mp4", "size": "10"},
+                    {"id": "b", "name": "poster.jpg", "size": "200"},
+                    {"id": "c", "name": "tuning notes.txt", "size": "30"},
+                ],
+            }
+
+        def _children(self, parent_id, *, folders):
+            return [
+                item
+                for item in self._listing[parent_id]
+                if (item["name"].startswith("Ada") == folders)
+            ]
+
+    clips = FakeDrive().list_pending()
+
+    assert [clip.name for clip in clips] == ["lesson.mp4"]

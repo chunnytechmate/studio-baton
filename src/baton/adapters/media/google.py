@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 
 from ...core.config import Config
 from ...errors import ConfigError, UpstreamError
-from .base import SourceClip, UploadResult
+from .base import VIDEO_SUFFIXES, SourceClip, UploadResult
 
 
 def _require_google() -> Any:
@@ -105,10 +105,16 @@ class DriveSource:
         clips: list[SourceClip] = []
         for folder in self._children(self.folder_id, folders=True):
             for item in self._children(folder["id"], folders=False):
+                name = str(item.get("name", ""))
+                # The local source has always filtered by extension; a folder
+                # with a photo or a note in it is normal, and a note is not
+                # a clip no matter which folder it is in.
+                if Path(name).suffix.lower() not in VIDEO_SUFFIXES:
+                    continue
                 clips.append(
                     SourceClip(
                         id=item["id"],
-                        name=item.get("name", ""),
+                        name=name,
                         learner_folder=folder.get("name", ""),
                         size_bytes=int(item.get("size", 0) or 0),
                         created_at=str(item.get("createdTime", "")),

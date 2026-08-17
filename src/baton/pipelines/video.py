@@ -29,6 +29,7 @@ from typing import Any
 from ..adapters.db.base import LearnerStore
 from ..adapters.docs.base import DocStore
 from ..adapters.media.base import (
+    VIDEO_SUFFIXES,
     EncodeProfile,
     MediaSource,
     SourceClip,
@@ -53,6 +54,17 @@ STEPS = (
 )
 
 _SAFE = re.compile(r"[^A-Za-z0-9_.-]")
+_NATURAL_SPLIT = re.compile(r"(\d+)")
+
+
+def _natural_key(path: Path) -> list[Any]:
+    """Sort `clip2` before `clip10`.
+
+    Phone cameras number clips, and a plain text sort puts the tenth after
+    the ninth only while there are nine — past that the concat order is
+    wrong and nothing in the output says so.
+    """
+    return [int(part) if part.isdigit() else part for part in _NATURAL_SPLIT.split(path.name)]
 
 
 def _now() -> str:
@@ -205,22 +217,54 @@ class VideoPipeline:
 
     # -- steps -------------------------------------------------------------
 
+    @staticmethod
+    def _already_downloaded(destination: Path, clip: SourceClip) -> bool:
+        """Whether a previous download of this clip can be trusted.
+
+        "The file exists" is not enough: a run killed mid-download leaves a
+        partial file behind, and a partial clip is exactly what gets
+        concatenated, uploaded, linked, and then has its only other copy
+        trashed.
+        """
+        if not destination.exists():
+            return False
+        # A known size that disagrees means a partial file: download again.
+        return not (clip.size_bytes and destination.stat().st_size != clip.size_bytes)
+
     def _download(self, job: VideoJob, clips: list[SourceClip]) -> list[Path]:
         target = self._clip_dir(job.learner_folder)
         paths = []
         for clip in clips:
             destination = target / _slug(clip.name)
-            if not destination.exists():
+            if not self._already_downloaded(destination, clip):
                 self.source.download(clip, destination)
             paths.append(destination)
         job.clip_ids = [clip.id for clip in clips]
         job.record("downloaded", count=len(paths))
         return paths
 
+    def _downloaded_clips(self, folder: str) -> list[Path]:
+        """Files on disk this run may concatenate: videos only, no strays.
+
+        An interrupted encode leaves dot-prefixed temp files
+        (``.baton-encode-*``) in the same directory, and a bare glob used to
+        feed them into the concat filter as though they were clips.
+        """
+        target = self._clip_dir(folder)
+        if not target.is_dir():
+            return []
+        return [
+            path
+            for path in sorted(target.glob("*"), key=_natural_key)
+            if path.name != "combined.mp4"
+            and not path.name.startswith(".")
+            and path.suffix.lower() in VIDEO_SUFFIXES
+        ]
+
     def _combine(self, job: VideoJob, paths: list[Path]) -> Path:
         output = self._clip_dir(job.learner_folder) / "combined.mp4"
         if not output.exists():
-            self.encoder.combine(sorted(paths), output, self.profile)
+            self.encoder.combine(sorted(paths, key=_natural_key), output, self.profile)
         job.record("combined", output=str(output))
         return output
 
@@ -293,15 +337,33 @@ class VideoPipeline:
             return job
 
         try:
-            paths = (
-                [p for p in sorted(self._clip_dir(folder).glob("*")) if p.name != "combined.mp4"]
-                if job.done("downloaded")
-                else self._download(job, clips)
-            )
+            if job.done("downloaded"):
+                paths = self._downloaded_clips(folder)
+            elif not clips:
+                # Resume of a job that crashed before downloading anything:
+                # recording `downloaded` over zero clips would poison the step
+                # record and every later run would skip the download forever.
+                raise StateError(
+                    f"No clips are pending for {folder} and none were downloaded.",
+                    remedy="Re-run `baton video run` so the source is collected; "
+                    "this job never reached the download step.",
+                )
+            else:
+                paths = self._download(job, clips)
             self.jobs.save(job)
 
             combined = self._clip_dir(folder) / "combined.mp4"
             if not job.done("combined"):
+                if not paths:
+                    # The step says downloaded, the directory disagrees. The
+                    # job file is the thing that is wrong, and only its owner
+                    # can decide whether to re-collect or discard.
+                    raise StateError(
+                        f"The download step is recorded as done for {folder}, but "
+                        "the working directory holds no clips.",
+                        remedy="Delete this job's file under <state>/video/ and re-run "
+                        "`baton video run`, which collects from the source again.",
+                    )
                 combined = self._combine(job, paths)
                 self.jobs.save(job)
 
