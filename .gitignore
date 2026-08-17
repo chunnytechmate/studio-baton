@@ -37,3 +37,7 @@ tmp/
 # Sidecar lock files from the atomic-write layer. They are transient and
 # occasionally survive a killed process; they must never be committed.
 *.lock
+
+# Local-only review workspace. This repo is public; the review notes track
+# known defects before they are fixed and stay on the machine.
+/review/
