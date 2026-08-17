@@ -81,6 +81,18 @@ db:
       performed_date: performed_date
 
 # ---------------------------------------------------------------------------
+# Session selection
+# ---------------------------------------------------------------------------
+learner:
+  # A session left In progress past its date by more than this many days is
+  # treated as abandoned: `learner next` moves on to the following session
+  # instead of pointing at it forever. A fresh In-progress page is always the
+  # target — the studio's flow books a lesson, the page turns In progress, and
+  # the summary is written onto that page. `null` never abandons a page (the
+  # legacy system's behaviour).
+  next_stale_days: 1
+
+# ---------------------------------------------------------------------------
 # Session documents (the per-session page a learner and their family read)
 # ---------------------------------------------------------------------------
 docs:

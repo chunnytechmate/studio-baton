@@ -14,6 +14,7 @@ from ..adapters.docs import open_docs
 from ..domain.models import Work
 from ..domain.resolve import resolve_learner
 from ..domain.status import StatusVocabulary
+from ..domain.whenever import today_in
 from ..errors import UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory, SessionView
@@ -61,10 +62,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     next_free = group.add_parser(
         "next",
-        help="The lowest session that is both unstarted and empty.",
+        help="The lowest session a new lesson may land on.",
         description=(
-            "Both conditions are required: an unstarted page that already has "
-            "blocks on it is work in progress, and must not be handed back as free."
+            "A not-started page with no content is free. A page in progress is "
+            "the target while it is fresh — the studio's flow books a lesson, the "
+            "page turns In progress, and the summary is written onto that page. "
+            "Only a page still in progress more than learner.next_stale_days "
+            "past its date is passed over as abandoned. An unstarted page that "
+            "already has blocks on it is work in progress, and is never free."
         ),
     )
     next_free.add_argument("name", metavar="NAME")
@@ -114,12 +119,19 @@ def _store(ctx: Context):
     return open_store(ctx.config)
 
 
+def _next_stale_days(ctx: Context) -> int | None:
+    """`learner.next_stale_days`, where `null` means never abandon a page."""
+    value = ctx.config.get("learner.next_stale_days", 1)
+    return None if value is None else int(value)
+
+
 def _history(ctx: Context, store) -> LearnerHistory:
     return LearnerHistory(
         store,
         open_docs(ctx.config),
         StatusVocabulary.from_config(ctx.config.section("docs.statuses")),
         max_parallel_reads=int(ctx.config.get("docs.max_parallel_reads", 4)),
+        next_stale_days=_next_stale_days(ctx),
     )
 
 
@@ -176,7 +188,7 @@ def handle_show(ctx: Context) -> Exit:
         learner = _resolve(ctx, store, ctx.args.name)
         history = _history(ctx, store)
         views = history.sessions(learner)
-        payload = history.summarise(learner, views)
+        payload = history.summarise(learner, views, today=today_in(ctx.config.timezone))
     finally:
         store.close()
 
@@ -269,7 +281,7 @@ def handle_next(ctx: Context) -> Exit:
         learner = _resolve(ctx, store, ctx.args.name)
         history = _history(ctx, store)
         views = history.sessions(learner)
-        view = history.next_empty(views)
+        view = history.next_empty(views, today=today_in(ctx.config.timezone))
     finally:
         store.close()
 

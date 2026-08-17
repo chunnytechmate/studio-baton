@@ -12,15 +12,22 @@ Sessions get skipped: a learner is ill, a week is cancelled, a page is created
 in advance. Session 12 existing says nothing about whether session 12 happened,
 so "latest" means status *done*, ordered by the date on the document.
 
-**The next free session must be both unstarted and empty.** A page marked "not
-started" that already has blocks on it is somebody's work in progress, and
-writing a summary onto it would overwrite that.
+**The next free session is where a new lesson may land.** A not-started page
+with no content is free. A page in progress is the lesson that is happening
+now — the studio's own flow books a lesson, the page turns "In progress", and
+the summary is written onto *that* page — so a fresh one is the target, exactly
+as the system this replaces always answered. Only a page still in progress
+after its day has passed by more than ``next_stale_days`` is treated as
+abandoned: one missed lesson must not hold every later week hostage. A
+"not started" page that already has blocks on it is somebody's work in
+progress, and is never handed back as free.
 """
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from ..adapters.db.base import LearnerStore
@@ -85,11 +92,15 @@ class LearnerHistory:
         vocabulary: StatusVocabulary,
         *,
         max_parallel_reads: int = 4,
+        next_stale_days: int | None = 1,
     ) -> None:
         self.store = store
         self.docs = docs
         self.vocabulary = vocabulary
         self.max_parallel_reads = max(1, int(max_parallel_reads))
+        # None means a page in progress is never abandoned — the legacy
+        # system's behaviour.
+        self.next_stale_days = None if next_stale_days is None else max(0, int(next_stale_days))
 
     # -- joining -----------------------------------------------------------
 
@@ -160,14 +171,41 @@ class LearnerHistory:
             return None
         return max(done, key=lambda view: (view.doc.date or "", view.number))
 
-    def next_empty(self, views: list[SessionView]) -> SessionView | None:
-        """The lowest-numbered session that is unstarted *and* has no content.
+    def next_empty(
+        self, views: list[SessionView], *, today: date | None = None
+    ) -> SessionView | None:
+        """The lowest-numbered session a new lesson may land on.
 
-        Both conditions matter. A "not started" page carrying blocks is work
-        someone has already begun; handing it back as free would overwrite it.
+        A not-started page with no content is free. A page in progress is the
+        target while it is fresh: the studio's flow books a lesson, the page
+        turns "In progress", and the summary is written onto that page —
+        skipping it would file the lesson against the wrong week. Only a page
+        still in progress more than ``next_stale_days`` past its date is
+        treated as abandoned and passed over, so one missed lesson cannot
+        hold every later week hostage. ``next_stale_days: null`` never
+        abandons a page — the legacy system's behaviour.
+
+        A "not started" page carrying blocks is work someone has already
+        begun; handing it back as free would overwrite it. Unreadable pages
+        (unknown state) are never guessed at.
         """
-        candidates = [view for view in views if view.state == NOT_STARTED and view.is_empty]
-        return min(candidates, key=lambda view: view.number) if candidates else None
+        reference = today or date.today()
+        cutoff = (
+            None
+            if self.next_stale_days is None
+            else (reference - timedelta(days=self.next_stale_days)).isoformat()
+        )
+        for view in sorted(views, key=lambda view: view.number):
+            if view.state == IN_PROGRESS:
+                when = (view.doc.date or "")[:10]
+                # A page with no date cannot be proven stale; it stays the
+                # target rather than being quietly skipped.
+                if cutoff is None or not when or when >= cutoff:
+                    return view
+                continue
+            if view.state == NOT_STARTED and view.is_empty:
+                return view
+        return None
 
     def in_progress(self, views: list[SessionView]) -> list[SessionView]:
         """Sessions currently marked in progress, by number."""
@@ -190,10 +228,12 @@ class LearnerHistory:
 
     # -- summaries ---------------------------------------------------------
 
-    def summarise(self, learner: Learner, views: list[SessionView]) -> dict[str, Any]:
+    def summarise(
+        self, learner: Learner, views: list[SessionView], *, today: date | None = None
+    ) -> dict[str, Any]:
         """Everything a caller usually wants about one learner, in one shape."""
         latest = self.latest_done(views)
-        upcoming = self.next_empty(views)
+        upcoming = self.next_empty(views, today=today)
         active = self.in_progress(views)
 
         piece = None

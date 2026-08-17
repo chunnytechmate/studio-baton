@@ -233,13 +233,17 @@ it fails loudly instead.
 **"Latest" means the newest session that happened, never the highest number.**
 Sessions get skipped — illness, cancellations, pages created in advance — so
 session 12 existing says nothing about whether session 12 took place. And the
-next free session must be both unstarted *and* empty: a page marked "not
-started" that already has blocks on it is someone's work in progress, and
-handing it back as free is how a summary overwrites a draft.
+next free session is where a new lesson may land: a page in progress is the
+target while it is fresh — the studio's flow books a lesson, the page turns
+In progress, and the summary is written onto that page — and only a page still
+in progress more than `learner.next_stale_days` past its date is passed over
+as abandoned, so one missed week cannot hold every later week hostage. A page
+marked "not started" that already has blocks on it is someone's work in
+progress, and handing it back as free is how a summary overwrites a draft.
 
 ```bash
 baton learner latest "Ada Whitfield"   # newest done, by document date
-baton learner next   "Ada Whitfield"   # lowest unstarted *and* empty
+baton learner next   "Ada Whitfield"   # where the next lesson lands
 baton learner in-progress              # everyone mid-session, this morning
 ```
 

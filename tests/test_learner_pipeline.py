@@ -6,6 +6,8 @@ show up weeks later, on one learner, quietly.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from baton.adapters.docs.base import DocStatus
@@ -112,7 +114,7 @@ def test_skipped_sessions_do_not_confuse_the_answer():
     assert history.latest_done(history.sessions(ADA)).number == 5
 
 
-# -- rule 2: next free must be unstarted *and* empty -------------------------
+# -- rule 2: next free is where a new lesson may land ------------------------
 
 
 def test_next_empty_skips_an_unstarted_page_that_already_has_content():
@@ -152,7 +154,10 @@ def test_next_empty_takes_the_lowest_qualifying_session():
     assert history.next_empty(history.sessions(ADA)).number == 4
 
 
-def test_next_empty_ignores_done_and_in_progress_sessions():
+def test_next_empty_takes_a_fresh_in_progress_page():
+    """The studio's own flow: book a lesson, the page turns In progress, the
+    summary is written onto *that* page. Pointing anywhere else would file the
+    lesson against the wrong week."""
     _, history = build(
         sessions=[
             Session(id="a", learner_id="1", number=1, doc_id="d1"),
@@ -160,7 +165,75 @@ def test_next_empty_ignores_done_and_in_progress_sessions():
         ],
         docs={
             "d1": DocStatus(doc_id="d1", status="Done"),
-            "d2": DocStatus(doc_id="d2", status="In progress"),
+            "d2": DocStatus(doc_id="d2", status="In progress", date="2026-01-10"),
+        },
+    )
+
+    assert history.next_empty(history.sessions(ADA), today=date(2026, 1, 10)).number == 2
+
+
+def test_next_empty_passes_over_an_in_progress_page_left_stale():
+    """A page still In progress well past its day is abandoned, not the
+    lesson happening now — one missed week must not hold every later week
+    hostage."""
+    _, history = build(
+        sessions=[
+            Session(id="a", learner_id="1", number=1, doc_id="d1"),
+            Session(id="b", learner_id="1", number=2, doc_id="d2"),
+        ],
+        docs={
+            "d1": DocStatus(doc_id="d1", status="In progress", date="2026-01-05"),
+            "d2": DocStatus(doc_id="d2", status="Not started"),
+        },
+    )
+
+    assert history.next_empty(history.sessions(ADA), today=date(2026, 1, 10)).number == 2
+
+
+def test_null_stale_days_never_abandons_a_page():
+    """`next_stale_days: null` is the legacy behaviour: an In-progress page
+    stays the target no matter how old, until it is marked done."""
+    _, history = build(
+        sessions=[
+            Session(id="a", learner_id="1", number=1, doc_id="d1"),
+            Session(id="b", learner_id="1", number=2, doc_id="d2"),
+        ],
+        docs={
+            "d1": DocStatus(doc_id="d1", status="In progress", date="2026-01-05"),
+            "d2": DocStatus(doc_id="d2", status="Not started"),
+        },
+    )
+    history.next_stale_days = None
+
+    assert history.next_empty(history.sessions(ADA), today=date(2026, 1, 10)).number == 1
+
+
+def test_an_in_progress_page_with_no_date_stays_the_target():
+    """No date means staleness cannot be proven; the page is returned rather
+    than quietly skipped."""
+    _, history = build(
+        sessions=[
+            Session(id="a", learner_id="1", number=1, doc_id="d1"),
+            Session(id="b", learner_id="1", number=2, doc_id="d2"),
+        ],
+        docs={
+            "d1": DocStatus(doc_id="d1", status="In progress"),
+            "d2": DocStatus(doc_id="d2", status="Not started"),
+        },
+    )
+
+    assert history.next_empty(history.sessions(ADA), today=date(2026, 1, 10)).number == 1
+
+
+def test_next_empty_still_ignores_done_sessions():
+    _, history = build(
+        sessions=[
+            Session(id="a", learner_id="1", number=1, doc_id="d1"),
+            Session(id="b", learner_id="1", number=2, doc_id="d2"),
+        ],
+        docs={
+            "d1": DocStatus(doc_id="d1", status="Done", date="2026-01-05"),
+            "d2": DocStatus(doc_id="d2", status="Done", date="2026-01-06"),
         },
     )
 
@@ -262,7 +335,9 @@ def test_summarise_gathers_the_whole_picture():
     assert summary["sessions"]["total"] == 3
     assert summary["sessions"]["done"] == 1
     assert summary["sessions"]["latest_done"]["number"] == 1
-    assert summary["sessions"]["next_empty"]["number"] == 3
+    # Session 2 is In progress with no date: it cannot be proven stale, so it
+    # is the target — not the untouched session 3 after it.
+    assert summary["sessions"]["next_empty"]["number"] == 2
     assert [v["number"] for v in summary["sessions"]["in_progress"]] == [2]
 
 
