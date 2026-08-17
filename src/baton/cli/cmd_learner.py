@@ -18,6 +18,7 @@ from ..domain.whenever import today_in
 from ..errors import UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory, SessionView
+from .cmd_calendar import _scheduler
 
 if TYPE_CHECKING:
     from .app import Context
@@ -75,7 +76,19 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     next_free.add_argument("name", metavar="NAME")
     next_free.set_defaults(handler=handle_next)
 
-    active = group.add_parser("in-progress", help="Every learner with a session in progress.")
+    active = group.add_parser(
+        "in-progress",
+        help="Who still owes a summary, from the calendar window.",
+        description=(
+            "Reads the last learner.in_progress_days of calendar events (today "
+            "included) and checks only those learners' pages — one calendar call "
+            "plus one document read per lesson, not every page of every learner. "
+            "A lesson counts only while its page still says In progress: "
+            "cancelled and summarized lessons drop out on their own. Sessions "
+            "booked for a coming day are outside the window; `calendar list` "
+            "answers who is coming."
+        ),
+    )
     active.set_defaults(handler=handle_in_progress)
 
     works = group.add_parser("works", help="Recorded performances and recordings.")
@@ -307,31 +320,47 @@ def handle_next(ctx: Context) -> Exit:
 
 
 def handle_in_progress(ctx: Context) -> Exit:
+    scheduler = _scheduler(ctx)
     store = _store(ctx)
     try:
-        history = _history(ctx, store)
-        found = history.everyone_in_progress()
+        report = scheduler.in_progress(
+            store,
+            window_days=int(ctx.config.get("learner.in_progress_days", 14)),
+        )
     finally:
         store.close()
 
     label = ctx.config.label("session")
     payload = {
         "in_progress": [
-            {"learner": learner.to_dict(), **view.to_dict(history.vocabulary)}
-            for learner, view in found
+            {"learner": learner.to_dict(), **view.to_dict(scheduler.vocabulary)}
+            for learner, view in report.found
         ],
-        "count": len(found),
+        "unreadable": report.unreadable,
+        "unmatched_events": report.unmatched,
+        "window": report.window,
+        "count": len(report.found),
     }
-    if not found:
-        ctx.report.result(payload, human=f"No {label} is in progress.")
-        return Exit.OK
 
-    width = max(len(learner.name) for learner, _ in found)
-    lines = [
-        f"  {learner.name:<{width}}  {label} {view.number}"
-        f"{f'  {view.doc.titles}' if view.doc.titles else ''}"
-        for learner, view in found
+    lines: list[str] = []
+    if report.found:
+        width = max(len(learner.name) for learner, _ in report.found)
+        lines += [
+            f"  {learner.name:<{width}}  {label} {view.number}"
+            f"{f'  {view.doc.titles}' if view.doc.titles else ''}"
+            for learner, view in report.found
+        ]
+    lines += [
+        f"  ⚠ {entry['learner']}'s {label} {entry['number']} could not be read: {entry['why']}"
+        for entry in report.unreadable
     ]
+    lines += [
+        f"  ? “{entry['title']}” names no {label} this studio booked"
+        for entry in report.unmatched
+    ]
+    if not lines:
+        lines = [f"No {label} is in progress in the last {report.window['days']} days."]
+    lines.append(f"  window: {report.window['start']} … {report.window['through']}")
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
 

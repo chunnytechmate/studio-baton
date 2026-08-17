@@ -244,7 +244,7 @@ progress, and handing it back as free is how a summary overwrites a draft.
 ```bash
 baton learner latest "Ada Whitfield"   # newest done, by document date
 baton learner next   "Ada Whitfield"   # where the next lesson lands
-baton learner in-progress              # everyone mid-session, this morning
+baton learner in-progress              # who still owes a summary (calendar window)
 ```
 
 A status the profile does not describe — a studio adds "Cancelled" — maps to

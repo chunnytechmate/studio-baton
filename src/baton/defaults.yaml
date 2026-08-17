@@ -92,6 +92,12 @@ learner:
   # legacy system's behaviour).
   next_stale_days: 1
 
+  # `learner in-progress` reads the calendar for this many days back (today
+  # included) and checks only those learners' pages — the morning "who still
+  # owes a summary" question costs one calendar call plus one document read
+  # per candidate, instead of reading every session page of every learner.
+  in_progress_days: 14
+
 # ---------------------------------------------------------------------------
 # Session documents (the per-session page a learner and their family read)
 # ---------------------------------------------------------------------------

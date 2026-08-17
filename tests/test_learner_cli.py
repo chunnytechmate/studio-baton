@@ -124,7 +124,33 @@ def test_next_finds_a_genuinely_empty_session(studio, capsys):
     assert json.loads(capsys.readouterr().out)["next_empty"]["number"] == 3
 
 
-def test_in_progress_spans_learners(studio, capsys):
+def test_in_progress_spans_learners(studio, capsys, monkeypatch):
+    """The morning check reads the calendar window, then only those learners'
+    pages. Bruno's second lesson is on the calendar too, but its page is Not
+    started — the page is the truth, so he owes one summary, not two."""
+    from datetime import datetime, timedelta
+
+    from baton.adapters.cal.base import CalendarEvent
+    from baton.adapters.fakes import FakeCalendar
+
+    _profile, fake = studio
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%dT17:00:00")
+    calendar = FakeCalendar(
+        [
+            CalendarEvent(
+                id="e1", title="Bruno Castell (lesson 1)", start=yesterday, end=yesterday
+            ),
+            CalendarEvent(
+                id="e2", title="Clara Nguyen (lesson 1)", start=yesterday, end=yesterday
+            ),
+            CalendarEvent(
+                id="e3", title="Bruno Castell (lesson 2)", start=yesterday, end=yesterday
+            ),
+        ]
+    )
+    monkeypatch.setattr("baton.cli.cmd_calendar.open_calendar", lambda _config: calendar)
+    monkeypatch.setattr("baton.cli.cmd_calendar.open_docs", lambda _config: fake)
+
     assert call(studio, "in-progress") == Exit.OK
 
     payload = json.loads(capsys.readouterr().out)

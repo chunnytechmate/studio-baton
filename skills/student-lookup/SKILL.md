@@ -23,7 +23,7 @@ Every command takes `--json` and prints one document. Read the exit code first.
 | All their sessions | `baton learner sessions "<name>" --json` |
 | **The latest session that happened** | `baton learner latest "<name>" --json` |
 | The next free session | `baton learner next "<name>" --json` |
-| Everyone mid-session | `baton learner in-progress --json` |
+| Who still owes a summary | `baton learner in-progress --json` |
 | Their recordings | `baton learner works "<name>" --json` |
 | Record a performance | `baton learner add-work "<name>" --title "..." --type cover --json` |
 | The piece catalogue | `baton learner pieces --json` |

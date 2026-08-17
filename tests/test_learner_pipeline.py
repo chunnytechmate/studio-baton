@@ -292,26 +292,9 @@ def test_sessions_come_back_ordered_by_number_despite_parallel_reads():
     assert [view.number for view in history.sessions(ADA)] == [1, 2, 3, 4, 5]
 
 
-def test_everyone_in_progress_spans_learners():
-    bruno = Learner(id="2", name="Bruno Castell")
-    _, history = build(
-        learners=[ADA, bruno],
-        sessions=[
-            Session(id="a", learner_id="1", number=1, doc_id="d1"),
-            Session(id="b", learner_id="2", number=9, doc_id="d9"),
-        ],
-        docs={
-            "d1": DocStatus(doc_id="d1", status="In progress"),
-            "d9": DocStatus(doc_id="d9", status="In progress"),
-        },
-    )
-
-    found = history.everyone_in_progress()
-
-    assert [(learner.name, view.number) for learner, view in found] == [
-        ("Ada Whitfield", 1),
-        ("Bruno Castell", 9),
-    ]
+# The "who still owes a summary" question now lives in Scheduler, answered
+# from a calendar window — its tests are in test_calendar.py. Scanning every
+# page of every learner was the most expensive call Baton made.
 
 
 def test_summarise_gathers_the_whole_picture():

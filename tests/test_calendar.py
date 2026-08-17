@@ -11,6 +11,7 @@ from datetime import date, time
 
 import pytest
 
+from baton.adapters.cal.base import CalendarEvent
 from baton.adapters.docs.base import DocStatus
 from baton.adapters.fakes import FakeCalendar, FakeDocStore
 from baton.domain.models import Learner, Session
@@ -460,3 +461,147 @@ def test_a_schedule_with_one_name_twice_is_refused(profile):
     )
 
     assert code == Exit.USAGE
+
+
+# -- who is mid-session: the calendar window ---------------------------------
+
+BRUNO = Learner(id="2", name="Bruno Castell")
+
+
+def _window(calendar, docs=None):
+    """A scheduler over the given calendar, plus its learner store."""
+    from baton.adapters.fakes import FakeLearnerStore
+
+    store = FakeLearnerStore(
+        learners=[ADA, BRUNO],
+        sessions=[
+            Session(id="s3", learner_id="1", number=3, doc_id="doc-3"),
+            Session(id="b9", learner_id="2", number=9, doc_id="doc-9"),
+            Session(id="b4", learner_id="2", number=4, doc_id="doc-4"),
+        ],
+    )
+    docs = docs or FakeDocStore(
+        statuses={
+            "doc-3": DocStatus(doc_id="doc-3", status="In progress"),
+            "doc-9": DocStatus(doc_id="doc-9", status="In progress"),
+            "doc-4": DocStatus(doc_id="doc-4", status="In progress"),
+        }
+    )
+    scheduler = Scheduler(calendar, docs, VOCAB, timezone="Asia/Bangkok", session_label="lesson")
+    return scheduler, store
+
+
+def _event(title, start):
+    return CalendarEvent(id=f"ev-{title[:6]}", title=title, start=start, end=start)
+
+
+def test_in_progress_reads_the_window_not_the_world():
+    """One calendar call, then one page per candidate. A lesson outside the
+    window is never looked at, whatever its page says."""
+    calendar = FakeCalendar(
+        [
+            _event("Ada Whitfield (lesson 3)", "2026-08-14T17:00:00+07:00"),
+            _event("Bruno Castell (lesson 9)", "2026-08-15T10:00:00+07:00"),
+            _event("Bruno Castell (lesson 4)", "2026-07-20T10:00:00+07:00"),  # 27 days back
+        ]
+    )
+    scheduler, store = _window(calendar)
+
+    report = scheduler.in_progress(store, today=date(2026, 8, 16))
+
+    assert [(learner.name, view.number) for learner, view in report.found] == [
+        ("Ada Whitfield", 3),
+        ("Bruno Castell", 9),
+    ]
+    assert report.unmatched == []
+
+
+def test_a_summarized_lesson_drops_out_on_its_own():
+    """The event is still on the calendar, but the page says done — the page
+    is the truth, and the learner owes nothing."""
+    docs = FakeDocStore(
+        statuses={
+            "doc-3": DocStatus(doc_id="doc-3", status="Done"),
+            "doc-9": DocStatus(doc_id="doc-9", status="In progress"),
+            "doc-4": DocStatus(doc_id="doc-4", status="In progress"),
+        }
+    )
+    calendar = FakeCalendar([_event("Ada Whitfield (lesson 3)", "2026-08-14T17:00:00+07:00")])
+    scheduler, store = _window(calendar, docs)
+
+    report = scheduler.in_progress(store, today=date(2026, 8, 16))
+
+    assert report.found == []
+
+
+def test_a_booking_for_a_coming_day_is_outside_the_window():
+    calendar = FakeCalendar([_event("Ada Whitfield (lesson 3)", "2026-08-17T17:00:00+07:00")])
+    scheduler, store = _window(calendar)
+
+    report = scheduler.in_progress(store, today=date(2026, 8, 16))
+
+    assert report.found == []
+
+
+def test_an_event_typed_by_hand_is_listed_never_guessed_at():
+    calendar = FakeCalendar(
+        [
+            _event("Dentist", "2026-08-15T09:00:00+07:00"),
+            _event("Ada Whitfield (lesson 3)", "2026-08-15T17:00:00+07:00"),
+        ]
+    )
+    scheduler, store = _window(calendar)
+
+    report = scheduler.in_progress(store, today=date(2026, 8, 16))
+
+    assert [entry["title"] for entry in report.unmatched] == ["Dentist"]
+    assert len(report.found) == 1
+
+
+def test_one_unreadable_page_does_not_take_the_report_down():
+    """The containment the old whole-world scan lacked: a single bad page is
+    that learner's line, not the end of the morning check."""
+
+    class OneBadPage(FakeDocStore):
+        def get_status(self, doc_id):
+            if doc_id == "doc-9":
+                raise UpstreamError("page is gone", service="notion")
+            return super().get_status(doc_id)
+
+    calendar = FakeCalendar(
+        [
+            _event("Ada Whitfield (lesson 3)", "2026-08-14T17:00:00+07:00"),
+            _event("Bruno Castell (lesson 9)", "2026-08-15T10:00:00+07:00"),
+        ]
+    )
+    scheduler, store = _window(
+        calendar,
+        OneBadPage(
+            statuses={
+                "doc-3": DocStatus(doc_id="doc-3", status="In progress"),
+                "doc-9": DocStatus(doc_id="doc-9", status="In progress"),
+                "doc-4": DocStatus(doc_id="doc-4", status="In progress"),
+            }
+        ),
+    )
+
+    report = scheduler.in_progress(store, today=date(2026, 8, 16))
+
+    assert [(learner.name, view.number) for learner, view in report.found] == [
+        ("Ada Whitfield", 3)
+    ]
+    assert report.unreadable == [
+        {"learner": "Bruno Castell", "number": 9, "why": "page is gone"}
+    ]
+
+
+def test_an_icon_prefixed_title_still_names_its_learner():
+    calendar = FakeCalendar([_event("🎸 Ada Whitfield (lesson 3)", "2026-08-14T17:00:00+07:00")])
+    scheduler, store = _window(calendar)
+    scheduler.event_emoji = {"guitar": "🎸"}
+
+    report = scheduler.in_progress(store, today=date(2026, 8, 16))
+
+    assert [(learner.name, view.number) for learner, view in report.found] == [
+        ("Ada Whitfield", 3)
+    ]

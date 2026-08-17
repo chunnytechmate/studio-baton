@@ -20,16 +20,19 @@ opposite inconsistency.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
 from ..adapters.cal.base import CalendarEvent, CalendarStore
+from ..adapters.db.base import LearnerStore
 from ..adapters.docs.base import DocStore
 from ..domain.models import Learner, Session
 from ..domain.status import DONE, IN_PROGRESS, NOT_STARTED, StatusVocabulary
-from ..domain.whenever import combine, parse_time
-from ..errors import GateError, StateError, UsageError
+from ..domain.whenever import combine, parse_time, today_in
+from ..errors import BatonError, GateError, StateError, UsageError
+from .learner import SessionView
 
 
 @dataclass
@@ -52,6 +55,21 @@ class BookingResult:
             "event": self.event.to_dict() if self.event else None,
             "title": self.title,
         }
+
+
+@dataclass
+class InProgressReport:
+    """Who owes a summary, read from a calendar window.
+
+    The calendar is the index and the session page is the truth; events that
+    name no learner were typed by a person and are listed rather than
+    guessed at.
+    """
+
+    found: list[tuple[Learner, SessionView]]
+    unreadable: list[dict[str, Any]]
+    unmatched: list[dict[str, Any]]
+    window: dict[str, Any]
 
 
 def event_title(
@@ -305,6 +323,120 @@ class Scheduler:
             "status": NOT_STARTED,
         }
 
+    # -- who is mid-session -------------------------------------------------
+
+    def in_progress(
+        self,
+        store: LearnerStore,
+        *,
+        window_days: int = 14,
+        today: date | None = None,
+    ) -> InProgressReport:
+        """Who owes a summary, read from a calendar window.
+
+        The calendar is the index and the page is the truth. Only learners
+        with a lesson event inside the window are candidates, so this costs
+        one calendar call and one document read per candidate — not a read of
+        every session page of every learner. A candidate counts as in
+        progress only when its page still says so: a cancelled lesson (event
+        removed, page rolled back) and a summarized one (page done) drop out
+        on their own.
+
+        A page that cannot be read is reported as unreadable for that learner
+        alone; the rest of the report stands. An event that names no learner
+        was typed by a person in the calendar and is listed, never guessed
+        at. Sessions booked for a future day are outside the window: this
+        answers "who still owes a summary", and `calendar list` answers
+        "who is coming".
+        """
+        reference = today or today_in(self.timezone)
+        start = combine(
+            reference - timedelta(days=window_days - 1), parse_time("00:00"), self.timezone
+        )
+        end = combine(reference + timedelta(days=1), parse_time("00:00"), self.timezone)
+        events = sorted(
+            self.calendar.list_between(start.isoformat(), end.isoformat()),
+            key=lambda event: event.start,
+        )
+
+        by_name = {learner.name: learner for learner in store.list_learners()}
+        found: list[tuple[Learner, SessionView]] = []
+        unreadable: list[dict[str, Any]] = []
+        unmatched: list[dict[str, Any]] = []
+        seen: set[tuple[str, int]] = set()
+        for event in events:
+            match = self._match_event(event.title, by_name)
+            if match is None:
+                unmatched.append({"title": event.title, "start": event.start})
+                continue
+            learner, number = match
+            if (learner.id, number) in seen:
+                continue
+            seen.add((learner.id, number))
+            session = next(
+                (row for row in store.list_sessions(learner.id) if row.number == number),
+                None,
+            )
+            if session is None or not session.doc_id:
+                unmatched.append(
+                    {
+                        "title": event.title,
+                        "start": event.start,
+                        "why": f"no document for {self.session_label} {number}",
+                    }
+                )
+                continue
+            try:
+                doc = self.docs.get_status(session.doc_id)
+            except BatonError as exc:
+                unreadable.append(
+                    {"learner": learner.name, "number": number, "why": exc.message}
+                )
+                continue
+            state = self.vocabulary.canonical(doc.status)
+            if state == IN_PROGRESS:
+                found.append((learner, SessionView(session=session, doc=doc, state=state)))
+
+        return InProgressReport(
+            found=found,
+            unreadable=unreadable,
+            unmatched=unmatched,
+            window={
+                "days": window_days,
+                "start": (reference - timedelta(days=window_days - 1)).isoformat(),
+                "through": reference.isoformat(),
+            },
+        )
+
+    def _icon_prefixes(self) -> list[str]:
+        """The configured icon openings a title Baton writes may carry."""
+        icons = {str(value) for value in self.event_emoji.values()}
+        if self.default_emoji:
+            icons.add(self.default_emoji)
+        return [f"{icon} " for icon in icons if icon]
+
+    def _match_event(
+        self, title: str, by_name: dict[str, Learner]
+    ) -> tuple[Learner, int] | None:
+        """The learner and session a calendar event's title names, if any.
+
+        The same anchored shape the cancel path matches on — an optional
+        configured icon, then the name, then the session part — read in the
+        opposite direction. Longer names are tried first so a learner whose
+        name extends another's cannot be swallowed by the shorter one.
+        """
+        marker = re.compile(rf"\({re.escape(self.session_label)} (\d+)\)")
+        for prefix in [*self._icon_prefixes(), ""]:
+            for name in sorted(by_name, key=len, reverse=True):
+                head = f"{prefix}{name} ("
+                if not title.startswith(head):
+                    continue
+                tail = title[len(head) - 1 :]
+                found = marker.fullmatch(tail)
+                if found:
+                    return by_name[name], int(found.group(1))
+        return None
+
     def _events_for(self, learner: Learner, day: date) -> list[CalendarEvent]:
         """This learner's events on one day, matched against the title's shape.
 
@@ -319,10 +451,7 @@ class Scheduler:
         start = combine(day, parse_time("00:00"), self.timezone).isoformat()
         end = combine(day + timedelta(days=1), parse_time("00:00"), self.timezone).isoformat()
         bare = f"{learner.name} ("
-        icons = {str(value) for value in self.event_emoji.values()}
-        if self.default_emoji:
-            icons.add(self.default_emoji)
-        with_icon = [f"{icon} {bare}" for icon in icons if icon]
+        with_icon = [f"{icon}{bare}" for icon in self._icon_prefixes()]
 
         def ours(title: str) -> bool:
             return title.startswith(bare) or any(title.startswith(prefix) for prefix in with_icon)

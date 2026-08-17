@@ -212,19 +212,10 @@ class LearnerHistory:
         return [view for view in views if view.state == IN_PROGRESS]
 
     # -- across everyone ---------------------------------------------------
-
-    def everyone_in_progress(self) -> list[tuple[Learner, SessionView]]:
-        """Every learner with a session in progress, by learner name.
-
-        Reads every learner's sessions, which is the most expensive call Baton
-        makes. It is also the one a teacher runs each morning, so it is worth
-        the round trips rather than the answer being approximate.
-        """
-        found: list[tuple[Learner, SessionView]] = []
-        for learner in self.store.list_learners():
-            for view in self.in_progress(self.sessions(learner)):
-                found.append((learner, view))
-        return found
+    # The morning question — "who still owes a summary?" — is answered from
+    # the calendar window by Scheduler.in_progress, which reads one document
+    # per candidate instead of every session page of every learner. Scanning
+    # every page here was the most expensive call Baton made.
 
     # -- summaries ---------------------------------------------------------
 
