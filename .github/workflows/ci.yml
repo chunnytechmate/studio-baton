@@ -18,7 +18,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python: ["3.10", "3.12", "3.13"]
+        # 3.11 is what the openclaw gateway container runs (Debian bookworm)
+        # and 3.14 is the studio's own machine. Both are production runtimes, so
+        # neither may be left to chance.
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           # The state layer uses file locking, which differs on Windows. One
           # Windows job is enough to catch a POSIX-only regression.

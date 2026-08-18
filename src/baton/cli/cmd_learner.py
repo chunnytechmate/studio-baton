@@ -355,8 +355,7 @@ def handle_in_progress(ctx: Context) -> Exit:
         for entry in report.unreadable
     ]
     lines += [
-        f"  ? “{entry['title']}” names no {label} this studio booked"
-        for entry in report.unmatched
+        f"  ? “{entry['title']}” names no {label} this studio booked" for entry in report.unmatched
     ]
     if not lines:
         lines = [f"No {label} is in progress in the last {report.window['days']} days."]

@@ -140,9 +140,7 @@ def test_in_progress_spans_learners(studio, capsys, monkeypatch):
             CalendarEvent(
                 id="e1", title="Bruno Castell (lesson 1)", start=yesterday, end=yesterday
             ),
-            CalendarEvent(
-                id="e2", title="Clara Nguyen (lesson 1)", start=yesterday, end=yesterday
-            ),
+            CalendarEvent(id="e2", title="Clara Nguyen (lesson 1)", start=yesterday, end=yesterday),
             CalendarEvent(
                 id="e3", title="Bruno Castell (lesson 2)", start=yesterday, end=yesterday
             ),

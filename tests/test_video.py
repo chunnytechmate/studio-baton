@@ -321,9 +321,7 @@ def test_work_files_are_kept_after_a_failure_so_a_resume_can_use_them(pipeline, 
 from pathlib import Path as _Path  # noqa: E402  (used by the tests below)
 
 
-def test_resuming_a_job_that_never_downloaded_is_an_error_not_a_poisoned_record(
-    pipeline, tmp_path
-):
+def test_resuming_a_job_that_never_downloaded_is_an_error_not_a_poisoned_record(pipeline, tmp_path):
     """A crash before the download finished used to resume with clips=[], mark
     `downloaded` done over zero files, and leave every later run skipping the
     download forever. The failure must be loud and the step record untouched."""

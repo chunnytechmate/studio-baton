@@ -389,9 +389,7 @@ class Scheduler:
             try:
                 doc = self.docs.get_status(session.doc_id)
             except BatonError as exc:
-                unreadable.append(
-                    {"learner": learner.name, "number": number, "why": exc.message}
-                )
+                unreadable.append({"learner": learner.name, "number": number, "why": exc.message})
                 continue
             state = self.vocabulary.canonical(doc.status)
             if state == IN_PROGRESS:
@@ -415,9 +413,7 @@ class Scheduler:
             icons.add(self.default_emoji)
         return [f"{icon} " for icon in icons if icon]
 
-    def _match_event(
-        self, title: str, by_name: dict[str, Learner]
-    ) -> tuple[Learner, int] | None:
+    def _match_event(self, title: str, by_name: dict[str, Learner]) -> tuple[Learner, int] | None:
         """The learner and session a calendar event's title names, if any.
 
         The same anchored shape the cancel path matches on — an optional

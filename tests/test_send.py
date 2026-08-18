@@ -617,9 +617,7 @@ def test_a_refused_webhook_reports_the_status(monkeypatch):
 
     captured = _Captured(status_code=500)
     monkeypatch.setattr(drivers, "http_request", captured)
-    messenger = drivers.WebhookMessenger(
-        "https://example.invalid/hook", secret="s", config=None
-    )
+    messenger = drivers.WebhookMessenger("https://example.invalid/hook", secret="s", config=None)
 
     with pytest.raises(UpstreamError) as excinfo:
         messenger.send("teacher", "hello")

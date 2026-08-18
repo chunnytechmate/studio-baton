@@ -363,12 +363,11 @@ def test_cancelling_ann_does_not_touch_anna():
     ann = Learner(id="1", name="Ann")
     anna = Learner(id="2", name="Anna")
     scheduler.book(ann, Session(id="s1", learner_id="1", number=1, doc_id="doc-3"), TODAY, "17:00")
-    scheduler.book(
-        anna, Session(id="s2", learner_id="2", number=3, doc_id="doc-3"), TODAY, "18:00"
-    )
+    scheduler.book(anna, Session(id="s2", learner_id="2", number=3, doc_id="doc-3"), TODAY, "18:00")
 
-    scheduler.cancel(ann, Session(id="s1", learner_id="1", number=1, doc_id="doc-3"),
-                     TODAY, today=TODAY)
+    scheduler.cancel(
+        ann, Session(id="s1", learner_id="1", number=1, doc_id="doc-3"), TODAY, today=TODAY
+    )
 
     assert [event.title for event in calendar.events] == ["Anna (lesson 3)"]
 
@@ -390,8 +389,9 @@ def test_the_exact_match_still_works_with_an_instrument_emoji():
         adrian, Session(id="s2", learner_id="2", number=1, doc_id="doc-3"), TODAY, "18:00"
     )
 
-    scheduler.cancel(adrian, Session(id="s2", learner_id="2", number=1, doc_id="doc-3"),
-                     TODAY, today=TODAY)
+    scheduler.cancel(
+        adrian, Session(id="s2", learner_id="2", number=1, doc_id="doc-3"), TODAY, today=TODAY
+    )
 
     assert [event.title for event in scheduler.calendar.events] == ["🎹 Ada (lesson 3)"]
 
@@ -453,10 +453,14 @@ def test_a_schedule_with_one_name_twice_is_refused(profile):
     # profile is all the state this needs.
     code = cli_run(
         [
-            "--profile", str(profile),
-            "calendar", "schedule",
-            "--date", "2026-08-20",
-            "--text", "17:00 Ada Whitfield\n18:00 ada whitfield",
+            "--profile",
+            str(profile),
+            "calendar",
+            "schedule",
+            "--date",
+            "2026-08-20",
+            "--text",
+            "17:00 Ada Whitfield\n18:00 ada whitfield",
         ]
     )
 
@@ -587,12 +591,8 @@ def test_one_unreadable_page_does_not_take_the_report_down():
 
     report = scheduler.in_progress(store, today=date(2026, 8, 16))
 
-    assert [(learner.name, view.number) for learner, view in report.found] == [
-        ("Ada Whitfield", 3)
-    ]
-    assert report.unreadable == [
-        {"learner": "Bruno Castell", "number": 9, "why": "page is gone"}
-    ]
+    assert [(learner.name, view.number) for learner, view in report.found] == [("Ada Whitfield", 3)]
+    assert report.unreadable == [{"learner": "Bruno Castell", "number": 9, "why": "page is gone"}]
 
 
 def test_an_icon_prefixed_title_still_names_its_learner():
@@ -602,6 +602,4 @@ def test_an_icon_prefixed_title_still_names_its_learner():
 
     report = scheduler.in_progress(store, today=date(2026, 8, 16))
 
-    assert [(learner.name, view.number) for learner, view in report.found] == [
-        ("Ada Whitfield", 3)
-    ]
+    assert [(learner.name, view.number) for learner, view in report.found] == [("Ada Whitfield", 3)]

@@ -50,9 +50,7 @@ def test_latest_never_returns_another_learners_record(tmp_path: Path):
     assert latest["short_message"] == "for ada"
 
 
-def test_latest_picks_the_most_recent_among_only_that_learners_records(
-    tmp_path: Path, monkeypatch
-):
+def test_latest_picks_the_most_recent_among_only_that_learners_records(tmp_path: Path, monkeypatch):
     clock = _Clock()
     monkeypatch.setattr(staging, "_now", clock)
     records = PublishedRecord(tmp_path)
