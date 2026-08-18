@@ -48,6 +48,11 @@ jobs:
 
   publish:
     needs: build
+    # Off until the PyPI trusted publisher exists. Set the repository variable
+    # PUBLISH_TO_PYPI to `true` to turn it on — until then a tag still gets a
+    # verified, built artefact, and the release run stays green instead of
+    # failing on an upload nobody has authorised yet.
+    if: vars.PUBLISH_TO_PYPI == 'true'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
