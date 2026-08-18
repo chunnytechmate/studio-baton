@@ -34,12 +34,23 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import baton
+
+          # `__file__` is None when the wheel shipped no `__init__.py` and the
+          # import resolved to a namespace package instead — which is what a
+          # mis-scoped `include` in pyproject produces: a wheel of data files
+          # with no code. Say that, rather than raising TypeError on None.
+          assert baton.__file__, "the wheel carries no Python code (namespace package)"
           root = Path(baton.__file__).parent
-          for name in ("defaults.yaml", "locale/th.yaml", "migrations/sqlite.sql",
-                       "contracts/lesson_summary.schema.json"):
+          for name in ("cli/app.py", "defaults.yaml", "locale/th.yaml",
+                       "migrations/sqlite.sql", "contracts/lesson_summary.schema.json"):
               assert (root / name).is_file(), f"{name} missing from the wheel"
           print("wheel contents ok")
           PY
+
+      - name: Check the installed console script actually runs
+        run: |
+          baton --version
+          baton --help > /dev/null
 
       - uses: actions/upload-artifact@v4
         with:

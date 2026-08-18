@@ -61,9 +61,12 @@ Issues = "https://github.com/chunnytechmate/studio-baton/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/baton"]
 
-[tool.hatch.build]
-# Locale catalogues and packaged config defaults ship inside the wheel.
-include = ["src/baton/**/*.yaml", "src/baton/**/*.json", "src/baton/**/*.sql"]
+# No `include` here on purpose. A top-level `include` is a whitelist for the
+# whole build, not an addition to it: stating one for the data files silently
+# excluded every .py file, and the wheel that came out carried the locale
+# catalogues and the migrations without a line of code to read them. Listing
+# the package under `packages` above already ships everything inside it,
+# YAML, JSON, and SQL included.
 
 [tool.ruff]
 line-length = 100
