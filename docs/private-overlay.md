@@ -13,16 +13,17 @@ my-studio/                 # private
 └── requirements.txt       # how you pin Baton itself — see below
 ```
 
-Baton has not been released to PyPI yet (`0.1.0.dev0`), so pin it by git ref
-until it has been:
+Pin a tag, never a branch. An overlay that tracks a moving branch will one day
+pick up a change to the config schema between two runs of the same nightly job,
+and the run that breaks will be the unattended one:
 
 ```
-studio-baton @ git+https://github.com/chunnytechmate/studio-baton@main
+studio-baton @ git+https://github.com/chunnytechmate/studio-baton@v0.1.0
 ```
 
-Pin a tag rather than `main` as soon as there is one: a private overlay that
-tracks a moving branch will one day pick up a change to the config schema
-between two runs of the same nightly job.
+Every tag is a commit CI has already passed on Linux and macOS across Python
+3.10 to 3.14. Upgrade by changing the tag deliberately, running `baton doctor`,
+and only then letting a real job use it.
 
 ## Install it
 
