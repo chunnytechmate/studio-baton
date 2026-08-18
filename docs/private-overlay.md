@@ -13,12 +13,19 @@ my-studio/                 # private
 └── requirements.txt       # how you pin Baton itself — see below
 ```
 
-Pin a tag, never a branch. An overlay that tracks a moving branch will one day
-pick up a change to the config schema between two runs of the same nightly job,
-and the run that breaks will be the unattended one:
+Pin an exact version, never a branch. An overlay that tracks a moving branch
+will one day pick up a change to the config schema between two runs of the same
+nightly job, and the run that breaks will be the unattended one:
 
 ```
-studio-baton @ git+https://github.com/chunnytechmate/studio-baton@v0.1.0
+studio-baton[google]==0.1.0
+```
+
+Since 0.1.0 is on PyPI, that is the pin to use — no git at build time. The
+git form still works where PyPI is unreachable:
+
+```
+studio-baton[google] @ git+https://github.com/chunnytechmate/studio-baton@v0.1.0
 ```
 
 Every tag is a commit CI has already passed on Linux and macOS across Python
