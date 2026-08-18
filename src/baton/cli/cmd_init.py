@@ -186,8 +186,9 @@ def _profile_config(answers: dict[str, str]) -> dict[str, Any]:
 def _env_template(answers: dict[str, str]) -> str:
     """An .env listing exactly the variables this profile needs."""
     lines = [
-        "# Credentials for this profile. Baton reads these from the environment;",
-        "# it never stores a secret in baton.yaml.",
+        "# Credentials for this profile. Baton loads this file into the",
+        "# environment when it loads the profile; a variable already exported in",
+        "# your shell wins over the value here. Secrets never go in baton.yaml.",
         "#",
         "# Keep this file out of version control. Nothing here excludes it for you:",
         "# add `.env` to the .gitignore of whatever repository this profile lives in.",

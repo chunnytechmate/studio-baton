@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from baton.core import config as config_module
@@ -85,7 +87,7 @@ def test_optional_secret_returns_none_when_unset(profile):
 def test_relative_paths_resolve_inside_the_profile(profile):
     cfg = config_module.load(profile)
 
-    assert cfg.path("db.sqlite.path") == profile / "data" / "baton.db"
+    assert cfg.path("db.sqlite.path") == profile / "data" / "studio.db"
 
 
 def test_absolute_paths_are_left_alone(profile, tmp_path):
@@ -141,3 +143,92 @@ def test_example_profile_is_valid():
 
     assert cfg.get("chat.driver") == "telegram"
     assert cfg.get("docs.properties.titles") == "Repertoire"
+
+
+# -- the profile's .env ----------------------------------------------------
+#
+# The quickstart tells a new user to copy `.env.example` to `.env` and fill it
+# in. These pin that this actually does something: for a long time it did not,
+# and `doctor` answered "not set" to a credential the user had just written
+# down, with a remedy telling them to write it down again.
+
+
+def test_env_file_supplies_a_credential(profile):
+    (profile / ".env").write_text("NOTION_API_TOKEN=from-the-file\n", encoding="utf-8")
+
+    cfg = config_module.load(profile)
+
+    assert cfg.secret("docs.notion.token_env") == "from-the-file"
+
+
+def test_real_environment_wins_over_the_env_file(profile, monkeypatch):
+    monkeypatch.setenv("NOTION_API_TOKEN", "from-the-shell")
+    (profile / ".env").write_text("NOTION_API_TOKEN=from-the-file\n", encoding="utf-8")
+
+    cfg = config_module.load(profile)
+
+    assert cfg.secret("docs.notion.token_env") == "from-the-shell"
+
+
+def test_a_blank_variable_counts_as_unset(profile, monkeypatch):
+    """`export TOKEN=` is a hole, not a decision — the file fills it."""
+    monkeypatch.setenv("NOTION_API_TOKEN", "")
+    (profile / ".env").write_text("NOTION_API_TOKEN=from-the-file\n", encoding="utf-8")
+
+    cfg = config_module.load(profile)
+
+    assert cfg.secret("docs.notion.token_env") == "from-the-file"
+
+
+def test_env_file_syntax_a_hand_written_file_will_contain(profile):
+    (profile / ".env").write_text(
+        "# a comment\n"
+        "\n"
+        "export NOTION_API_TOKEN=exported\n"
+        "TELEGRAM_BOT_TOKEN='single quoted'\n"
+        'LINE_CHANNEL_ACCESS_TOKEN="double quoted"\n'
+        "  SUPABASE_PROJECT_URL = spaced out \n",
+        encoding="utf-8",
+    )
+
+    config_module.load(profile)
+
+    assert os.environ["NOTION_API_TOKEN"] == "exported"
+    assert os.environ["TELEGRAM_BOT_TOKEN"] == "single quoted"
+    assert os.environ["LINE_CHANNEL_ACCESS_TOKEN"] == "double quoted"
+    assert os.environ["SUPABASE_PROJECT_URL"] == "spaced out"
+
+
+def test_a_hash_inside_a_value_is_part_of_the_value(profile):
+    """No inline-comment stripping: that would truncate a credential."""
+    (profile / ".env").write_text("NOTION_API_TOKEN=abc#def\n", encoding="utf-8")
+
+    cfg = config_module.load(profile)
+
+    assert cfg.secret("docs.notion.token_env") == "abc#def"
+
+
+def test_env_file_can_carry_a_config_override(profile):
+    """It is loaded before overrides are collected, so `BATON__…` counts."""
+    (profile / ".env").write_text("BATON__TIMEZONE=UTC\n", encoding="utf-8")
+
+    cfg = config_module.load(profile)
+
+    assert cfg.get("timezone") == "UTC"
+
+
+def test_a_malformed_env_line_says_which_line(profile):
+    (profile / ".env").write_text(
+        "NOTION_API_TOKEN=fine\nthis is not an assignment\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError) as excinfo:
+        config_module.load(profile)
+
+    assert excinfo.value.details["line"] == 2
+
+
+def test_no_env_file_is_not_an_error(profile):
+    assert not (profile / ".env").exists()
+
+    assert config_module.load(profile).get("timezone") == "Asia/Bangkok"

@@ -15,7 +15,13 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_environment(monkeypatch, tmp_path):
-    """Strip Baton's environment variables and pin HOME to a temp directory."""
+    """Strip Baton's environment variables and pin HOME to a temp directory.
+
+    The whole environment is snapshotted and restored, not just the names
+    below: loading a profile now reads its `.env` into `os.environ`, so a test
+    with a `.env` would otherwise hand its credentials to every test after it.
+    """
+    original = os.environ.copy()
     for name in [n for n in os.environ if n.startswith("BATON")]:
         monkeypatch.delenv(name, raising=False)
     for name in (
@@ -31,6 +37,11 @@ def isolated_environment(monkeypatch, tmp_path):
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+
+    yield
+
+    os.environ.clear()
+    os.environ.update(original)
 
 
 @pytest.fixture

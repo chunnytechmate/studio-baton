@@ -10,11 +10,20 @@ Secrets are never values in this tree. Config names the *environment variable*
 that holds a credential; :meth:`Config.secret` reads it. That is what makes a
 profile safe to commit to a private repository and safe to paste into an issue
 with the env vars redacted.
+
+Where those variables come from: :func:`load` reads the profile's ``.env`` into
+the process environment before anything asks for a credential. A variable
+already set in the real environment always wins, so a shell export overrides
+the file rather than the other way around — the file is the default, the
+environment is the override. Loading it into ``os.environ`` rather than into a
+private mapping is deliberate: ``doctor``, detached jobs, and vendor SDKs that
+read the environment for themselves then all see one set of values.
 """
 
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +35,9 @@ from . import paths
 
 ENV_PREFIX = "BATON__"
 _MISSING = object()
+
+#: A POSIX environment variable name — what a `.env` line may declare.
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
@@ -70,6 +82,85 @@ def _env_overrides() -> dict[str, Any]:
             cursor = nxt
         cursor[trail[-1]] = _coerce(raw)
     return overrides
+
+
+def parse_env_file(text: str, source: Path) -> dict[str, str]:
+    """Parse ``.env`` text into a mapping.
+
+    The format is the small, boring subset every ``.env`` file agrees on:
+    ``KEY=value`` one per line, blank lines and ``#`` comment lines ignored, an
+    optional ``export`` prefix tolerated, and a value wrapped in matching
+    single or double quotes unwrapped. Everything else is taken literally —
+    there is no escape processing and no inline-comment stripping, so a ``#``
+    inside a token stays part of the token rather than silently truncating a
+    credential.
+
+    Args:
+        text: The file's contents.
+        source: The path the text came from, used in error messages.
+
+    Returns:
+        The variables the file declares, in the order it declares them.
+
+    Raises:
+        ConfigError: A line is not blank, not a comment, and not ``KEY=value``.
+    """
+    values: dict[str, str] = {}
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if not separator or not _ENV_NAME.fullmatch(key):
+            raise ConfigError(
+                f"{source} line {number} is not `KEY=value`.",
+                remedy="Write one `KEY=value` per line, or start the line with `#` "
+                "to comment it out.",
+                details={"file": str(source), "line": number},
+            )
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def apply_env_file(profile_dir: Path) -> dict[str, str]:
+    """Load ``<profile>/.env`` into the process environment.
+
+    A variable that already holds a non-empty value is left alone: an export in
+    the shell, or a variable injected by a container, outranks the file. Empty
+    counts as unset here for the same reason it does in :meth:`Config.secret` —
+    an exported-but-blank credential is a hole, not a decision.
+
+    Args:
+        profile_dir: The directory holding ``baton.yaml``.
+
+    Returns:
+        The variables that were read from the file, whether or not each one was
+        applied. An absent file is not an error and returns an empty mapping.
+
+    Raises:
+        ConfigError: The file exists but cannot be read or parsed.
+    """
+    path = profile_dir / ".env"
+    if not path.is_file():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(
+            f"Cannot read {path}: {exc}",
+            remedy="Check the file is readable by this user, or remove it.",
+        ) from exc
+    values = parse_env_file(text, path)
+    for key, value in values.items():
+        if not os.environ.get(key, ""):
+            os.environ[key] = value
+    return values
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -221,10 +312,15 @@ def load(explicit: str | Path | None = None) -> Config:
         The merged :class:`Config`.
 
     Raises:
-        ConfigError: No profile found, or the profile is malformed.
+        ConfigError: No profile found, the profile is malformed, or its ``.env``
+            exists but cannot be read or parsed.
     """
     config_file = paths.find_config(explicit)
     profile_dir = config_file.parent
+
+    # Before the overrides are collected, so a `BATON__…` line in the profile's
+    # .env carries the same weight as one exported in the shell.
+    apply_env_file(profile_dir)
 
     merged = _deep_merge(packaged_defaults(), _load_yaml(config_file))
     merged = _deep_merge(merged, _env_overrides())

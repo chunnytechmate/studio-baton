@@ -4,7 +4,7 @@
 -- you already have a database, do not run this: point db.tables and db.fields
 -- at your own names instead, then run `baton doctor` to confirm the mapping.
 --
---   sqlite3 data/baton.db < migrations/sqlite.sql
+--   sqlite3 data/studio.db < migrations/sqlite.sql
 
 PRAGMA foreign_keys = ON;
 

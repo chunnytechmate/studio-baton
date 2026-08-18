@@ -48,9 +48,14 @@ baton learner list
 
 `init` asks a handful of questions — your language, timezone, where records
 live, how messages are sent, what you call a student and a session — and writes
-a config, an `.env` listing exactly the variables *that* profile needs, and a
-database with the schema already in it. Pass every answer as a flag with
+a config, an `.env.example` listing exactly the variables *that* profile needs,
+and a database with the schema already in it. Pass every answer as a flag with
 `--yes` to run it unattended.
+
+Baton reads the profile's `.env` when it loads the profile, so filling that
+file in is enough — nothing needs exporting. A variable already set in the
+environment wins over the file, which is how a container or a secret store
+injects credentials without the file being present at all.
 
 `baton doctor` reports every problem at once rather than one per re-run, and
 exits `2` while anything is unresolved. It checks the schema mapping too — a
@@ -319,7 +324,9 @@ stale lockfile to clear by hand:
 
 `src/baton/defaults.yaml` is the documented, complete default. A profile is
 deep-merged over it, then `BATON__SECTION__KEY` environment variables are merged
-over that. To see the result:
+over that. The profile's `.env` is loaded into the environment first, so it can
+carry a `BATON__…` override as well as a credential — and an exported variable
+still beats the file either way. To see the result:
 
 ```bash
 baton config show                 # whole tree
@@ -366,11 +373,14 @@ diffed against the legacy scripts before the old path is retired.
 - [x] **P9** `baton init`, migrations, docs
 - [x] **P10** The parity harness (`tools/parity.py`)
 
-Every phase has landed. Nothing here has run against a live studio yet: the
-drivers that talk to LINE, Telegram, Notion, Google, and ffmpeg are covered by
-fakes and have not been exercised against the real services. Treat the parity
-run below — and a first send to yourself, never to a family — as the gate
-before any of this is trusted with a real lesson.
+Every phase has landed, and the read paths have now been exercised against a
+real studio: `doctor` passes against live Supabase, Notion, and LINE, one real
+LINE message has been delivered, and the parity harness below agrees with the
+scripts being replaced on every learner it compares. What has *not* run against
+anything real is the write-heavy end — video encoding and upload, and booking
+or cancelling a real calendar event. Treat the parity run — and a first send to
+yourself, never to a family — as the gate before any of this is trusted with a
+real lesson.
 
 ## Replacing something that already works
 

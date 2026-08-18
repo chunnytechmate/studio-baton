@@ -30,7 +30,7 @@ db:
   driver: sqlite          # sqlite | supabase | postgrest
 
   sqlite:
-    path: data/baton.db   # relative paths resolve inside the profile directory
+    path: data/studio.db  # relative paths resolve inside the profile directory
 
   supabase:
     url_env: SUPABASE_PROJECT_URL
