@@ -14,7 +14,7 @@ from baton.adapters.db import open_store
 from baton.adapters.db.sqlite import SqliteStore
 from baton.core import config as config_module
 from baton.domain.models import Work
-from baton.errors import ConfigError
+from baton.errors import ConfigError, UpstreamError
 
 MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 
@@ -233,3 +233,50 @@ def test_empty_table_still_validates_its_columns(profile):
         assert opened.list_learners() == []
     finally:
         opened.close()
+
+
+def test_a_busy_database_is_not_reported_as_a_broken_schema(profile, monkeypatch):
+    """SQLite raises one exception type for two unrelated problems.
+
+    "database is locked" means another command is mid-write; it has nothing to
+    do with the schema. Reporting it as a mapping error sent the operator to
+    run a migration against a database someone else was writing to, and — being
+    a ConfigError — it never reached the failover a busy primary is exactly the
+    case for.
+    """
+    db_path = profile / "data" / "studio.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(db_path)
+    connection.executescript((MIGRATIONS / "sqlite.sql").read_text(encoding="utf-8"))
+    connection.executescript((MIGRATIONS / "seed_example.sql").read_text(encoding="utf-8"))
+    connection.close()
+
+    (profile / "baton.yaml").write_text(
+        textwrap.dedent(
+            """
+            version: 1
+            db:
+              driver: sqlite
+              sqlite:
+                path: data/studio.db
+                busy_timeout_ms: 50
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    store = open_store(config_module.load(profile))
+
+    blocker = sqlite3.connect(db_path, isolation_level=None)
+    blocker.execute("BEGIN IMMEDIATE")
+    blocker.execute("UPDATE learners SET name = name")
+    try:
+        learner = store.list_learners()[0]
+        with pytest.raises(UpstreamError) as excinfo:
+            store.set_current_piece(learner.id, None)
+    finally:
+        blocker.close()
+        store.close()
+
+    assert "in use by another process" in excinfo.value.message
+    assert "migration" not in (excinfo.value.remedy or "")

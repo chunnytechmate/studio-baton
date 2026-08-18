@@ -493,7 +493,16 @@ def handle_publish(ctx: Context) -> Exit:
             remedy="Add the document id to the session record, then re-run.",
         )
 
-    if draft.target_done("docs") and not ctx.args.force:
+    # Two places remember a publish, and only one of them survives. The draft
+    # is a single file per learner that `stage` overwrites wholesale, so a
+    # studio that re-stages the same session to fix a title clears the mark and
+    # the gate opens again. The published record is written per session and no
+    # `stage` touches it, so it is the one that can still answer tomorrow.
+    published = draft.target_done("docs") or (
+        _published(ctx).get(learner.id, draft.session_number) is not None
+    )
+
+    if published and not ctx.args.force:
         # Appending the same summary twice leaves two copies on the page and
         # nothing to tell them apart, so a repeat is refused rather than done.
         ctx.report.result(

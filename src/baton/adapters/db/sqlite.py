@@ -23,6 +23,37 @@ from ...errors import ConfigError, UpstreamError
 from .base import FieldMap
 from .mapping import Schema
 
+#: How long a statement waits for a competing writer before giving up. SQLite
+#: allows one writer at a time, so two Baton commands overlapping — a nightly
+#: video job and a morning lookup — is ordinary, not exceptional. Without this
+#: the loser fails instantly.
+DEFAULT_BUSY_TIMEOUT_MS = 5000
+
+#: Substrings SQLite uses for "someone else is holding it", as opposed to
+#: "what you asked for is not there". Both arrive as `OperationalError`.
+_CONTENTION = ("database is locked", "database table is locked", "database is busy")
+
+
+def _is_contention(exc: sqlite3.OperationalError) -> bool:
+    """Whether this failure is a busy database rather than a wrong schema."""
+    message = str(exc).lower()
+    return any(marker in message for marker in _CONTENTION)
+
+
+def _contention_error(exc: sqlite3.OperationalError) -> UpstreamError:
+    """The error a busy database deserves: transient, and worth retrying.
+
+    Raised as `UpstreamError` deliberately. It is what `FallbackStore` fails
+    over on, and a database that is merely busy is exactly the case a fallback
+    exists for — where a misreported schema error would never divert.
+    """
+    return UpstreamError(
+        f"The database is in use by another process: {exc}",
+        service="sqlite",
+        remedy="Wait for the other command to finish and run this again. If it "
+        "happens often, raise db.sqlite.busy_timeout_ms.",
+    )
+
 
 def _to_bool(value: Any) -> bool:
     """SQLite has no boolean type, and studios spell it every possible way."""
@@ -44,7 +75,9 @@ class SqliteStore:
 
     driver = "sqlite"
 
-    def __init__(self, path: Path, schema: Schema) -> None:
+    def __init__(
+        self, path: Path, schema: Schema, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS
+    ) -> None:
         self.path = path
         self.schema = schema
         #: Tables whose columns have been checked against config already.
@@ -61,10 +94,16 @@ class SqliteStore:
         # Survives a crash mid-write without a separate journal to clean up.
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
+        # Wait for a competing writer rather than failing the moment one exists.
+        self._db.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
 
     @classmethod
     def from_config(cls, config: Config) -> SqliteStore:
-        return cls(config.path("db.sqlite.path"), Schema.from_config(config))
+        return cls(
+            config.path("db.sqlite.path"),
+            Schema.from_config(config),
+            busy_timeout_ms=int(config.get("db.sqlite.busy_timeout_ms", DEFAULT_BUSY_TIMEOUT_MS)),
+        )
 
     # -- helpers -----------------------------------------------------------
 
@@ -120,8 +159,10 @@ class SqliteStore:
         try:
             return list(self._db.execute(sql, params))
         except sqlite3.OperationalError as exc:
-            # Almost always a table or column that config promised and the
-            # database does not have. Say which, rather than leaking SQL.
+            if _is_contention(exc):
+                raise _contention_error(exc) from exc
+            # Otherwise a table or column that config promised and the database
+            # does not have. Say which, rather than leaking SQL.
             raise ConfigError(
                 f"The database does not match the configured schema: {exc}",
                 remedy="Run the migration in migrations/sqlite.sql, or correct "
@@ -137,6 +178,8 @@ class SqliteStore:
             self._db.commit()
             return cursor
         except sqlite3.OperationalError as exc:
+            if _is_contention(exc):
+                raise _contention_error(exc) from exc
             raise ConfigError(
                 f"The database does not match the configured schema: {exc}",
                 remedy="Run the migration in migrations/sqlite.sql, or correct "

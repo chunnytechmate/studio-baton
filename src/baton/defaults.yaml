@@ -31,6 +31,10 @@ db:
 
   sqlite:
     path: data/studio.db  # relative paths resolve inside the profile directory
+    # SQLite allows one writer at a time. A statement waits this long for a
+    # competing one before giving up, so two Baton commands overlapping is
+    # ordinary rather than an error.
+    busy_timeout_ms: 5000
 
   supabase:
     url_env: SUPABASE_PROJECT_URL

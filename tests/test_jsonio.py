@@ -91,3 +91,42 @@ def test_write_text_round_trip(tmp_path, text):
     jsonio.write_text(target, text)
 
     assert target.read_text(encoding="utf-8") == text
+
+
+def test_losing_both_copies_is_said_out_loud(tmp_path, capsys):
+    """Returning the default is right; doing it silently is not.
+
+    A corrupt draft and a draft that was never written both used to read as
+    "nothing here", so a lesson someone had typed up could disappear with
+    nobody learning that it had.
+    """
+    target = tmp_path / "draft.json"
+    jsonio.write_json(target, {"lesson": "typed up by a human"})
+    jsonio.write_json(target, {"lesson": "second version"})
+    target.write_text("{not json", encoding="utf-8")
+    jsonio.backup_path(target).write_text("{also not json", encoding="utf-8")
+
+    assert jsonio.read_json(target, default={}) == {}
+
+    assert "could not be read" in capsys.readouterr().err
+    kept = list(tmp_path.glob("draft.json.corrupt-*"))
+    assert len(kept) == 1
+    assert kept[0].read_text(encoding="utf-8") == "{not json"
+
+
+def test_a_missing_file_stays_quiet(tmp_path, capsys):
+    """Only a file that existed and could not be read is worth a warning."""
+    assert jsonio.read_json(tmp_path / "never-written.json", default={}) == {}
+
+    assert capsys.readouterr().err == ""
+
+
+def test_the_backup_is_written_atomically(tmp_path):
+    """The backup is the only recovery source, so a crash during the copy
+    must not be able to truncate it."""
+    target = tmp_path / "state.json"
+    jsonio.write_json(target, {"generation": 1})
+    jsonio.write_json(target, {"generation": 2})
+
+    assert json.loads(jsonio.backup_path(target).read_text(encoding="utf-8")) == {"generation": 1}
+    assert [p.name for p in tmp_path.iterdir() if p.name.endswith(".bak.tmp")] == []

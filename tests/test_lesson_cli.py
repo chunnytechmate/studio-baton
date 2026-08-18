@@ -401,3 +401,29 @@ def test_clear_with_yes_discards_everything(studio, capsys):
 def test_the_resolution_gate_applies_here_too(studio, capsys):
     assert call(studio, "stage", "Whitfield") == Exit.NEEDS_HUMAN
     assert out(capsys)["error"] == "needs_human"
+
+
+def test_re_staging_does_not_reopen_the_publish_gate(studio, capsys):
+    """The draft is one file per learner, overwritten by every `stage`.
+
+    The "already published" gate used to key on a mark inside that file, so
+    staging again between two publishes wiped the evidence and the second
+    publish appended a duplicate summary to the same page — the exact outcome
+    the gate exists to prevent. The published record, which is per session and
+    survives re-staging, is the durable answer.
+    """
+    prepared(studio, capsys)
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+    _, docs = studio
+    after_first = len(docs.list_blocks("doc-ada-03"))
+
+    # Staging the same session again — a studio correcting a title, say.
+    stage_ada(studio, capsys)
+    call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
+    capsys.readouterr()
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["skipped"] == "already published"
+    assert len(docs.list_blocks("doc-ada-03")) == after_first

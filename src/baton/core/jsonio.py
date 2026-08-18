@@ -15,6 +15,7 @@ import os
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,40 @@ def backup_path(path: Path) -> Path:
     return path.with_suffix(path.suffix + ".bak")
 
 
+def _snapshot(path: Path) -> None:
+    """Copy ``path`` onto its ``.bak`` atomically.
+
+    The backup is the only recovery source when the live file is truncated, so
+    it cannot itself be written in a way a crash can truncate. Copying straight
+    onto the destination — which is what this used to do — leaves a half-written
+    backup if the power goes during the copy, losing the one good copy of the
+    state at exactly the moment it is needed.
+    """
+    backup = backup_path(path)
+    tmp = backup.with_suffix(backup.suffix + ".tmp")
+    with open(tmp, "wb") as handle:
+        handle.write(path.read_bytes())
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, backup)
+
+
+def _quarantine(path: Path) -> Path | None:
+    """Move an unreadable file aside, keeping its bytes for inspection.
+
+    Returns the new path, or ``None`` if it could not be moved — this runs on
+    the failure path of a function that promises never to raise, so it must not
+    become the thing that raises.
+    """
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    target = path.with_suffix(path.suffix + f".corrupt-{stamp}")
+    try:
+        os.replace(path, target)
+    except OSError:
+        return None
+    return target
+
+
 def write_json(path: str | Path, data: Any, *, backup: bool = True) -> None:
     """Write ``data`` as JSON atomically, optionally snapshotting the old file.
 
@@ -76,7 +111,7 @@ def write_json(path: str | Path, data: Any, *, backup: bool = True) -> None:
 
     with _locked(path, exclusive=True):
         if backup and path.exists():
-            backup_path(path).write_bytes(path.read_bytes())
+            _snapshot(path)
         with open(tmp_path, "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
@@ -119,6 +154,21 @@ def read_json(path: str | Path, default: Any = None) -> Any:
     if ok:
         return value
 
+    # Both copies are gone. Returning `default` here is right — a pipeline
+    # should not die on unreadable state — but doing it silently makes a
+    # corrupt draft indistinguishable from one that was never written, which
+    # is how a lesson someone typed up disappears without anyone learning
+    # that it did. Keep the bytes, and say so.
+    if path.exists():
+        kept = _quarantine(path)
+        where = f" Its contents were kept at {kept.name}." if kept else ""
+        print(
+            f"! {path.name} could not be read and neither could its backup; "
+            f"continuing without it.{where}",
+            file=sys.stderr,
+            flush=True,
+        )
+
     return default
 
 
@@ -130,7 +180,7 @@ def write_text(path: str | Path, text: str, *, backup: bool = True) -> None:
 
     with _locked(path, exclusive=True):
         if backup and path.exists():
-            backup_path(path).write_bytes(path.read_bytes())
+            _snapshot(path)
         with open(tmp_path, "w", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
