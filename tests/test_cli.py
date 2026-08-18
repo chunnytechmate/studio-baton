@@ -236,3 +236,61 @@ def test_help_and_version_still_exit_through_argparse(profile, capsys):
     with pytest.raises(SystemExit) as excinfo:
         run(["--version"])
     assert excinfo.value.code == 0
+
+
+# -- what doctor was not checking ------------------------------------------
+#
+# `learner in-progress` reads the calendar every morning, and until now doctor
+# said "all checks passed" with no calendar credential in sight — so an expired
+# refresh token surfaced as a failed lesson lookup instead of a failed check.
+
+
+def test_doctor_reports_the_calendar_credentials(profile, monkeypatch, capsys):
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+
+    run(["--profile", str(profile), "doctor", "--offline"])
+
+    assert "GOOGLE_CALENDAR_REFRESH_TOKEN" in capsys.readouterr().out
+
+
+def test_a_calendar_nobody_configured_does_not_fail_doctor(profile, monkeypatch, capsys):
+    """A studio that books no lessons through Baton is not misconfigured."""
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+
+    code = run(["--profile", str(profile), "doctor", "--offline"])
+
+    assert code == Exit.OK
+    assert "✗" not in capsys.readouterr().out
+
+
+def test_strict_requires_the_calendar_credentials(profile, monkeypatch, capsys):
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+
+    code = run(["--profile", str(profile), "doctor", "--offline", "--strict"])
+
+    assert code == Exit.CONFIG
+    assert "GOOGLE_CALENDAR_REFRESH_TOKEN" in capsys.readouterr().out
+
+
+def test_doctor_reports_the_encoder_binary(profile, monkeypatch, capsys):
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+
+    run(["--profile", str(profile), "doctor", "--offline"])
+
+    assert "ffmpeg" in capsys.readouterr().out
+
+
+def test_a_missing_encoder_fails_only_under_strict(profile, monkeypatch, capsys):
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+    monkeypatch.setenv("BATON__MEDIA__ENCODE__BINARY", "definitely-not-installed-xyz")
+
+    assert run(["--profile", str(profile), "doctor", "--offline"]) == Exit.OK
+    capsys.readouterr()
+
+    assert run(["--profile", str(profile), "doctor", "--offline", "--strict"]) == Exit.CONFIG
+    assert "not found" in capsys.readouterr().out

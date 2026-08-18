@@ -36,6 +36,13 @@ pip install studio-baton          # core
 pip install "studio-baton[google]" # plus Drive, YouTube, Calendar
 ```
 
+### Supported platforms
+
+Linux and macOS, both covered by CI on every push. **Windows is not supported.**
+Detached jobs are built on POSIX signals and file locking, so `baton job` and
+everything that runs behind it does not work there — this is a real limit, not
+an untested guess: the Windows suite was run once, in the open, and failed.
+
 ## Quickstart
 
 ```bash

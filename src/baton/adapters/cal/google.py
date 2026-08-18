@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from ...core.config import Config
-from ...errors import ConfigError, UpstreamError
+from ...errors import BatonError, ConfigError, UpstreamError
 from .base import CalendarEvent
 
 
@@ -115,4 +115,22 @@ class GoogleCalendar:
             ) from exc
 
     def health(self) -> None:
-        self.service.calendars().get(calendarId=self.calendar_id).execute()
+        """Prove the credentials still work.
+
+        Google refreshes the access token lazily, on the first call, and a
+        refresh token that has been revoked or has expired fails there with a
+        `RefreshError` rather than anything Baton defines. Left alone it reaches
+        `doctor` as a traceback — which is the one thing doctor must never
+        print, since its whole job is to name every problem at once.
+        """
+        try:
+            self.service.calendars().get(calendarId=self.calendar_id).execute()
+        except BatonError:
+            raise
+        except Exception as exc:  # any vendor failure is a failed check, not a crash
+            raise UpstreamError(
+                f"Google Calendar refused the credentials: {exc}",
+                service="google-calendar",
+                remedy="Re-authorise the calendar and update the refresh token, "
+                "then run `baton doctor` again.",
+            ) from exc

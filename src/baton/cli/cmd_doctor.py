@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import zoneinfo
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from ..adapters import cal as cal_adapters
 from ..adapters import chat as chat_adapters
 from ..adapters import db as db_adapters
 from ..adapters import docs as doc_adapters
@@ -32,7 +35,12 @@ if TYPE_CHECKING:
 KNOWN_DB_DRIVERS = db_adapters.DRIVERS
 KNOWN_DOC_DRIVERS = doc_adapters.DRIVERS
 KNOWN_CHAT_DRIVERS = chat_adapters.DRIVERS
-KNOWN_CALENDAR_DRIVERS = ("google",)
+KNOWN_CALENDAR_DRIVERS = cal_adapters.DRIVERS
+
+#: The credentials the calendar needs. Checked, but never required: a studio can
+#: run Baton with no calendar at all, and a fresh profile should not fail
+#: `doctor` for a Google project its owner has not created yet.
+CALENDAR_SECRETS = ("refresh_token_env", "client_id_env", "client_secret_env")
 
 
 @dataclass
@@ -152,6 +160,67 @@ def _check_schema(ctx: Context, report: Report) -> None:
         )
 
 
+def _calendar_configured(ctx: Context) -> bool:
+    """Whether every credential the configured calendar needs is present."""
+    driver = str(ctx.config.get("calendar.driver", ""))
+    if driver not in KNOWN_CALENDAR_DRIVERS:
+        return False
+    for key in CALENDAR_SECRETS:
+        env_name = ctx.config.get(f"calendar.{driver}.{key}", None)
+        if not env_name or not os.environ.get(str(env_name), ""):
+            return False
+    return True
+
+
+def _check_encoder(ctx: Context, report: Report, *, required: bool) -> None:
+    """Whether the configured encoder binary is on PATH.
+
+    `baton video` shells out to it, so a missing binary is a pipeline that dies
+    at the encode step after the clips have already been downloaded.
+    """
+    if str(ctx.config.get("media.encode.driver", "")) != "ffmpeg":
+        return
+    binary = str(ctx.config.get("media.encode.binary", "ffmpeg"))
+    found = shutil.which(binary)
+    if found:
+        report.add(f"Encoder `{binary}` is on PATH", passed=True, detail=found)
+    elif required:
+        report.add(
+            f"Encoder `{binary}` is on PATH",
+            passed=False,
+            detail="not found",
+            remedy=f"Install {binary}, or set media.encode.binary to its full path.",
+        )
+    else:
+        report.add(
+            f"Encoder `{binary}` is on PATH",
+            passed=True,
+            detail="not found — `baton video` cannot encode until it is",
+        )
+
+
+def _probe(report: Report, label: str, run: Callable[[], None]) -> None:
+    """Record one reachability check, whatever shape its failure arrives in.
+
+    `BatonError` carries its own remedy. Anything else — a vendor SDK raising
+    its own exception type, a socket giving up — is still a failed check, not a
+    traceback: doctor exists to name every problem in one run, and a stack trace
+    ends the run at the first one.
+    """
+    try:
+        run()
+        report.add(label, passed=True)
+    except BatonError as err:
+        report.add(label, passed=False, detail=err.message, remedy=err.remedy or "")
+    except Exception as exc:  # an unexpected failure is still a failed check
+        report.add(
+            label,
+            passed=False,
+            detail=f"{type(exc).__name__}: {exc}",
+            remedy="Unexpected failure from this driver; the detail above is its own message.",
+        )
+
+
 def _check_reachable(ctx: Context, report: Report) -> None:
     """Open each store and prove it answers.
 
@@ -159,31 +228,35 @@ def _check_reachable(ctx: Context, report: Report) -> None:
     that exists under a different name fails here rather than at 2am inside a
     pipeline.
     """
-    store = None
-    try:
+    store: Any = None
+
+    def database() -> None:
+        nonlocal store
         store = db_adapters.open_store(ctx.config)
         store.health()
-        report.add("Database is reachable and every table resolves", passed=True)
-    except BatonError as err:
-        report.add(
-            "Database is reachable and every table resolves",
-            passed=False,
-            detail=err.message,
-            remedy=err.remedy or "",
-        )
+
+    try:
+        _probe(report, "Database is reachable and every table resolves", database)
     finally:
         if store is not None:
             store.close()
 
-    try:
-        doc_adapters.open_docs(ctx.config).health()
-        report.add("Document store accepts the credentials", passed=True)
-    except BatonError as err:
-        report.add(
-            "Document store accepts the credentials",
-            passed=False,
-            detail=err.message,
-            remedy=err.remedy or "",
+    _probe(
+        report,
+        "Document store accepts the credentials",
+        lambda: doc_adapters.open_docs(ctx.config).health(),
+    )
+
+    # Only when the credentials are actually there. A profile that has never
+    # been pointed at a Google project is not broken, but one whose refresh
+    # token has quietly expired is — and `learner in-progress` reads the
+    # calendar every morning, so that expiry has to surface here rather than
+    # halfway through the first question of the day.
+    if _calendar_configured(ctx):
+        _probe(
+            report,
+            "Calendar accepts the credentials",
+            lambda: cal_adapters.open_calendar(ctx.config).health(),
         )
 
 
@@ -245,6 +318,11 @@ def handle(ctx: Context) -> Exit:
     for section, keys in selected.items():
         for key in keys:
             _check_secret(ctx, report, t, f"{section}.{key}", required=True)
+
+    for key in CALENDAR_SECRETS:
+        _check_secret(ctx, report, t, f"calendar.{cal_driver}.{key}", required=ctx.args.strict)
+
+    _check_encoder(ctx, report, required=ctx.args.strict)
 
     _check_schema(ctx, report)
     if not ctx.args.offline:

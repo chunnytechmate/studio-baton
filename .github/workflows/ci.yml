@@ -23,10 +23,10 @@ jobs:
         # neither may be left to chance.
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
-          # The state layer uses file locking, which differs on Windows. One
-          # Windows job is enough to catch a POSIX-only regression.
-          - os: windows-latest
-            python: "3.12"
+          # macOS is the other platform a studio might run this from by hand.
+          # Windows is not tested because it is not supported: the job layer is
+          # built on POSIX signals and file locking, and its first honest CI run
+          # said so out loud. See "Supported platforms" in the README.
           - os: macos-latest
             python: "3.12"
     steps:
