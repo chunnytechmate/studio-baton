@@ -51,17 +51,28 @@ IFACE_PREFIX = (
 )
 
 #: Where a protocol family ends up once the adapter has done its work.
+#: The publisher family is absent on purpose — its methods do not share one
+#: destination, so it lives in SERVICE_METHOD below.
 SERVICE = {
     "docs": "notion",
     "store": "supabase",
     "calendar": "gcal",
     "source": "drive",
     "encoder": "ffmpeg",
-    "publisher": "youtube",
     "messenger": "line",
     "jsonio": "disk",
     "render": None,
     "jobs": "disk",
+}
+
+#: Families whose methods do not all reach the same place, decided per
+#: method. ``publisher.upload`` is the media publisher whose protocol
+#: default calls YouTube directly. ``publisher.publish`` and
+#: ``publisher.plan`` resolve to SummaryPublisher, whose real work already
+#: shows up as edges into the docs protocol — a YouTube edge there would
+#: claim the lesson summary is published as a video.
+SERVICE_METHOD = {
+    "publisher": {"upload": "youtube"},
 }
 
 #: Concrete adapters: module → (protocol family, service it reaches).
@@ -266,7 +277,11 @@ def build(root: Path) -> dict[str, object]:
         family = node["l"].split(".")[0]
         if family in impl_families:
             continue
-        service = SERVICE.get(family)
+        per_method = SERVICE_METHOD.get(family)
+        if per_method is not None:
+            service = per_method.get(node["l"].split(".")[-1])
+        else:
+            service = SERVICE.get(family)
         if service:
             add("svc:" + service, "svc", service, service)
             link(nid, "svc:" + service)
