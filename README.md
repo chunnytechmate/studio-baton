@@ -14,6 +14,36 @@ summary — and even that is submitted as JSON validated against a schema.
 > configuration format is versioned and will not change shape without saying
 > so. See [Roadmap](#roadmap).
 
+## Where it came from
+
+Studio Baton is the third generation of one workflow used in a real music studio:
+
+**Class Summarize scripts → [PLAM](https://github.com/chunnytechmate/plam) voice assistant →
+OpenClaw skills → Studio Baton**
+
+The first scripts proved that lesson video could move from Google Drive through transcription,
+music-vocabulary correction, an LLM summary, and Notion automatically. PLAM put those pipelines
+behind a Thai voice interface and added scheduling, searchable memory, and video. Rebuilding the
+work as OpenClaw skills made orchestration more reliable, but an agent still had to read long
+instructions and assemble API calls.
+
+Baton makes that last layer executable. Rules become commands, model output becomes data validated
+against a schema, and risky actions become gates with machine-readable outcomes. The real studio's
+profile and data are not part of this repository; this package is the reusable mechanism.
+
+## The working cycle
+
+The command groups follow the work around one lesson rather than an abstract software taxonomy:
+
+1. **Book** — resolve an exact learner, update the next session document, then create the calendar event.
+2. **Teach and record** — upload short lesson clips to that learner's source folder.
+3. **Process video** — collect, encode, upload, and link the recording back to the session.
+4. **Write the lesson** — stage a note, give a model contracted context, validate, preview, and publish.
+5. **Review and send** — deliver the short report only after its required data passes the gate.
+
+Speech recognition is deliberately outside Baton. A harness may accept typed text or provide its
+own speech layer, but the operational CLI is not coupled to one ASR model.
+
 ## What it does
 
 | Command | Job |
@@ -353,6 +383,11 @@ Each is a decision table — a trigger, the exact command, and what to do about
 each exit code — not a manual. None of them contains an API call, a JSON
 payload, or a `python3 -c`: everything a model would otherwise assemble by hand
 is a subcommand instead, which is what the CLI underneath is for.
+
+The live harness adds [ZeroSkim](https://github.com/chunnytechmate/ZeroSkim) above this layer:
+SHA-256 evidence with a 15-minute gate requires an agent to read the relevant skill before work.
+That gate reduces forgotten instructions; Baton's own name, schema, state, and completeness checks
+still run afterwards and limit the effect when a model gets the instruction wrong anyway.
 
 `tests/test_skills.py` keeps them honest. It fails if a raw API call reappears,
 if a skill stops documenting its exit codes, or if one grows past 120 lines —
