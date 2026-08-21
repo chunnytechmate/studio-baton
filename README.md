@@ -384,7 +384,7 @@ each exit code — not a manual. None of them contains an API call, a JSON
 payload, or a `python3 -c`: everything a model would otherwise assemble by hand
 is a subcommand instead, which is what the CLI underneath is for.
 
-The live harness adds [ZeroSkim](https://github.com/chunnytechmate/ZeroSkim) above this layer:
+The live harness adds [zeroskim](https://github.com/chunnytechmate/zeroskim) above this layer:
 SHA-256 evidence with a 15-minute gate requires an agent to read the relevant skill before work.
 That gate reduces forgotten instructions; Baton's own name, schema, state, and completeness checks
 still run afterwards and limit the effect when a model gets the instruction wrong anyway.
@@ -417,8 +417,11 @@ diffed against the legacy scripts before the old path is retired.
 
 Every phase has landed, and the read paths have now been exercised against a
 real studio: `doctor` passes against live Supabase, Notion, and LINE, one real
-LINE message has been delivered, and the parity harness below agrees with the
-scripts being replaced on every learner it compares. What has *not* run against
+LINE message has been delivered, and a `student-lookup` skill now runs inside
+the live harness so production lookups go through Baton's read path while the
+write paths stay on the legacy system by design. The parity harness below
+agreed with the scripts being replaced on all 54 cases of its latest round
+(18 August 2026). What has *not* run against
 anything real is the write-heavy end — video encoding and upload, and booking
 or cancelling a real calendar event. Treat the parity run — and a first send to
 yourself, never to a family — as the gate before any of this is trusted with a
