@@ -61,6 +61,7 @@ GLOBAL_FLAGS = {"--json", "--quiet", "--profile"}
 
 def test_there_is_a_skill_for_each_pipeline():
     assert {path.parent.name for path in SKILL_FILES} == {
+        "course-archive",
         "lesson-summarizer",
         "quick-notes",
         "send-lesson",

@@ -143,6 +143,37 @@ docs:
     # - {type: heading_3, startswith: "🎵"}
 
 # ---------------------------------------------------------------------------
+# Finished courses
+# ---------------------------------------------------------------------------
+courses:
+  archive:
+    # A finished course is kept as a copy of its page, named for the span it
+    # covered. Baton computes the name and checks the copy; the copy itself is
+    # made by the harness's duplicate tool, because a table rebuilt call by
+    # call loses its layout and looks like an archive without being one.
+
+    # Sub-pages beside the course page whose title contains one of these are
+    # treated as the folder finished courses belong in. When a learner has no
+    # such folder, the copy stays where the live course is — which is where a
+    # duplicate already lands, so nothing has to move.
+    folder_titles: [Archives, Archive]
+
+    # {course} is the live page's title with any span it already carries
+    # stripped, plus --label in brackets when one is given. {span} is below.
+    title: "{course} ({span})"
+
+    span:
+      # Each end without its year. The year is appended to the closing end,
+      # and to the opening end as well when the two fall in different years.
+      format: "%d/%m"
+      year: "%y"
+      # gregorian | buddhist — applied to the year only, so a studio that
+      # writes 2569 for 2026 gets the names its shelves already use.
+      era: gregorian
+      separator: " - "
+      joiner: "/"
+
+# ---------------------------------------------------------------------------
 # Messaging
 # ---------------------------------------------------------------------------
 chat:

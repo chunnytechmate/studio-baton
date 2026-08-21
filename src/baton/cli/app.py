@@ -152,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     from . import (
         cmd_calendar,
         cmd_config,
+        cmd_course,
         cmd_doctor,
         cmd_init,
         cmd_job,
@@ -171,6 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_send,
         cmd_video,
         cmd_calendar,
+        cmd_course,
         cmd_notes,
         cmd_job,
     ):

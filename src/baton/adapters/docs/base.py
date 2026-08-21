@@ -133,12 +133,78 @@ class PreservePolicy:
         return preserved, replaceable
 
 
+@dataclass(frozen=True)
+class DocPage:
+    """Where a page sits, so a course's filing can be read rather than assumed.
+
+    ``parent_id`` is whatever holds the page — in Notion that can be another
+    page or a block, because a studio may keep its course pages inside a
+    callout rather than directly under a page. Callers only ever compare it or
+    list its children, so the distinction is carried in ``parent_kind`` for
+    reporting and otherwise left alone.
+    """
+
+    doc_id: str
+    title: str
+    parent_id: str
+    parent_kind: str
+    trashed: bool = False
+    url: str = ""
+
+
+@dataclass(frozen=True)
+class DocChild:
+    """One entry inside a page or block: a sub-page, or an embedded table."""
+
+    child_id: str
+    kind: str
+    title: str
+
+
+@dataclass(frozen=True)
+class TableRow:
+    """One row of an embedded table, read through the configured properties."""
+
+    row_id: str
+    title: str
+    date: str
+    status: str
+
+
 @runtime_checkable
 class DocStore(Protocol):
     """Read and update session documents."""
 
     def get_status(self, doc_id: str) -> DocStatus:
         """Status, date, titles, and block count for one document."""
+        ...
+
+    def get_page(self, doc_id: str) -> DocPage:
+        """Identity and parentage of one page."""
+        ...
+
+    def list_children(self, doc_id: str) -> list[DocChild]:
+        """Sub-pages and embedded tables directly inside a page or block."""
+        ...
+
+    def get_table(self, table_id: str) -> DocPage:
+        """Identity and parentage of an embedded table.
+
+        ``parent_id`` is the page the table sits on — read that page to learn
+        what the table is part of.
+        """
+        ...
+
+    def table_rows(self, table_id: str) -> list[TableRow]:
+        """Every row of an embedded table."""
+        ...
+
+    def reset_properties(self, doc_id: str) -> list[str]:
+        """Clear every writable property except the title. Returns their names."""
+        ...
+
+    def restore(self, doc_id: str) -> bool:
+        """Bring a page back from the trash. True when it is usable afterwards."""
         ...
 
     def set_status(self, doc_id: str, status: str) -> None:

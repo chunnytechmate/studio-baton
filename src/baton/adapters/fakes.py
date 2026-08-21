@@ -17,7 +17,7 @@ from typing import Any
 from ..domain.models import Learner, Piece, Session, Work
 from ..errors import ConfigError, UpstreamError
 from .db.base import LearnerStore
-from .docs.base import Block, DocStatus, PreservePolicy
+from .docs.base import Block, DocChild, DocPage, DocStatus, PreservePolicy, TableRow
 
 
 class FakeLearnerStore:
@@ -145,6 +145,9 @@ class FakeDocStore:
         statuses: dict[str, DocStatus] | None = None,
         blocks: dict[str, list[Block]] | None = None,
         preserve: PreservePolicy | None = None,
+        pages: dict[str, DocPage] | None = None,
+        children: dict[str, list[DocChild]] | None = None,
+        tables: dict[str, list[TableRow]] | None = None,
     ) -> None:
         self.statuses = dict(statuses or {})
         self.blocks = {key: list(value) for key, value in (blocks or {}).items()}
@@ -153,6 +156,53 @@ class FakeDocStore:
         self.created_pages: list[dict[str, Any]] = []
         self.fail_with: Exception | None = None
         self._ids = itertools.count(start=1)
+        # Filing: which page holds what, and what each table contains.
+        self.pages = dict(pages or {})
+        self.children = {key: list(value) for key, value in (children or {}).items()}
+        self.tables = {key: list(value) for key, value in (tables or {}).items()}
+        self.reset_calls: list[str] = []
+        self.trashed: set[str] = set()
+
+    # -- filing ------------------------------------------------------------
+
+    def get_page(self, doc_id: str) -> DocPage:
+        self._check()
+        page = self.pages.get(doc_id)
+        if page is None:
+            return DocPage(doc_id=doc_id, title="", parent_id="", parent_kind="")
+        return DocPage(
+            doc_id=page.doc_id,
+            title=page.title,
+            parent_id=page.parent_id,
+            parent_kind=page.parent_kind,
+            trashed=doc_id in self.trashed or page.trashed,
+            url=page.url,
+        )
+
+    def list_children(self, doc_id: str) -> list[DocChild]:
+        self._check()
+        return list(self.children.get(doc_id, []))
+
+    def get_table(self, table_id: str) -> DocPage:
+        self._check()
+        return self.get_page(table_id)
+
+    def table_rows(self, table_id: str) -> list[TableRow]:
+        self._check()
+        return list(self.tables.get(table_id, []))
+
+    def reset_properties(self, doc_id: str) -> list[str]:
+        self._check()
+        self.reset_calls.append(doc_id)
+        current = self.statuses.get(doc_id)
+        if current is not None:
+            self.statuses[doc_id] = DocStatus(doc_id=doc_id, url=current.url)
+        return ["date", "status", "titles"]
+
+    def restore(self, doc_id: str) -> bool:
+        self._check()
+        self.trashed.discard(doc_id)
+        return True
 
     def _check(self) -> None:
         if self.fail_with is not None:

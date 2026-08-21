@@ -18,12 +18,45 @@ from typing import Any
 from ...core.config import Config
 from ...core.retry import http_request
 from ...errors import ConfigError, UpstreamError
-from .base import Block, DocStatus, PreservePolicy
+from .base import Block, DocChild, DocPage, DocStatus, PreservePolicy, TableRow
 
 API_ROOT = "https://api.notion.com/v1"
 
 #: Notion's documented ceiling on children per append request.
 MAX_CHILDREN_PER_REQUEST = 100
+
+#: Property types Notion computes. Writing to one is an error, not a no-op.
+_READ_ONLY_PROPERTIES = frozenset(
+    {
+        "rollup",
+        "formula",
+        "created_time",
+        "created_by",
+        "last_edited_time",
+        "last_edited_by",
+        "unique_id",
+        "button",
+        "verification",
+        "last_visited_time",
+    }
+)
+
+#: What "empty" is for each writable property type.
+_EMPTY_PROPERTY: dict[str, Any] = {
+    "rich_text": list,
+    "date": lambda: None,
+    "select": lambda: None,
+    "multi_select": list,
+    "number": lambda: None,
+    "checkbox": lambda: False,
+    "url": lambda: None,
+    "email": lambda: None,
+    "phone_number": lambda: None,
+    "people": list,
+    "files": list,
+    "relation": list,
+    "status": lambda: None,
+}
 
 #: Block types whose text lives under a ``rich_text`` array.
 _RICH_TEXT_TYPES = frozenset(
@@ -307,6 +340,143 @@ class NotionDocStore:
             self._request("DELETE", f"/blocks/{block_id}", op="block-delete")
             deleted += 1
         return deleted
+
+    # -- filing ------------------------------------------------------------
+
+    @staticmethod
+    def _title_of(page: dict[str, Any]) -> str:
+        for prop in (page.get("properties") or {}).values():
+            if prop.get("type") == "title":
+                return "".join(part.get("plain_text", "") for part in prop.get("title", [])).strip()
+        return ""
+
+    @staticmethod
+    def _parentage(raw: dict[str, Any]) -> tuple[str, str]:
+        """Whatever holds this thing, and what kind of holder it is.
+
+        A course page kept inside a callout reports a block parent, not a page
+        one. Both are usable — children can be listed from either — so the id
+        is taken from whichever key is present instead of demanding a page.
+        """
+        parent = raw.get("parent") or {}
+        kind = str(parent.get("type", ""))
+        return str(parent.get(kind, "") or ""), kind
+
+    def get_page(self, doc_id: str) -> DocPage:
+        page = self._request("GET", f"/pages/{doc_id}")
+        parent_id, parent_kind = self._parentage(page)
+        return DocPage(
+            doc_id=str(page.get("id", doc_id)),
+            title=self._title_of(page),
+            parent_id=parent_id,
+            parent_kind=parent_kind,
+            trashed=bool(page.get("archived") or page.get("in_trash")),
+            url=str(page.get("url", "")),
+        )
+
+    def list_children(self, doc_id: str) -> list[DocChild]:
+        """Sub-pages and embedded tables, in the order they appear."""
+        children: list[DocChild] = []
+        cursor: str | None = None
+        while True:
+            path = f"/blocks/{doc_id}/children?page_size=100"
+            if cursor:
+                path = f"{path}&start_cursor={cursor}"
+            payload = self._request("GET", path)
+            for raw in payload.get("results", []):
+                kind = str(raw.get("type", ""))
+                if kind not in ("child_page", "child_database"):
+                    continue
+                children.append(
+                    DocChild(
+                        child_id=str(raw.get("id", "")),
+                        kind="page" if kind == "child_page" else "table",
+                        title=str((raw.get(kind) or {}).get("title", "")).strip(),
+                    )
+                )
+            if not payload.get("has_more"):
+                return children
+            cursor = payload.get("next_cursor")
+            if not cursor:
+                return children
+
+    def get_table(self, table_id: str) -> DocPage:
+        """The table's own identity; its parent is the page it sits on."""
+        table = self._request("GET", f"/databases/{table_id}")
+        parent_id, parent_kind = self._parentage(table)
+        title = "".join(part.get("plain_text", "") for part in table.get("title", [])).strip()
+        return DocPage(
+            doc_id=str(table.get("id", table_id)),
+            title=title,
+            parent_id=parent_id,
+            parent_kind=parent_kind,
+            trashed=bool(table.get("archived") or table.get("in_trash")),
+            url=str(table.get("url", "")),
+        )
+
+    def table_rows(self, table_id: str) -> list[TableRow]:
+        """Every row, read through the configured property names."""
+        rows: list[TableRow] = []
+        cursor: str | None = None
+        while True:
+            body: dict[str, Any] = {"page_size": 100}
+            if cursor:
+                body["start_cursor"] = cursor
+            payload = self._request("POST", f"/databases/{table_id}/query", body)
+            for raw in payload.get("results", []):
+                properties = raw.get("properties", {}) or {}
+
+                def read(key: str, properties: dict[str, Any] = properties) -> str:
+                    name = self.properties.get(key)
+                    if not name or name not in properties:
+                        return ""
+                    return self._read_property(properties[name])
+
+                rows.append(
+                    TableRow(
+                        row_id=str(raw.get("id", "")),
+                        title=self._title_of(raw),
+                        date=read("date"),
+                        status=read("status"),
+                    )
+                )
+            if not payload.get("has_more"):
+                return rows
+            cursor = payload.get("next_cursor")
+            if not cursor:
+                return rows
+
+    def reset_properties(self, doc_id: str) -> list[str]:
+        """Empty every writable property but the title.
+
+        The title is what identifies a row once its contents are gone, so
+        clearing it would leave a course of blank lines nobody can file.
+        """
+        page = self._request("GET", f"/pages/{doc_id}")
+        payload: dict[str, Any] = {}
+        for name, prop in (page.get("properties") or {}).items():
+            kind = str(prop.get("type", ""))
+            if kind in _READ_ONLY_PROPERTIES or kind == "title":
+                continue
+            empty = _EMPTY_PROPERTY.get(kind)
+            if empty is None:
+                continue
+            if kind == "status":
+                not_started = self.statuses.get("not_started")
+                payload[name] = {"status": {"name": not_started} if not_started else None}
+                continue
+            payload[name] = {kind: empty()}
+        if payload:
+            self._request("PATCH", f"/pages/{doc_id}", {"properties": payload})
+        return sorted(payload)
+
+    def restore(self, doc_id: str) -> bool:
+        """Bring a page back from the trash, if that is where it is."""
+        page = self._request("GET", f"/pages/{doc_id}")
+        if not (page.get("archived") or page.get("in_trash")):
+            return True
+        restored = self._request("PATCH", f"/pages/{doc_id}", {"archived": False})
+        return not (restored.get("archived") or restored.get("in_trash"))
 
     # -- lifecycle ---------------------------------------------------------
 
