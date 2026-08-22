@@ -139,6 +139,99 @@ def test_a_side_that_fails_is_reported_rather_than_assumed_equal(tmp_path, monke
     assert "did not produce JSON" in capsys.readouterr().out
 
 
+def test_a_refusal_is_an_answer_not_a_missing_one(tmp_path, monkeypatch, capsys):
+    """Both systems print their refusal and then exit non-zero — the legacy
+    prep report exits 1 when nobody passes its gate, Baton exits 5. Throwing
+    the payload away turned two systems agreeing to refuse into a disagreement
+    for every field compared."""
+    legacy = tmp_path / "legacy.py"
+    legacy.write_text(
+        "import json, sys; print(json.dumps({'ok': False, 'ready': []})); sys.exit(1)",
+        encoding="utf-8",
+    )
+    baton = tmp_path / "baton.py"
+    baton.write_text(
+        "import json, sys; print(json.dumps({'ok': False, 'ready': []})); sys.exit(5)",
+        encoding="utf-8",
+    )
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": "gate",
+                        "legacy": f"{sys.executable} {legacy}",
+                        "baton": f"{sys.executable} {baton}",
+                        "compare": {"legacy": "ok", "baton": "ok"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "argv", ["parity", "--spec", str(spec)])
+
+    assert parity.main() == 0
+    assert "Every case agreed" in capsys.readouterr().out
+
+
+def test_a_banner_before_the_json_does_not_hide_it(tmp_path, monkeypatch, capsys):
+    """The legacy scripts run under a read-gate that prints before they do."""
+    script = tmp_path / "bannered.py"
+    script.write_text(
+        "import json; print('[zeroskim] skill read 2 minutes ago'); print(json.dumps({'week': 3}))",
+        encoding="utf-8",
+    )
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": "bannered",
+                        "legacy": f"{sys.executable} {script}",
+                        "baton": f"{sys.executable} {script}",
+                        "compare": {"legacy": "week", "baton": "week"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "argv", ["parity", "--spec", str(spec)])
+
+    assert parity.main() == 0
+
+
+def test_a_side_that_prints_nothing_is_still_a_disagreement(tmp_path, monkeypatch, capsys):
+    """A crash with no output must never read as agreement."""
+    silent = tmp_path / "silent.py"
+    silent.write_text("import sys; sys.exit(9)", encoding="utf-8")
+    baton = tmp_path / "baton.py"
+    baton.write_text("import json; print(json.dumps({'week': 3}))", encoding="utf-8")
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": "silent",
+                        "legacy": f"{sys.executable} {silent}",
+                        "baton": f"{sys.executable} {baton}",
+                        "compare": {"legacy": "week", "baton": "week"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "argv", ["parity", "--spec", str(spec)])
+
+    assert parity.main() == 1
+    assert "exit 9" in capsys.readouterr().out
+
+
 def test_non_json_output_is_a_disagreement_not_a_pass(tmp_path, monkeypatch, capsys):
     legacy = tmp_path / "legacy.py"
     legacy.write_text("print('W3 done')", encoding="utf-8")

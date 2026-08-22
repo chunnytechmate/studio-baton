@@ -40,6 +40,29 @@ from typing import Any
 import yaml
 
 
+def _parse(stdout: str) -> Any:
+    """The JSON document a side printed, or ``None`` if it printed none.
+
+    Legacy scripts print a banner before their JSON (the zeroskim gate writes
+    one), so the last complete document on stdout is the answer rather than the
+    whole stream.
+    """
+    text = (stdout or "").strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start = text.find("{")
+    while start != -1:
+        try:
+            return json.loads(text[start:])
+        except json.JSONDecodeError:
+            start = text.find("{", start + 1)
+    return None
+
+
 def dig(payload: Any, path: str) -> Any:
     """Read a dotted path out of parsed JSON, tolerating lists.
 
@@ -143,13 +166,20 @@ class Runner:
         if completed.returncode != 0:
             # A non-zero exit is information, not a failure of the harness:
             # "the old one errors here and the new one answers" is exactly the
-            # kind of difference worth seeing.
+            # kind of difference worth seeing — but a refusal is an answer, and
+            # both systems print theirs before exiting. Half of Baton's surface
+            # is fail-closed and the legacy prep report exits 1 whenever nobody
+            # passes its gate, so discarding the payload here reported two
+            # systems that agreed to refuse as dozens of disagreements.
+            payload = _parse(completed.stdout)
+            if payload is not None:
+                return payload, ""
             return None, f"exit {completed.returncode}: {(completed.stderr or '').strip()[:200]}"
 
-        try:
-            return json.loads(completed.stdout), ""
-        except json.JSONDecodeError:
+        payload = _parse(completed.stdout)
+        if payload is None:
             return None, "output was not JSON"
+        return payload, ""
 
     def _learners(self) -> list[str]:
         """Every learner name, from Baton — the only side that must be right."""
