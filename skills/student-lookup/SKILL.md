@@ -35,6 +35,11 @@ Every command takes `--json` and prints one document. Read the exit code first.
 skipped — illness, cancellations, pages made in advance — so a high number
 proves nothing about what happened. The command already applies this.
 
+**`learner latest` also returns the page as `sections`** — overview, content,
+focus, practice goals, next goal, homework — so "what did we do last time" needs
+no second command. `sections_unreadable` means the page could not be read, not
+that it was empty. For a whole day of lessons at once, use `baton prep`.
+
 **A name that is not exact stops the work.** Exit `3` carries
 `details.candidates`. Show them to the user and wait for an answer. Do not pick
 the only candidate, even when there is only one.

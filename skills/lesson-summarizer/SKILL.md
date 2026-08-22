@@ -62,6 +62,16 @@ you to run the whole thing unattended.
 two summaries on the page. Use `--force` only if the user explicitly asks to
 replace it.
 
+**Publishing ends the session.** It marks the page done and fills the date and
+repertoire columns if they are empty, so the next summary goes to the next
+session and `prep` can brief this one. You do not do this afterwards, and there
+is no command for it.
+
+**Exit 6 after a publish means the summary landed but the session is not
+closed.** Re-run `baton lesson publish` — it appends nothing the second time
+and only finishes the session. Say so rather than reporting the summary as
+lost.
+
 ## Exit codes
 
 | Code | Do this |
