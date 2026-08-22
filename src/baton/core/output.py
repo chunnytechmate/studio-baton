@@ -84,9 +84,15 @@ class Reporter:
         In JSON mode the envelope goes to stdout so a caller reads results and
         errors from one place; in human mode the text goes to stderr so shell
         pipelines are not polluted by error prose.
+
+        ``ok`` is guaranteed here rather than assumed of the caller. Commands
+        whose refusal *is* their report — `prep`, `course` — pass the report
+        itself, which is a body and not an envelope, and the field went missing
+        on exactly the paths a caller most needs to branch on.
         """
         if self.json_mode:
-            print(json.dumps(payload, ensure_ascii=False, indent=2), file=self._out)
+            document = {"ok": False, **payload}
+            print(json.dumps(document, ensure_ascii=False, indent=2), file=self._out)
         else:
             print(human, file=self._err)
 

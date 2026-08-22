@@ -303,3 +303,21 @@ def test_a_learner_with_no_finished_session_is_blocked_not_guessed(studio, capsy
     assert call(studio, "prep", "--learner", "Clara Nguyen") == Exit.GATE
     payload = json.loads(capsys.readouterr().out)
     assert payload["blocked"] == [{"learner": "Clara Nguyen", "missing": ["latest_done"]}]
+
+
+def test_a_blocked_report_still_says_ok_false(studio, capsys):
+    """Every other command's JSON carries `ok`. `prep` hands its report to the
+    failure path, which takes an envelope and was given a body, so the field
+    vanished on exactly the path a caller most needs to branch on.
+
+    Found by the first prep parity round against the studio's own data: the
+    legacy report says `"ok": false` there and Baton said nothing at all.
+    """
+    _, _, calendar = studio
+    _booked(calendar, "Bruno Castell (week 1)")
+
+    assert call(studio, "prep", "--date", "2026-08-22") == Exit.GATE
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["ok"] is False
+    assert payload["blocked"][0]["learner"] == "Bruno Castell"
