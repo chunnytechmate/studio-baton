@@ -98,6 +98,43 @@ def test_fenced_code_keeps_its_language_and_blank_lines():
     assert text_of(blocks[0]) == "def f():\n\n    return 1"
 
 
+@pytest.mark.parametrize(
+    ("tag", "expected"),
+    [
+        ("js", "javascript"),
+        ("JS", "javascript"),
+        ("py", "python"),
+        ("ts", "typescript"),
+        ("sh", "shell"),
+        ("yml", "yaml"),
+        ("cpp", "c++"),
+        ("csharp", "c#"),
+        ("dockerfile", "docker"),
+        ("psql", "sql"),
+    ],
+)
+def test_a_short_language_name_becomes_the_one_notion_knows(tag, expected):
+    """Notion validates this field against a fixed list and rejects the whole
+    request otherwise, so ```js used to cost the entire note."""
+    blocks = markdown.to_blocks(f"```{tag}\nx\n```")
+
+    assert blocks[0]["code"]["language"] == expected
+
+
+def test_a_language_notion_does_not_know_becomes_plain_text():
+    """A fence tag is whatever the writer typed. One unrecognised word must
+    not be the reason a page fails to publish."""
+    blocks = markdown.to_blocks("```wolfram-ish\nx\n```")
+
+    assert blocks[0]["code"]["language"] == "plain text"
+
+
+def test_a_language_notion_does_know_is_left_alone():
+    blocks = markdown.to_blocks("```mermaid\ngraph TD\n```")
+
+    assert blocks[0]["code"]["language"] == "mermaid"
+
+
 def test_an_unclosed_fence_still_yields_its_content():
     """A typo is not a reason to lose what was written."""
     blocks = markdown.to_blocks("```\nstill here")

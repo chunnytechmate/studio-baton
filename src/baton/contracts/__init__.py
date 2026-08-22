@@ -169,7 +169,9 @@ def validate_callouts(payload: dict[str, Any], known_ids: set[str]) -> list[dict
                 _violation(
                     f"/callouts/{index}",
                     f"`{callout_id}` is not in this studio's theory notes",
-                    "Use `baton lesson theory` to find a real id, or drop the callout.",
+                    "`lesson contract` lists every id that exists under "
+                    "`constraints.available_callout_ids`. Use one of those, or "
+                    "drop the callout.",
                 )
             )
     return violations
