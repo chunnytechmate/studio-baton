@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING, Any
 from ..adapters.db import open_store
 from ..adapters.docs import open_docs
 from ..domain.models import Work
+from ..domain.prep import SectionRules
 from ..domain.resolve import resolve_learner
 from ..domain.status import StatusVocabulary
 from ..domain.whenever import today_in
-from ..errors import UsageError
+from ..errors import BatonError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory, SessionView
 from .cmd_calendar import _scheduler
@@ -278,13 +279,31 @@ def handle_latest(ctx: Context) -> Exit:
         )
         return Exit.OK
 
-    ctx.report.result(
-        payload,
-        human=f"{learner.name} — {label} {view.number}"
+    # The page's headings carry what properties cannot: what was covered, what
+    # was set to practise, where the teaching goes next. One extra read turns
+    # "which session was last" into "prepare the next lesson" in one command.
+    sections: dict[str, str] = {}
+    unreadable = ""
+    if view.session.doc_id:
+        try:
+            blocks = history.docs.list_blocks(view.session.doc_id)
+            sections = SectionRules.from_config(ctx.config).read(blocks)
+        except BatonError as exc:
+            unreadable = exc.message
+    payload["sections"] = sections
+    if unreadable:
+        payload["sections_unreadable"] = unreadable
+
+    lines = [
+        f"{learner.name} — {label} {view.number}"
         f"{f'  {view.doc.date}' if view.doc.date else ''}"
-        f"{f'  {view.doc.titles}' if view.doc.titles else ''}\n"
+        f"{f'  {view.doc.titles}' if view.doc.titles else ''}",
         f"  doc: {view.session.doc_id}",
-    )
+    ]
+    if unreadable:
+        lines.append(f"  sections unreadable: {unreadable}")
+    lines += [f"  {name.replace('_', ' ')}: {text}" for name, text in sections.items() if text]
+    ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
 
 

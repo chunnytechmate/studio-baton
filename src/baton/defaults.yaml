@@ -142,6 +142,40 @@ docs:
     # - {type: callout, icon: "🎧"}
     # - {type: heading_3, startswith: "🎵"}
 
+  # Reading a summarised page as named sections, for lesson preparation. Each
+  # key names a section; its list holds the words a heading may carry to open
+  # it (case-insensitive substring, so emoji and bracketed English survive).
+  # Order matters: a heading matching two sections belongs to the first one.
+  # These defaults are the studio's own template headings.
+  sections:
+    overview: [ภาพรวมการเรียน, Overview]
+    content: [เนื้อหา, สิ่งที่เรียน, Core Lesson]
+    focus: [โฟกัส, Focus]
+    practice_goals: [เป้าหมายการซ้อม, Practice Goals]
+    next_goal: [ครั้งถัดไป]
+    homework: [การบ้าน, Homework]
+
+  # Block types that are homework wherever they sit on the page — a checklist
+  # under "overview" is still a thing to practise.
+  homework_types: [to_do]
+
+  # The summariser's credit line, stripped from every section (DOTALL regex).
+  summary_footer: 'หางยาว \(\d+ .*\) สรุปนี้มาจากผู้ช่วย AI'
+
+# ---------------------------------------------------------------------------
+# Lesson preparation
+# ---------------------------------------------------------------------------
+prep:
+  # The report is a gate, not a summary: a learner listed only when every
+  # required field of their latest session is present, so nothing half-read
+  # reaches the teacher. Fields a studio tracks loosely belong in `warning`
+  # instead — reported when missing, never blocking.
+  required: [week, date, titles, notion_link, overview, content, homework]
+  warning: [next_goal]
+
+  # Per-section ceiling when reading a page, in characters.
+  max_section_chars: 400
+
 # ---------------------------------------------------------------------------
 # Finished courses
 # ---------------------------------------------------------------------------

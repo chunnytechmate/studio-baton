@@ -406,6 +406,35 @@ class Scheduler:
             },
         )
 
+    def who_is_booked(
+        self, store: LearnerStore, day: date
+    ) -> tuple[list[Learner], list[dict[str, Any]]]:
+        """Every learner with a lesson booked on ``day``, plus unmatched events.
+
+        The same anchored title match ``in_progress`` uses, asked of one day
+        instead of a window. A learner booked twice that day appears once. An
+        event naming no learner is listed, never guessed at — a person typed
+        it, and only they know what it meant.
+        """
+        start = combine(day, parse_time("00:00"), self.timezone).isoformat()
+        end = combine(day + timedelta(days=1), parse_time("00:00"), self.timezone).isoformat()
+        events = sorted(self.calendar.list_between(start, end), key=lambda event: event.start)
+
+        by_name = {learner.name: learner for learner in store.list_learners()}
+        learners: list[Learner] = []
+        unmatched: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for event in events:
+            match = self._match_event(event.title, by_name)
+            if match is None:
+                unmatched.append({"title": event.title, "start": event.start})
+                continue
+            learner = match[0]
+            if learner.id not in seen:
+                seen.add(learner.id)
+                learners.append(learner)
+        return learners, unmatched
+
     def _icon_prefixes(self) -> list[str]:
         """The configured icon openings a title Baton writes may carry."""
         icons = {str(value) for value in self.event_emoji.values()}
