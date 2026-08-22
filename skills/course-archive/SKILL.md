@@ -81,17 +81,26 @@ baton course clear "<name>" --dry-run --json
 Empties every session page and its properties. The rows stay, keeping their
 numbers, so the next course reuses them.
 
+Clear enforces the archive itself: it re-reads the filed copy and refuses
+(exit `5`) unless it is complete — a copy that passed verify yesterday but
+was trashed today no longer protects anything. If the plan used `--label`,
+pass the same `--label` to clear, or it will look for a copy filed under the
+wrong name.
+
 ## Rules
 
 **Only when asked.** These commands are destructive and are never a repair
 step. Do not reach for `clear` to undo a bad summary — that is what the lesson
 tools are for.
 
-**Clear does not check.** It empties what it is told to empty. The archive is
-guaranteed by step 4, not by step 5.
+**Clear checks.** It refuses (exit `5`) unless a complete copy of the course
+is filed — re-read at clear time, not remembered from step 4. There is no
+flag that bypasses this; the only way through is a complete archive.
 
-**One session is not a course.** `--session N` empties a single page and skips
-archiving entirely — a partial clear has no course to file.
+**One session is not a course.** `--session N` empties a single page and
+skips the archive rule — a partial clear is a mid-course tool with no
+finished course to file. It is the one deliberate exception; `--dry-run` is
+the other (it empties nothing).
 
 **A name that is not exact stops the work.** Exit `3` carries
 `details.candidates`. Show them and wait; never pick one.
@@ -104,5 +113,5 @@ archiving entirely — a partial clear has no course to file.
 | `1` | Read the message; the invocation was wrong |
 | `2` | Run `baton doctor`, report what it says, stop |
 | `3` | Show `details.candidates`, ask, re-run with the exact name |
-| `5` | Stop. The copy is not usable, or the course is already filed. Report `problems` |
+| `5` | Stop. The copy is not usable, the course is already filed, or `clear` found no complete archive to protect it. Report `problems` |
 | `6` | Report; the service is down, re-running later is safe |

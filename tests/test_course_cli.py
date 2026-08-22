@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import textwrap
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -229,9 +230,7 @@ def test_verify_passes_on_a_complete_copy(studio, capsys):
 def test_verify_fails_when_rows_are_missing(studio, capsys):
     _, use = studio
     fake = use(_docs(with_folder=True))
-    copy_id = _filed_copy(
-        fake, parent=FOLDER, title="Course 12 (16/05 - 07/08/69)", rows=ROWS[:2]
-    )
+    copy_id = _filed_copy(fake, parent=FOLDER, title="Course 12 (16/05 - 07/08/69)", rows=ROWS[:2])
 
     assert call(studio, "verify", "Ada Whitfield", "--page", copy_id) == Exit.GATE
     payload = json.loads(capsys.readouterr().out)
@@ -251,6 +250,8 @@ def test_verify_refuses_the_live_course_page(studio, capsys):
 
 
 def test_clear_dry_run_touches_nothing(studio, capsys):
+    """`--dry-run` is a listing, so it stands outside the archive rule."""
+
     _, use = studio
     fake = use(_docs(with_folder=True))
 
@@ -262,6 +263,7 @@ def test_clear_dry_run_touches_nothing(studio, capsys):
 def test_clear_empties_every_session_and_keeps_the_rows(studio, capsys):
     _, use = studio
     fake = use(_docs(with_folder=True))
+    _filed_copy(fake, parent=FOLDER, title="Course 12 (16/05 - 07/08/69)", rows=ROWS)
 
     assert call(studio, "clear", "Ada Whitfield") == Exit.OK
     payload = json.loads(capsys.readouterr().out)
@@ -271,12 +273,77 @@ def test_clear_empties_every_session_and_keeps_the_rows(studio, capsys):
     assert set(fake.reset_calls) == {"doc-ada-01", "doc-ada-02", "doc-ada-03"}
     # The rows themselves are untouched: the next course reuses them.
     assert len(fake.tables[TABLE]) == 3
+    # The record names the copy that stood between the clear and the course.
+    assert payload["archive"]["title"] == "Course 12 (16/05 - 07/08/69)"
+    assert payload["archive"]["page_id"] == "page-copy"
 
 
 def test_clear_can_be_limited_to_one_session(studio, capsys):
+    """A partial clear is a mid-course tool: no finished course to file, no gate."""
+
     _, use = studio
     fake = use(_docs(with_folder=True))
 
     assert call(studio, "clear", "Ada Whitfield", "--session", "2") == Exit.OK
-    assert json.loads(capsys.readouterr().out)["cleared"] == [2]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["cleared"] == [2]
+    assert payload["archive"] is None
     assert fake.reset_calls == ["doc-ada-02"]
+
+
+def test_clear_refuses_when_no_copy_is_filed(studio, capsys):
+    """The rule the studio set: a full clear never runs before the archive."""
+
+    _, use = studio
+    fake = use(_docs(with_folder=True))
+
+    assert call(studio, "clear", "Ada Whitfield") == Exit.GATE
+    assert fake.reset_calls == []
+
+
+def test_clear_refuses_when_the_filed_copy_is_incomplete(studio, capsys):
+    _, use = studio
+    fake = use(_docs(with_folder=True))
+    _filed_copy(fake, parent=FOLDER, title="Course 12 (16/05 - 07/08/69)", rows=ROWS[:2])
+
+    assert call(studio, "clear", "Ada Whitfield") == Exit.GATE
+    assert fake.reset_calls == []
+
+
+def test_clear_refuses_when_the_copy_was_trashed_after_filing(studio, capsys):
+    """A verify that passed yesterday protects nothing today — the gate re-reads."""
+
+    _, use = studio
+    fake = use(_docs(with_folder=True))
+    copy_id = _filed_copy(fake, parent=FOLDER, title="Course 12 (16/05 - 07/08/69)", rows=ROWS)
+    fake.pages[copy_id] = replace(fake.pages[copy_id], trashed=True)
+
+    assert call(studio, "clear", "Ada Whitfield") == Exit.GATE
+    assert fake.reset_calls == []
+
+
+def test_clear_accepts_a_copy_filed_beside_the_live_course(studio, capsys):
+    _, use = studio
+    fake = use(_docs(with_folder=False))
+    _filed_copy(fake, parent=MENU, title="Course 12 (16/05 - 07/08/69)", rows=ROWS)
+
+    assert call(studio, "clear", "Ada Whitfield") == Exit.OK
+    assert json.loads(capsys.readouterr().out)["cleared"] == [1, 2, 3]
+
+
+def test_clear_finds_a_copy_that_was_filed_with_a_label(studio, capsys):
+    _, use = studio
+    fake = use(_docs(with_folder=True))
+    _filed_copy(fake, parent=FOLDER, title="Course 12 (Worth It) (16/05 - 07/08/69)", rows=ROWS)
+
+    assert call(studio, "clear", "Ada Whitfield", "--label", "Worth It") == Exit.OK
+    assert json.loads(capsys.readouterr().out)["cleared"] == [1, 2, 3]
+
+
+def test_clear_without_the_label_does_not_find_the_labeled_copy(studio, capsys):
+    _, use = studio
+    fake = use(_docs(with_folder=True))
+    _filed_copy(fake, parent=FOLDER, title="Course 12 (Worth It) (16/05 - 07/08/69)", rows=ROWS)
+
+    assert call(studio, "clear", "Ada Whitfield") == Exit.GATE
+    assert fake.reset_calls == []

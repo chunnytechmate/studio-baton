@@ -14,12 +14,17 @@ everything around it:
 
     plan    what the copy must be called, and where it belongs
     verify  that the copy is complete, before anything is destroyed
-    clear   the live pages, once verify has passed
+    clear   the live pages, once a complete copy is filed
 
-`verify` is the gate. It is deliberately possible to run `clear` without it,
-because a studio that filed a course by hand last week should not have to fake
-a copy to empty the pages — but the skill drives them in order, and `clear`
-says plainly that it does not check.
+`clear` enforces the rule itself. It does not trust that `verify` ran: it
+re-reads the filed copy, now, and refuses to empty anything unless one copy is
+complete — its name, where it sits, and every row. A copy verified yesterday
+and trashed today protects nothing, so the gate is read at clear time, every
+time. A copy made by hand satisfies it as well as a duplicated one; what the
+gate demands is that the copy exists and holds the course, not how it was
+made. Two paths stand deliberately outside the rule: `--session`, which
+empties a single page mid-course where there is no finished course to file,
+and `--dry-run`, which destroys nothing.
 """
 
 from __future__ import annotations
@@ -62,7 +67,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     plan.add_argument("name", metavar="NAME")
     plan.add_argument(
         "--label",
-        help='A note to carry in the name, e.g. the piece the course was about.',
+        help="A note to carry in the name, e.g. the piece the course was about.",
     )
     plan.add_argument(
         "--allow-existing",
@@ -89,8 +94,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Empty the live session pages, keeping their numbers.",
         description=(
             "Deletes each page's contents and empties its properties. The rows "
-            "stay, so the next course reuses them. This does not check that an "
-            "archive exists — run `course verify` first."
+            "stay, so the next course reuses them. Refuses unless a complete "
+            "archived copy is filed — the copy is re-read at clear time, so "
+            "`course verify` passing earlier is not enough on its own. "
+            "`--session N` empties a single page and skips the archive rule; "
+            "`--dry-run` only lists."
         ),
     )
     clear.add_argument("name", metavar="NAME")
@@ -100,6 +108,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         metavar="N",
         help="Only this session. Partial clears are never archived.",
     )
+    clear.add_argument("--label", help="The label the plan was made with, if any.")
     clear.add_argument("--dry-run", action="store_true", help="List what would be emptied.")
     clear.set_defaults(handler=handle_clear)
 
@@ -206,6 +215,55 @@ def _span_of(rows: list[TableRow]) -> tuple[date, date]:
 
 def _fingerprints(rows: list[TableRow]) -> list[tuple[str, str, str]]:
     return sorted((row.title, row.date, row.status) for row in rows)
+
+
+def _read_copy(
+    docs: DocStore, plan: dict[str, Any], page_id: str
+) -> tuple[list[str], DocPage, list[TableRow]]:
+    """Every problem with this page as the course's filed copy, with the page.
+
+    The one standard both `verify` and `clear`'s gate hold a copy to: not the
+    live page, not in the trash, rightly named, rightly filed, and holding
+    every row the live course holds.
+    """
+    if page_id.replace("-", "") == plan["course"]["page_id"].replace("-", ""):
+        # Not a nicety: for a studio that names its live page after the span it
+        # is teaching, the copy's name and the live page's name are identical,
+        # and every other check here would pass on the original.
+        raise GateError(
+            "That is the live course page, not a copy of it.",
+            missing=[{"field": "copy", "given": page_id, "course_page": plan["course"]["page_id"]}],
+            remedy="Use the id the duplicate tool returned.",
+        )
+
+    problems: list[str] = []
+    copy = docs.get_page(page_id)
+    if copy.trashed:
+        problems.append("the copy is in the trash")
+    if copy.title != plan["archive"]["title"]:
+        problems.append(f"named `{copy.title}`, expected `{plan['archive']['title']}`")
+    if copy.parent_id.replace("-", "") != plan["archive"]["destination_id"].replace("-", ""):
+        problems.append(
+            "filed under {} rather than {}".format(
+                copy.parent_id or "nothing", plan["archive"]["destination_id"]
+            )
+        )
+
+    tables = [child for child in docs.list_children(page_id) if child.kind == "table"]
+    rows: list[TableRow] = []
+    if not tables:
+        problems.append("the copy has no course table yet — the duplicate may still be running")
+    else:
+        rows = docs.table_rows(tables[0].child_id)
+        live = docs.table_rows(plan["course"]["table_id"])
+        if len(rows) != len(live):
+            problems.append(f"holds {len(rows)} rows, the course has {len(live)}")
+        else:
+            for copied, original in zip(_fingerprints(rows), _fingerprints(live), strict=True):
+                if copied != original:
+                    problems.append(f"row {original} was copied as {copied}")
+                    break
+    return problems, copy, rows
 
 
 def _plan(ctx: Context, *, allow_existing: bool) -> dict[str, Any]:
@@ -315,44 +373,7 @@ def handle_verify(ctx: Context) -> Exit:
     plan = _plan(ctx, allow_existing=True)
     docs = open_docs(ctx.config)
     page_id = str(ctx.args.page)
-    problems: list[str] = []
-
-    if page_id.replace("-", "") == plan["course"]["page_id"].replace("-", ""):
-        # Not a nicety: for a studio that names its live page after the span it
-        # is teaching, the copy's name and the live page's name are identical,
-        # and every other check here would pass on the original.
-        raise GateError(
-            "That is the live course page, not a copy of it.",
-            missing=[{"field": "copy", "given": page_id, "course_page": plan["course"]["page_id"]}],
-            remedy="Use the id the duplicate tool returned.",
-        )
-
-    copy = docs.get_page(page_id)
-    if copy.trashed:
-        problems.append("the copy is in the trash")
-    if copy.title != plan["archive"]["title"]:
-        problems.append(f"named `{copy.title}`, expected `{plan['archive']['title']}`")
-    if copy.parent_id.replace("-", "") != plan["archive"]["destination_id"].replace("-", ""):
-        problems.append(
-            "filed under {} rather than {}".format(
-                copy.parent_id or "nothing", plan["archive"]["destination_id"]
-            )
-        )
-
-    tables = [child for child in docs.list_children(page_id) if child.kind == "table"]
-    rows: list[TableRow] = []
-    if not tables:
-        problems.append("the copy has no course table yet — the duplicate may still be running")
-    else:
-        rows = docs.table_rows(tables[0].child_id)
-        live = docs.table_rows(plan["course"]["table_id"])
-        if len(rows) != len(live):
-            problems.append(f"holds {len(rows)} rows, the course has {len(live)}")
-        else:
-            for copied, original in zip(_fingerprints(rows), _fingerprints(live), strict=True):
-                if copied != original:
-                    problems.append(f"row {original} was copied as {copied}")
-                    break
+    problems, copy, rows = _read_copy(docs, plan, page_id)
 
     payload = {
         "ok": not problems,
@@ -376,6 +397,48 @@ def handle_verify(ctx: Context) -> Exit:
         human=f"`{copy.title}` is complete: {len(rows)} rows, filed where it belongs.",
     )
     return Exit.OK
+
+
+def _require_archive(ctx: Context, docs: DocStore) -> dict[str, Any]:
+    """The copy that stands between this clear and the course it empties.
+
+    `clear` does not remember that `verify` ran — it looks for the filed copy
+    now, holds it to the same standard `verify` holds, and refuses unless one
+    passes. That is the rule: no complete copy, no clear.
+    """
+    plan = _plan(ctx, allow_existing=True)
+    candidates = plan["archive"]["already_filed"]
+    if not candidates:
+        raise GateError(
+            "No archived copy of this course is filed.",
+            missing=[
+                {
+                    "field": "archive",
+                    "course": plan["course"]["title"],
+                    "expected_title": plan["archive"]["title"],
+                }
+            ],
+            remedy=(
+                "Run `baton course plan`, duplicate the page, then "
+                "`baton course verify` — clear refuses to empty an unarchived course."
+            ),
+        )
+
+    failures: list[dict[str, Any]] = []
+    for page_id in candidates:
+        problems, copy, _rows = _read_copy(docs, plan, page_id)
+        if not problems:
+            return {"title": copy.title, "page_id": copy.doc_id, "url": copy.url}
+        failures.append({"page_id": page_id, "problems": problems})
+
+    raise GateError(
+        "The filed copy of this course is not complete.",
+        missing=[{"field": "archive", "copies": failures}],
+        remedy=(
+            "Run `baton course verify` to see what is wrong, fix the copy or "
+            "file a new one — clear refuses to empty an unarchived course."
+        ),
+    )
 
 
 def handle_clear(ctx: Context) -> Exit:
@@ -414,6 +477,13 @@ def handle_clear(ctx: Context) -> Exit:
         return Exit.OK
 
     docs = open_docs(ctx.config)
+    archive: dict[str, Any] | None = None
+    if wanted is None:
+        # The full clear is the destructive one, so it carries the gate. A
+        # partial clear is a mid-course tool — there is no finished course to
+        # file, so demanding an archive for it would make it unusable.
+        archive = _require_archive(ctx, docs)
+
     cleared: list[int] = []
     skipped: list[dict[str, Any]] = []
     blocks_removed = 0
@@ -435,6 +505,7 @@ def handle_clear(ctx: Context) -> Exit:
 
     payload = {
         "learner": learner.name,
+        "archive": archive,
         "cleared": cleared,
         "skipped": skipped,
         "blocks_removed": blocks_removed,
@@ -442,6 +513,8 @@ def handle_clear(ctx: Context) -> Exit:
     human = "Emptied {} {} ({} blocks removed). The rows stayed.".format(
         len(cleared), ctx.config.label("sessions"), blocks_removed
     )
+    if archive:
+        human += f"\nArchived first as `{archive['title']}`."
     if skipped:
         human += "\nLeft alone: " + ", ".join(
             f"{item['session']} ({item['reason']})" for item in skipped

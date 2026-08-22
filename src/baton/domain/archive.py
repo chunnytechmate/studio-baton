@@ -66,9 +66,7 @@ class SpanFormat:
 
     def __post_init__(self) -> None:
         if self.era not in ERAS:
-            raise SpanError(
-                f"Unknown era `{self.era}`. Use one of: {', '.join(sorted(ERAS))}."
-            )
+            raise SpanError(f"Unknown era `{self.era}`. Use one of: {', '.join(sorted(ERAS))}.")
 
     def year_of(self, day: date) -> int:
         """The year as this studio counts it."""
@@ -101,7 +99,8 @@ class SpanFormat:
         its dates differently still gets old spans stripped. Anything that is
         not a span — ``(Drum)``, ``(Worth It)`` — cannot match, and stays.
         """
-        end = f"{_as_pattern(self.date_format)}(?:{re.escape(self.joiner)}{_as_pattern(self.year_format)})?"
+        year = rf"(?:{re.escape(self.joiner)}{_as_pattern(self.year_format)})?"
+        end = f"{_as_pattern(self.date_format)}{year}"
         separator = re.escape(self.separator.strip())
         return re.compile(
             rf"\s*\(\s*{end}\s*{separator}\s*{end}\s*\)\s*$",
