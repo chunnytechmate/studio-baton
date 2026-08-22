@@ -84,6 +84,7 @@ def studio(profile, monkeypatch):
                 Block(id="vid", type="video", url="https://example.invalid/watch/ada-3"),
             ]
         },
+        wording={"done": "Complete", "in_progress": "In progress"},
     )
     for module in ("cmd_learner", "cmd_lesson"):
         monkeypatch.setattr(f"baton.cli.{module}.open_docs", lambda _config: fake)
@@ -353,6 +354,80 @@ def test_publish_stores_the_message_for_the_send_step(studio, capsys):
     saved = json.loads(records[0].read_text(encoding="utf-8"))
     assert saved["short_message"].startswith("• Covered:")
     assert saved["session_number"] == 3
+
+
+def test_publish_marks_the_session_done(studio, capsys):
+    """A summary on the page is not the same as a session that is over.
+
+    Everything downstream reads the status, not the blocks: `next` writes to a
+    fresh in-progress session, `prep` only briefs finished ones. Leaving the
+    status alone after publishing kept pointing the next summary at the session
+    that had just been written.
+    """
+    prepared(studio, capsys)
+    _, docs = studio
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert docs.get_status("doc-ada-03").status == "Complete"
+
+
+def test_publish_fills_the_date_and_titles_a_session_had_none_of(studio, capsys):
+    """`prep` requires both, and nothing else in the loop ever wrote them."""
+    prepared(studio, capsys)
+    _, docs = studio
+
+    call(studio, "publish", "Ada Whitfield")
+
+    status = docs.get_status("doc-ada-03")
+    assert status.date  # today, in the profile's timezone
+    assert "Blackbird bars 9-16" in status.titles
+
+
+def test_publish_does_not_overwrite_a_date_the_studio_already_set(studio, capsys):
+    """The booked date is the day the lesson happened. Publishing can happen
+    the following morning, so what it can infer is the worse record."""
+    prepared(studio, capsys)
+    _, docs = studio
+    docs.set_properties("doc-ada-03", {"date": "2026-07-04", "titles": "Blackbird, by ear"})
+
+    call(studio, "publish", "Ada Whitfield")
+
+    status = docs.get_status("doc-ada-03")
+    assert status.date == "2026-07-04"
+    assert status.titles == "Blackbird, by ear"
+
+
+def test_a_summary_that_lands_but_cannot_be_marked_done_says_so(studio, capsys):
+    """The two writes fail independently. Reporting success here would hide
+    exactly the state this fix exists to prevent: a published session that
+    still looks in progress."""
+    prepared(studio, capsys)
+    _, docs = studio
+    docs.fail_on_properties = True
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.UPSTREAM
+    payload = out(capsys)
+
+    assert "marked done" in payload["message"]
+    assert docs.list_blocks("doc-ada-03")  # the summary did land
+
+
+def test_re_running_after_that_finishes_the_session_without_appending_again(studio, capsys):
+    """The blocks are already where they belong, so the retry is the property
+    write alone — appending a second copy is what the publish gate prevents."""
+    prepared(studio, capsys)
+    _, docs = studio
+    docs.fail_on_properties = True
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+    after_first = len(docs.list_blocks("doc-ada-03"))
+
+    docs.fail_on_properties = False
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert len(docs.list_blocks("doc-ada-03")) == after_first
+    assert docs.get_status("doc-ada-03").status == "Complete"
 
 
 def test_publish_needs_a_summary(studio, capsys):

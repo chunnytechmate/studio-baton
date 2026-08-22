@@ -148,8 +148,12 @@ class FakeDocStore:
         pages: dict[str, DocPage] | None = None,
         children: dict[str, list[DocChild]] | None = None,
         tables: dict[str, list[TableRow]] | None = None,
+        wording: dict[str, str] | None = None,
     ) -> None:
         self.statuses = dict(statuses or {})
+        self.wording = dict(wording or {})
+        """The profile's own status words, as the real adapter resolves them.
+        Left empty, a canonical key is written through unchanged."""
         self.blocks = {key: list(value) for key, value in (blocks or {}).items()}
         self.preserve = preserve or PreservePolicy(rules=())
         self.appended: list[dict[str, Any]] = []
@@ -162,6 +166,9 @@ class FakeDocStore:
         self.tables = {key: list(value) for key, value in (tables or {}).items()}
         self.reset_calls: list[str] = []
         self.trashed: set[str] = set()
+        self.fail_on_properties = False
+        """Fail property writes only. Appending a summary and finishing the
+        session are separate requests, and only the second one is retryable."""
 
     # -- filing ------------------------------------------------------------
 
@@ -222,14 +229,28 @@ class FakeDocStore:
 
     def set_status(self, doc_id: str, status: str) -> None:
         self._check()
+        self.set_properties(doc_id, {"status": status})
+
+    def set_properties(self, doc_id: str, values: dict[str, str]) -> list[str]:
+        self._check()
+        if self.fail_on_properties:
+            from ..errors import UpstreamError
+
+            raise UpstreamError("notion rejected the property write", service="notion")
+        wanted = {key: str(value) for key, value in values.items() if str(value)}
+        if not wanted:
+            return []
+        if "status" in wanted:
+            wanted["status"] = self.wording.get(wanted["status"], wanted["status"])
         current = self.get_status(doc_id)
         self.statuses[doc_id] = DocStatus(
             doc_id=doc_id,
-            status=status,
-            date=current.date,
-            titles=current.titles,
+            status=wanted.get("status", current.status),
+            date=wanted.get("date", current.date),
+            titles=wanted.get("titles", current.titles),
             url=current.url,
         )
+        return sorted(wanted)
 
     def list_blocks(self, doc_id: str) -> list[Block]:
         self._check()

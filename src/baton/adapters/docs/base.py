@@ -211,6 +211,20 @@ class DocStore(Protocol):
         """Set the document's status property to a configured value."""
         ...
 
+    def set_properties(self, doc_id: str, values: dict[str, str]) -> list[str]:
+        """Set configured properties by their ``docs.properties`` key.
+
+        Keys are Baton's own (``status``, ``date``, ``titles``), not the
+        studio's column names, so callers never have to know what a profile
+        called its columns. An empty value is skipped rather than written:
+        clearing a property is :meth:`reset_properties`' job, and a publish
+        that half-knows a date must not erase the one already there.
+
+        Returns:
+            The keys actually written.
+        """
+        ...
+
     def list_blocks(self, doc_id: str) -> list[Block]:
         """Every top-level block, in order."""
         ...

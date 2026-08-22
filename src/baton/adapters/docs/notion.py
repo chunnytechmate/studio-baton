@@ -230,6 +230,67 @@ class NotionDocStore:
             url=str(page.get("url", "")),
         )
 
+    @staticmethod
+    def _write_property(kind: str, value: str) -> dict[str, Any] | None:
+        """The body Notion expects for one property of type ``kind``.
+
+        Returns ``None`` for a type Baton has no faithful way to write, so an
+        unknown column is left alone rather than filled with a guess.
+        """
+        if kind in ("status", "select"):
+            return {kind: {"name": value}}
+        if kind == "date":
+            return {"date": {"start": value}}
+        if kind in ("rich_text", "title"):
+            return {kind: [{"type": "text", "text": {"content": value}}]}
+        if kind == "multi_select":
+            parts = [part.strip() for part in value.split(",")]
+            return {"multi_select": [{"name": part} for part in parts if part]}
+        if kind in ("url", "email", "phone_number"):
+            return {kind: value}
+        return None
+
+    def set_properties(self, doc_id: str, values: dict[str, str]) -> list[str]:
+        """Set configured properties, matching each column's own type.
+
+        The page is read first to learn what type every target column actually
+        is. Notion validates the body against the property's type, so a payload
+        assembled from a guess ("it is probably a select") is rejected outright
+        on the studios whose guess was wrong — and this is the write that
+        finishes a session, which must not be the one that fails.
+        """
+        wanted = {key: str(value) for key, value in values.items() if str(value)}
+        if not wanted:
+            return []
+        # A caller says `done`; the profile decides that reads "Done" — or
+        # "เสร็จแล้ว". Resolving here means every caller can be written in
+        # Baton's vocabulary.
+        if "status" in wanted:
+            wanted["status"] = self.statuses.get(wanted["status"], wanted["status"])
+
+        page = self._request("GET", f"/pages/{doc_id}")
+        properties = page.get("properties", {}) or {}
+
+        payload: dict[str, Any] = {}
+        written: list[str] = []
+        for key, value in wanted.items():
+            name = self._property_name(key)
+            prop = properties.get(name)
+            if not isinstance(prop, dict):
+                continue
+            kind = str(prop.get("type", ""))
+            if kind in _READ_ONLY_PROPERTIES:
+                continue
+            body = self._write_property(kind, value)
+            if body is None:
+                continue
+            payload[name] = body
+            written.append(key)
+
+        if payload:
+            self._request("PATCH", f"/pages/{doc_id}", {"properties": payload})
+        return written
+
     def set_status(self, doc_id: str, status: str) -> None:
         """Set the status property, resolving a configured key to its value.
 
@@ -237,15 +298,7 @@ class NotionDocStore:
         value (``Done``), so callers can be written against Baton's vocabulary
         while the profile decides the wording.
         """
-        value = self.statuses.get(status, status)
-        name = self._property_name("status")
-        # `status` and `select` take the same body shape, so one payload covers
-        # both of the property types a studio is likely to have used.
-        self._request(
-            "PATCH",
-            f"/pages/{doc_id}",
-            {"properties": {name: {"select": {"name": value}}}},
-        )
+        self.set_properties(doc_id, {"status": status})
 
     # -- blocks ------------------------------------------------------------
 

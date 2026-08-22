@@ -28,7 +28,8 @@ from ..adapters.docs import open_docs
 from ..adapters.docs.base import PreservePolicy
 from ..domain.resolve import resolve_learner
 from ..domain.status import StatusVocabulary
-from ..errors import UsageError
+from ..domain.whenever import today_in
+from ..errors import UpstreamError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
 from ..pipelines.publish import SummaryPublisher
@@ -181,6 +182,72 @@ def _theory(ctx: Context) -> dict[str, str]:
 
     data = jsonio.read_json(path, {})
     return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
+def _titles_from(summary: dict[str, Any] | None) -> str:
+    """What the session covered, as one line for the document's own column.
+
+    Falls back to the topics the summary already lists, because the column is
+    read by `prep` and by anyone scanning the course at a glance — and a
+    studio that never passes `--titles` would otherwise leave it empty
+    forever.
+    """
+    if not summary:
+        return ""
+    topics = [
+        str(entry.get("topic", "")).strip()
+        for entry in summary.get("covered", [])
+        if isinstance(entry, dict) and str(entry.get("topic", "")).strip()
+    ]
+    return ", ".join(topics)
+
+
+def _finish_session(
+    ctx: Context,
+    publisher: SummaryPublisher,
+    staging: StagingStore,
+    draft: LessonDraft,
+    learner_name: str,
+    *,
+    resumed: bool = False,
+) -> Exit:
+    """Mark a published session done on its document.
+
+    Separate from writing the blocks because the two can fail independently:
+    the summary is on the page for good once it is appended, while this write
+    can be retried without consequence. Recording which one happened is what
+    lets `publish` be re-run to finish a session without appending a second
+    copy of the same summary.
+    """
+    label = ctx.config.label("session")
+    try:
+        written = publisher.complete(
+            draft.doc_id,
+            date=today_in(ctx.config.timezone).isoformat(),
+            titles=draft.titles or _titles_from(draft.summary),
+        )
+    except Exception as exc:
+        draft.note_target("docs", completed=False, complete_error=str(exc))
+        staging.save(draft)
+        raise UpstreamError(
+            f"{learner_name}'s summary is on the page, but {label} "
+            f"{draft.session_number} could not be marked done: {exc}",
+            service="docs",
+            remedy=f'Re-run `baton lesson publish "{learner_name}"`. The summary is '
+            f"already published, so a re-run only finishes the {label} — it will "
+            "not append a second copy.",
+        ) from exc
+
+    draft.note_target("docs", completed=written)
+    staging.save(draft)
+
+    if resumed:
+        ctx.report.result(
+            {**draft.summary_view(), "completed": written},
+            human=f"{learner_name} — {label} {draft.session_number} was already "
+            f"published; marked it done now.",
+        )
+    return Exit.OK
 
 
 def _read_payload(ctx: Context) -> Any:
@@ -502,16 +569,6 @@ def handle_publish(ctx: Context) -> Exit:
         _published(ctx).get(learner.id, draft.session_number) is not None
     )
 
-    if published and not ctx.args.force:
-        # Appending the same summary twice leaves two copies on the page and
-        # nothing to tell them apart, so a repeat is refused rather than done.
-        ctx.report.result(
-            {**draft.summary_view(), "skipped": "already published"},
-            human=f"{learner.name} — {ctx.config.label('session')} {draft.session_number} "
-            "was already published. Use --force to publish again.",
-        )
-        return Exit.OK
-
     publisher = SummaryPublisher(
         open_docs(ctx.config),
         PreservePolicy.from_config(ctx.config.get("docs.preserve", [])),
@@ -519,6 +576,7 @@ def handle_publish(ctx: Context) -> Exit:
         callout_icon=str(ctx.config.get("summary.callout_icon", "")),
     )
     theory = _theory(ctx)
+    label = ctx.config.label("session")
 
     if ctx.args.dry_run:
         plan = publisher.plan(draft.doc_id, draft.summary, callout_texts=theory)
@@ -526,11 +584,28 @@ def handle_publish(ctx: Context) -> Exit:
             {**plan, "dry_run": True},
             human=f"Would append {plan['would_append']} blocks, delete "
             f"{plan['would_delete']}, and keep {plan['would_preserve']} "
-            f"({', '.join(plan['preserved_types']) or 'nothing protected'}).",
+            f"({', '.join(plan['preserved_types']) or 'nothing protected'}), then "
+            f"mark the {label} done.",
         )
         return Exit.OK
 
-    label = ctx.config.label("session")
+    if published and not ctx.args.force:
+        # Appending the same summary twice leaves two copies on the page and
+        # nothing to tell them apart, so a repeat is refused rather than done.
+        # Finishing the session is a separate write, though, and if that is
+        # what failed last time then re-running is exactly how to fix it —
+        # the blocks are already where they belong.
+        docs_state = draft.targets.get("docs", {})
+        if docs_state.get("status") == "ok" and not docs_state.get("completed"):
+            return _finish_session(ctx, publisher, staging, draft, learner.name, resumed=True)
+
+        ctx.report.result(
+            {**draft.summary_view(), "skipped": "already published"},
+            human=f"{learner.name} — {label} {draft.session_number} "
+            "was already published. Use --force to publish again.",
+        )
+        return Exit.OK
+
     ctx.report.step(f"publishing {learner.name} — {label} {draft.session_number}")
     try:
         result = publisher.publish(draft.doc_id, draft.summary, callout_texts=theory)
@@ -550,11 +625,14 @@ def handle_publish(ctx: Context) -> Exit:
     )
     _published(ctx).save(draft, short_message=message, doc_url=result.doc_url)
 
+    _finish_session(ctx, publisher, staging, draft, learner.name)
+
     ctx.report.result(
-        result.to_dict(),
-        human=f"Published {learner.name} — {ctx.config.label('session')} "
+        {**result.to_dict(), "completed": draft.targets["docs"].get("completed", {})},
+        human=f"Published {learner.name} — {label} "
         f"{draft.session_number}\n"
-        f"  appended {result.appended}, removed {result.deleted}, kept {result.preserved}",
+        f"  appended {result.appended}, removed {result.deleted}, kept {result.preserved}\n"
+        f"  marked the {label} done",
     )
     return Exit.OK
 

@@ -129,6 +129,18 @@ class LessonDraft:
         self.targets[name] = state
         self.updated_at = _now()
 
+    def note_target(self, name: str, **extra: Any) -> None:
+        """Add to what is known about a target without counting a new attempt.
+
+        A publish that appended and then finished the session is one attempt,
+        not two; counting the second write separately would make the record
+        read as a retry that never happened.
+        """
+        state = dict(self.targets.get(name, {}))
+        state.update(extra)
+        self.targets[name] = state
+        self.updated_at = _now()
+
 
 class StagingStore:
     """Drafts on disk, one file per learner."""

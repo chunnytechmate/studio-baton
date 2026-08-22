@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..adapters.docs.base import Block, DocStore, PreservePolicy
+from ..domain.status import DONE
 from ..render import summary as render
 
 
@@ -135,3 +136,31 @@ class SummaryPublisher:
             replaced=replace,
             doc_url=status.url,
         )
+
+    def complete(self, doc_id: str, *, date: str = "", titles: str = "") -> dict[str, str]:
+        """Mark the session finished on its own document.
+
+        A summary on the page is not the same as a session that is over. The
+        status property is what the rest of the system reads: `next` treats a
+        fresh in-progress session as the one to write next, `prep` requires a
+        finished one, and `send` describes a lesson that has happened. Leaving
+        the status alone after publishing means the same session stays the
+        target of the next summary, so this write is part of publishing rather
+        than something to remember afterwards.
+
+        ``date`` and ``titles`` only fill blanks. The studio's own value —
+        typed by hand, or written when the lesson was booked — is the better
+        record of when the lesson happened and what was played, so it is never
+        overwritten by what can be inferred at publish time.
+
+        Returns:
+            The properties actually written, keyed as in ``docs.properties``.
+        """
+        current = self.docs.get_status(doc_id)
+        values = {"status": DONE}
+        if date and not current.date:
+            values["date"] = date
+        if titles and not current.titles:
+            values["titles"] = titles
+        written = self.docs.set_properties(doc_id, values)
+        return {key: values[key] for key in written if key in values}

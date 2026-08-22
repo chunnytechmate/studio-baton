@@ -205,7 +205,14 @@ class Scheduler:
         doc_updated = False
         if session.doc_id and self.require_doc_update:
             try:
-                self.docs.set_status(session.doc_id, IN_PROGRESS)
+                # The date goes on with the status. Booking is the moment the
+                # lesson's date is actually known — inferring it later from
+                # whenever the summary happened to be written would put the
+                # wrong day on a lesson summarised the following morning.
+                self.docs.set_properties(
+                    session.doc_id,
+                    {"status": IN_PROGRESS, "date": start_dt.date().isoformat()},
+                )
                 doc_updated = True
             except Exception as exc:
                 # Deliberately not "carry on and book anyway": an event with no
