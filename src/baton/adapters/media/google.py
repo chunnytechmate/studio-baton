@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, ClassVar, TypeVar
+from typing import Any, TypeVar
 
 from ...core.config import Config
 from ...errors import ConfigError, UpstreamError
@@ -34,8 +34,8 @@ def _require_google() -> Any:
 _T = TypeVar("_T")
 
 
-def _credentials(config: Config, section: str, scopes: list[str]) -> Any:
-    """Build the credentials owned by one Google-backed media service."""
+def _credentials(config: Config, section: str) -> Any:
+    """Build credentials without changing the refresh token's original scopes."""
     _, _, Credentials = _require_google()
     credentials_file = str(config.get(f"{section}.credentials_file", "")).strip()
     if credentials_file:
@@ -47,7 +47,10 @@ def _credentials(config: Config, section: str, scopes: list[str]) -> Any:
                 "the service's refresh-token environment variables.",
             )
         try:
-            return Credentials.from_authorized_user_file(str(path), scopes=scopes)
+            # An authorized-user refresh token is bound to the scopes granted
+            # when it was issued. Replacing them here can make Google reject a
+            # valid token with `invalid_scope` before the API call is attempted.
+            return Credentials.from_authorized_user_file(str(path))
         except (OSError, ValueError) as exc:
             raise ConfigError(
                 f"The Google credentials file at {path} cannot be read.",
@@ -60,7 +63,6 @@ def _credentials(config: Config, section: str, scopes: list[str]) -> Any:
         client_id=str(config.secret(f"{section}.client_id_env")),
         client_secret=str(config.secret(f"{section}.client_secret_env")),
         token_uri="https://oauth2.googleapis.com/token",  # noqa: S106 - a public endpoint
-        scopes=scopes,
     )
 
 
@@ -82,9 +84,6 @@ class DriveSource:
     """Clips waiting in per-learner subfolders of one Drive folder."""
 
     driver = "gdrive"
-
-    #: Read plus the ability to trash a file we collected.
-    SCOPES: ClassVar[list[str]] = ["https://www.googleapis.com/auth/drive"]
 
     def __init__(self, folder_id: str, config: Config, *, download_retries: int = 3) -> None:
         self.folder_id = folder_id
@@ -109,7 +108,7 @@ class DriveSource:
                 lambda: build(
                     "drive",
                     "v3",
-                    credentials=_credentials(self.config, "media.drive", self.SCOPES),
+                    credentials=_credentials(self.config, "media.drive"),
                     cache_discovery=False,
                 ),
             )
@@ -201,8 +200,6 @@ class YouTubePublisher:
 
     driver = "youtube"
 
-    SCOPES: ClassVar[list[str]] = ["https://www.googleapis.com/auth/youtube.upload"]
-
     def __init__(self, config: Config, *, category_id: str = "22") -> None:
         self.config = config
         self.category_id = category_id
@@ -221,7 +218,7 @@ class YouTubePublisher:
                 lambda: build(
                     "youtube",
                     "v3",
-                    credentials=_credentials(self.config, "media.youtube", self.SCOPES),
+                    credentials=_credentials(self.config, "media.youtube"),
                     cache_discovery=False,
                 ),
             )
