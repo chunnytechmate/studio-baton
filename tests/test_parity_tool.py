@@ -165,6 +165,44 @@ def test_non_json_output_is_a_disagreement_not_a_pass(tmp_path, monkeypatch, cap
     assert parity.main() == 1
 
 
+def test_a_command_is_run_once_however_many_cases_compare_it(tmp_path, monkeypatch, capsys):
+    """Real specs compare several fields of the same two commands. Running one
+    prep report seven times is seven rounds of API reads per side — and the
+    studio's data is live, so two calls can legitimately differ and turn into a
+    disagreement that is not one."""
+    counter = tmp_path / "calls"
+    script = tmp_path / "counted.py"
+    script.write_text(
+        "import json, pathlib\n"
+        f"p = pathlib.Path({str(counter)!r})\n"
+        "p.write_text(str(int(p.read_text() or 0) + 1) if p.exists() else '1')\n"
+        "print(json.dumps({'week': 3, 'date': '2026-08-22'}))",
+        encoding="utf-8",
+    )
+    command = f"{sys.executable} {script}"
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "name": name,
+                        "legacy": command,
+                        "baton": command,
+                        "compare": {"legacy": field, "baton": field},
+                    }
+                    for name, field in (("week", "week"), ("date", "date"))
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sys, "argv", ["parity", "--spec", str(spec)])
+
+    assert parity.main() == 0
+    assert counter.read_text() == "1"
+
+
 def test_a_missing_spec_exits_two(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(sys, "argv", ["parity", "--spec", str(tmp_path / "absent.yaml")])
 

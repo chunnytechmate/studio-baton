@@ -110,9 +110,25 @@ class Runner:
     spec: dict[str, Any]
     timeout: float = 120.0
     outcomes: list[Outcome] = field(default_factory=list)
+    _answers: dict[str, tuple[Any, str]] = field(default_factory=dict, repr=False)
+    """What each command answered this run. Several cases usually compare
+    different fields of the same two commands — seven fields of one prep report,
+    say — and asking the same question seven times means seven rounds of API
+    reads per side, on a spec that already takes half an hour. Worse, the
+    answers can then disagree with each other mid-run: the studio's data is
+    live, and a page edited between two calls turns into a difference that is
+    not a difference. One answer per command per run is both faster and more
+    honest."""
 
     def _run(self, command: str) -> tuple[Any, str]:
-        """Run a command, returning (parsed JSON or None, error description)."""
+        """Run a command once per run, returning (parsed JSON or None, error)."""
+        if command in self._answers:
+            return self._answers[command]
+        answer = self._execute(command)
+        self._answers[command] = answer
+        return answer
+
+    def _execute(self, command: str) -> tuple[Any, str]:
         try:
             completed = subprocess.run(
                 shlex.split(command),
