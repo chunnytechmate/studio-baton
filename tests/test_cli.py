@@ -232,10 +232,28 @@ def test_a_usage_error_still_emits_a_json_envelope(profile, capsys):
     assert "frobnicate" in payload["message"]
 
 
+def test_a_missing_argument_names_the_argument_not_the_command(profile, capsys):
+    assert run(["--json", "learner", "sessions"]) == int(Exit.USAGE)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "NAME" in payload["message"]
+    assert "Unknown command `learner`" not in payload["message"]
+
+
 def test_help_and_version_still_exit_through_argparse(profile, capsys):
     with pytest.raises(SystemExit) as excinfo:
         run(["--version"])
     assert excinfo.value.code == 0
+
+
+def test_internal_job_supervisor_is_hidden_from_help(profile, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        run(["job", "--help"])
+
+    assert excinfo.value.code == 0
+    output = capsys.readouterr().out
+    assert "supervise" not in output
+    assert "==SUPPRESS==" not in output
 
 
 # -- what doctor was not checking ------------------------------------------

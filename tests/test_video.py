@@ -454,3 +454,71 @@ def test_gdrive_list_pending_skips_non_video_files():
     clips = FakeDrive().list_pending()
 
     assert [clip.name for clip in clips] == ["lesson.mp4"]
+
+
+def test_drive_uses_its_own_authorized_user_file(profile, monkeypatch, tmp_path):
+    from baton.adapters.media import google
+    from baton.core import config as config_module
+
+    credentials_file = tmp_path / "drive.json"
+    credentials_file.write_text("{}", encoding="utf-8")
+    with (profile / "baton.yaml").open("a", encoding="utf-8") as handle:
+        handle.write(f"\nmedia:\n  drive:\n    credentials_file: {credentials_file}\n")
+
+    seen = {}
+
+    class Credentials:
+        @classmethod
+        def from_authorized_user_file(cls, path, *, scopes):
+            seen.update(path=path, scopes=scopes)
+            return cls()
+
+    monkeypatch.setattr(google, "_require_google", lambda: (None, None, Credentials))
+
+    result = google._credentials(
+        config_module.load(profile), "media.drive", ["https://example.invalid/drive"]
+    )
+
+    assert isinstance(result, Credentials)
+    assert seen == {
+        "path": str(credentials_file),
+        "scopes": ["https://example.invalid/drive"],
+    }
+
+
+def test_drive_can_override_the_shared_refresh_token(profile, monkeypatch):
+    from baton.adapters.media import google
+    from baton.core import config as config_module
+
+    monkeypatch.setenv("GOOGLE_DRIVE_REFRESH_TOKEN", "drive-token")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "client")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("YOUTUBE_REFRESH_TOKEN", "youtube-token")
+    with (profile / "baton.yaml").open("a", encoding="utf-8") as handle:
+        handle.write("\nmedia:\n  drive:\n    refresh_token_env: GOOGLE_DRIVE_REFRESH_TOKEN\n")
+
+    class Credentials:
+        def __init__(self, **kwargs):
+            self.refresh_token = kwargs["refresh_token"]
+
+    monkeypatch.setattr(google, "_require_google", lambda: (None, None, Credentials))
+    config = config_module.load(profile)
+
+    drive = google._credentials(config, "media.drive", ["drive"])
+    youtube = google._credentials(config, "media.youtube", ["youtube"])
+
+    assert drive.refresh_token == "drive-token"
+    assert youtube.refresh_token == "youtube-token"
+
+
+def test_google_vendor_errors_stay_inside_the_baton_contract():
+    from baton.adapters.media.google import _google_call
+
+    def fail():
+        raise RuntimeError("vendor traceback")
+
+    with pytest.raises(UpstreamError) as excinfo:
+        _google_call("gdrive", fail)
+
+    assert excinfo.value.details["service"] == "gdrive"
+    assert "vendor traceback" not in excinfo.value.message

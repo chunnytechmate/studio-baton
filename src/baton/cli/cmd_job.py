@@ -93,6 +93,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     # Internal: the process spawned by `job spawn` runs under this. Hidden.
     supervise = group.add_parser("supervise", help=argparse.SUPPRESS)
+    # argparse renders SUPPRESS literally for subparser choices. Remove only
+    # the help-row projection; the parser remains registered for JobRunner.
+    group._choices_actions[:] = [
+        choice for choice in group._choices_actions if choice.dest != "supervise"
+    ]
     supervise.add_argument("--id", required=True)
     supervise.add_argument("argv", nargs="*", metavar="COMMAND")
     supervise.set_defaults(handler=handle_supervise)

@@ -250,6 +250,14 @@ media:
 
   drive:
     folder_id_env: BATON_DRIVE_FOLDER_ID
+    # Optional authorized-user JSON, resolved relative to the profile. When
+    # set, it owns Drive auth and the three *_env settings below are ignored.
+    credentials_file: ""
+    # Preserve the pre-0.2.3 shared-token default. Profiles with separate
+    # credentials should override this key or set credentials_file above.
+    refresh_token_env: YOUTUBE_REFRESH_TOKEN
+    client_id_env: GOOGLE_CLIENT_ID
+    client_secret_env: GOOGLE_CLIENT_SECRET
     download_retries: 3
 
   publish:

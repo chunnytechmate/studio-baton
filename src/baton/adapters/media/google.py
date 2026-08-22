@@ -8,8 +8,9 @@ install rather than an ImportError traceback.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from ...core.config import Config
 from ...errors import ConfigError, UpstreamError
@@ -30,17 +31,51 @@ def _require_google() -> Any:
     return build, MediaFileUpload, Credentials
 
 
-def _credentials(config: Config, scopes: list[str]) -> Any:
-    """Build OAuth credentials from a stored refresh token."""
+_T = TypeVar("_T")
+
+
+def _credentials(config: Config, section: str, scopes: list[str]) -> Any:
+    """Build the credentials owned by one Google-backed media service."""
     _, _, Credentials = _require_google()
+    credentials_file = str(config.get(f"{section}.credentials_file", "")).strip()
+    if credentials_file:
+        path = config.path(f"{section}.credentials_file")
+        if not path.is_file():
+            raise ConfigError(
+                f"No Google credentials file exists at {path}.",
+                remedy=f"Correct `{section}.credentials_file`, or remove it and configure "
+                "the service's refresh-token environment variables.",
+            )
+        try:
+            return Credentials.from_authorized_user_file(str(path), scopes=scopes)
+        except (OSError, ValueError) as exc:
+            raise ConfigError(
+                f"The Google credentials file at {path} cannot be read.",
+                remedy="Replace it with a valid authorized-user credentials JSON file.",
+            ) from exc
+
     return Credentials(
         token=None,
-        refresh_token=str(config.secret("media.youtube.refresh_token_env")),
-        client_id=str(config.secret("media.youtube.client_id_env")),
-        client_secret=str(config.secret("media.youtube.client_secret_env")),
+        refresh_token=str(config.secret(f"{section}.refresh_token_env")),
+        client_id=str(config.secret(f"{section}.client_id_env")),
+        client_secret=str(config.secret(f"{section}.client_secret_env")),
         token_uri="https://oauth2.googleapis.com/token",  # noqa: S106 - a public endpoint
         scopes=scopes,
     )
+
+
+def _google_call(service: str, operation: Callable[[], _T]) -> _T:
+    """Keep vendor exceptions inside Baton's exit/JSON contract."""
+    try:
+        return operation()
+    except (ConfigError, UpstreamError):
+        raise
+    except Exception as exc:
+        raise UpstreamError(
+            f"{service} request failed: {type(exc).__name__}.",
+            service=service,
+            remedy="Check the service credentials and permissions, then re-run.",
+        ) from exc
 
 
 class DriveSource:
@@ -69,11 +104,14 @@ class DriveSource:
     def service(self) -> Any:
         if self._service is None:
             build, _, _ = _require_google()
-            self._service = build(
-                "drive",
-                "v3",
-                credentials=_credentials(self.config, self.SCOPES),
-                cache_discovery=False,
+            self._service = _google_call(
+                "gdrive",
+                lambda: build(
+                    "drive",
+                    "v3",
+                    credentials=_credentials(self.config, "media.drive", self.SCOPES),
+                    cache_discovery=False,
+                ),
             )
         return self._service
 
@@ -86,16 +124,13 @@ class DriveSource:
         found: list[dict[str, Any]] = []
         page_token = None
         while True:
-            response = (
-                self.service.files()
-                .list(
-                    q=query,
-                    fields="nextPageToken, files(id, name, size, createdTime)",
-                    pageToken=page_token,
-                    pageSize=200,
-                )
-                .execute()
+            request = self.service.files().list(
+                q=query,
+                fields="nextPageToken, files(id, name, size, createdTime)",
+                pageToken=page_token,
+                pageSize=200,
             )
+            response = _google_call("gdrive", request.execute)
             found.extend(response.get("files", []))
             page_token = response.get("nextPageToken")
             if not page_token:
@@ -131,7 +166,9 @@ class DriveSource:
             downloader = MediaIoBaseDownload(handle, request, chunksize=8 * 1024 * 1024)
             done = False
             while not done:
-                _, done = downloader.next_chunk(num_retries=self.download_retries)
+                _, done = _google_call(
+                    "gdrive", lambda: downloader.next_chunk(num_retries=self.download_retries)
+                )
 
         # A truncated download is the failure that produces a video with the
         # last minute of the lesson missing, uploaded and linked before anyone
@@ -149,12 +186,14 @@ class DriveSource:
     def trash(self, clip_ids: list[str]) -> int:
         moved = 0
         for clip_id in clip_ids:
-            self.service.files().update(fileId=clip_id, body={"trashed": True}).execute()
+            request = self.service.files().update(fileId=clip_id, body={"trashed": True})
+            _google_call("gdrive", request.execute)
             moved += 1
         return moved
 
     def health(self) -> None:
-        self.service.files().get(fileId=self.folder_id, fields="id").execute()
+        request = self.service.files().get(fileId=self.folder_id, fields="id")
+        _google_call("gdrive", request.execute)
 
 
 class YouTubePublisher:
@@ -177,11 +216,14 @@ class YouTubePublisher:
     def service(self) -> Any:
         if self._service is None:
             build, _, _ = _require_google()
-            self._service = build(
+            self._service = _google_call(
                 "youtube",
-                "v3",
-                credentials=_credentials(self.config, self.SCOPES),
-                cache_discovery=False,
+                lambda: build(
+                    "youtube",
+                    "v3",
+                    credentials=_credentials(self.config, "media.youtube", self.SCOPES),
+                    cache_discovery=False,
+                ),
             )
         return self._service
 
@@ -208,7 +250,7 @@ class YouTubePublisher:
 
         response = None
         while response is None:
-            _, response = request.next_chunk(num_retries=3)
+            _, response = _google_call("youtube", lambda: request.next_chunk(num_retries=3))
 
         video_id = str(response.get("id", ""))
         if not video_id:
@@ -222,4 +264,5 @@ class YouTubePublisher:
         )
 
     def health(self) -> None:
-        self.service.channels().list(part="id", mine=True).execute()
+        request = self.service.channels().list(part="id", mine=True)
+        _google_call("youtube", request.execute)

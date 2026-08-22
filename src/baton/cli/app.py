@@ -13,7 +13,7 @@ import argparse
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NoReturn
 
 from .. import __version__
 from ..core import config as config_module
@@ -23,6 +23,17 @@ from ..errors import BatonError, UsageError
 from ..exits import Exit
 
 Handler = Callable[["Context"], "Exit | int"]
+
+
+class _ParseFailure(Exception):
+    pass
+
+
+class _ArgumentParser(argparse.ArgumentParser):
+    """Raise parse failures so the CLI can preserve its exit/JSON contract."""
+
+    def error(self, message: str) -> NoReturn:
+        raise _ParseFailure(message)
 
 
 @dataclass
@@ -127,10 +138,11 @@ def _with_global_flags(action: argparse._SubParsersAction) -> argparse._SubParse
 
 def build_parser() -> argparse.ArgumentParser:
     """Assemble the top-level parser and register every command group."""
-    parser = argparse.ArgumentParser(
+    parser = _ArgumentParser(
         prog="baton",
         description="Scripted operations for a one-to-one teaching studio.",
-        epilog="Every command exits 0 on success, 2 for configuration problems, "
+        epilog="Every command exits 0 on success, 1 for bad invocation, "
+        "2 for configuration problems, "
         "3 when a person must choose, 4 on invalid submitted content, "
         "5 when a safety gate blocks the action, 6 on upstream failure, "
         "7 on inconsistent local state, and 8 while a background job is still running.",
@@ -213,7 +225,7 @@ def _offending_token(argv: Sequence[str]) -> str:
     return later_flag or positional or (cleaned[0] if cleaned else "")
 
 
-def _usage_failure(argv: Sequence[str]) -> tuple[Reporter, dict[str, Any]]:
+def _usage_failure(argv: Sequence[str], parse_message: str = "") -> tuple[Reporter, dict[str, Any]]:
     """A usage error caught at parse time, as the envelope every other
     failure already emits.
 
@@ -232,11 +244,17 @@ def _usage_failure(argv: Sequence[str]) -> tuple[Reporter, dict[str, Any]]:
         locale = "en"
     t = translator(locale)
 
+    offending = _offending_token(argv) or "?"
+    message = (
+        t("error.unknown_command", command=offending)
+        if "invalid choice" in parse_message
+        else parse_message or t("error.unknown_command", command=offending)
+    )
     payload: dict[str, Any] = {
         "ok": False,
         "error": "usage",
         "exit_code": int(Exit.USAGE),
-        "message": t("error.unknown_command", command=_offending_token(argv) or "?"),
+        "message": message,
         "remedy": t("error.unknown_command.remedy"),
     }
     return report, payload
@@ -248,10 +266,8 @@ def run(argv: Sequence[str] | None = None) -> int:
     tokens = list(sys.argv[1:]) if argv is None else list(argv)
     try:
         args = parser.parse_args(argv)
-    except SystemExit as exc:
-        if exc.code != 2:
-            raise  # --help and --version exit 0 by design
-        report, payload = _usage_failure(tokens)
+    except _ParseFailure as exc:
+        report, payload = _usage_failure(tokens, str(exc))
         report.failure(payload, human=format_error(payload))
         return int(Exit.USAGE)
 
