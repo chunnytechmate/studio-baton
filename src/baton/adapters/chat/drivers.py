@@ -8,8 +8,10 @@ looked.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
+import uuid
 from typing import Any
 from urllib.parse import quote
 
@@ -43,6 +45,14 @@ class _HttpMessenger:
     def _headers(self) -> dict[str, str]:  # pragma: no cover - overridden
         raise NotImplementedError
 
+    def _extra_headers(self, _recipient_id: str, _text: str) -> dict[str, str]:
+        """Headers that depend on the message itself. Default: none.
+
+        Exists for a driver like LINE's, where retrying a delivery needs an
+        idempotency header computed from what is actually being sent.
+        """
+        return {}
+
     def _check(self, response_status: int, body: str) -> str | None:
         """Return an error message when the platform refused the send, else ``None``."""
         return None if response_status < 400 else f"HTTP {response_status}: {body[:200]}"
@@ -59,6 +69,7 @@ class _HttpMessenger:
     def send(self, recipient_id: str, text: str) -> SendOutcome:
         body = self._payload(recipient_id, text)
         headers = dict(self._headers())
+        headers.update(self._extra_headers(recipient_id, text))
         encoded = self._encode(body)
         if encoded is not None:
             # The driver owns the exact bytes on the wire, so what is signed
@@ -108,6 +119,11 @@ class _HttpMessenger:
         raise ConfigError(f"The {self.service} driver has no health check.")
 
 
+#: Namespace for the retry-key UUID, so the same (token, recipient, text)
+#: always folds to the same key without needing to persist anything.
+_LINE_RETRY_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "studio-baton-line-push")
+
+
 class LineMessenger(_HttpMessenger):
     """LINE Messaging API push."""
 
@@ -142,6 +158,20 @@ class LineMessenger(_HttpMessenger):
             "to": recipient_id,
             "messages": [{"type": "text", "text": text}],
         }
+
+    def _extra_headers(self, recipient_id: str, text: str) -> dict[str, str]:
+        """A deterministic ``X-Line-Retry-Key`` so a retry never double-sends.
+
+        `core.retry.http_request` retries a transient failure up to 3 times.
+        Without this, a retry that fires *after* LINE already accepted the
+        first attempt — the response was merely lost, not the delivery — puts
+        the same lesson message in a parent's chat twice. Folding the token,
+        recipient, and exact text into the key means only a genuine retry of
+        the identical send reuses it; a different message gets a new one.
+        """
+        key_source = f"{self.token[:8]}|{recipient_id}|{text}"
+        digest = hashlib.sha256(key_source.encode("utf-8")).hexdigest()
+        return {"X-Line-Retry-Key": str(uuid.uuid5(_LINE_RETRY_NAMESPACE, digest))}
 
 
 class TelegramMessenger(_HttpMessenger):

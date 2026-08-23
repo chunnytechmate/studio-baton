@@ -108,6 +108,24 @@ def _video_link(docs, doc_id: str) -> str:
     return ""
 
 
+def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
+    """The document's own date and titles, read fresh rather than from the
+    published record — both can be corrected on the document after the
+    summary went out, and the message should reflect the current page.
+
+    Same degrade-quietly stance as `_video_link`: these are cosmetic, not
+    gated, so a document-store hiccup here must not block a send that would
+    otherwise go.
+    """
+    if not doc_id:
+        return "", ""
+    try:
+        status = docs.get_status(doc_id)
+    except BatonError:
+        return "", ""
+    return status.date, status.titles
+
+
 def _send_one(ctx: Context, name: str, *, session: int | None, dry_run: bool) -> dict[str, Any]:
     """Resolve, gather, gate, and send for one learner. Raises on any refusal."""
     messenger = open_chat(ctx.config)
@@ -133,7 +151,10 @@ def _send_one(ctx: Context, name: str, *, session: int | None, dry_run: bool) ->
                 )
 
         recipient_id = messenger.resolve(ctx.args.to)
-        video_link = _video_link(open_docs(ctx.config), str(published.get("doc_id", "")))
+        docs = open_docs(ctx.config)
+        doc_id = str(published.get("doc_id", ""))
+        video_link = _video_link(docs, doc_id)
+        date, titles = _date_and_titles(docs, doc_id)
 
         required, optional = _required_optional(ctx)
         return send_lesson(
@@ -143,6 +164,8 @@ def _send_one(ctx: Context, name: str, *, session: int | None, dry_run: bool) ->
             learner_id=learner.id,
             published=published,
             video_link=video_link,
+            date=date,
+            titles=titles,
             required=required,
             optional=optional,
             dry_run=dry_run,

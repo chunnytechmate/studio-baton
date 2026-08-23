@@ -12,6 +12,7 @@ will tell you which is which.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37,9 +38,19 @@ def _slug(value: str) -> str:
     """A filesystem-safe key for a learner id.
 
     Ids come from a studio's own database and may be anything at all, so they
-    are never used as a path component unescaped.
+    are never used as a path component unescaped. A hash fallback (rather than
+    a bare "unknown") keeps two ids that both strip to nothing — non-ASCII
+    ones, in particular — from colliding on the same file. See the video
+    pipeline's ``_slug`` for the incident that made this the pattern here too.
     """
-    cleaned = _SAFE_NAME.sub("_", str(value)).strip("._") or "unknown"
+    cleaned = _SAFE_NAME.sub("_", str(value)).strip("._")
+    if not cleaned:
+        cleaned = (
+            "unknown_"
+            + hashlib.sha1(  # noqa: S324 - filename key, not a digest
+                str(value).encode("utf-8")
+            ).hexdigest()[:12]
+        )
     return cleaned[:100]
 
 

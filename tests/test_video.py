@@ -275,6 +275,59 @@ def test_a_skipped_job_is_not_resumed(pipeline):
 # -- selection and state -----------------------------------------------------
 
 
+def test_non_ascii_learner_folders_do_not_share_a_job_record(tmp_path):
+    """A regression for the incident that shipped: `_slug` kept only ASCII, so
+    two folders named entirely in Thai both stripped to "" and fell back to
+    the same literal "unknown" — the second learner's run read the first's
+    completed job back, saw every step already done, and silently skipped
+    downloading, uploading, and linking her own clips."""
+    ikkyu = Learner(id="10", name="น้องอิคคิว", instrument="guitar")
+    khing = Learner(id="11", name="น้องขิงขิง", instrument="guitar")
+    clips = [
+        SourceClip(id="c1", name="clip.mov", learner_folder="น้องขิงขิง", size_bytes=10),
+        SourceClip(id="c2", name="clip.mov", learner_folder="น้องอิคคิว", size_bytes=10),
+    ]
+    store = FakeLearnerStore(
+        learners=[ikkyu, khing],
+        sessions=[
+            Session(id="s1", learner_id="10", number=1, doc_id="doc-ikkyu-01"),
+            Session(id="s2", learner_id="11", number=1, doc_id="doc-khing-01"),
+        ],
+    )
+    docs = FakeDocStore(
+        statuses={
+            "doc-ikkyu-01": DocStatus(doc_id="doc-ikkyu-01", status="In progress"),
+            "doc-khing-01": DocStatus(doc_id="doc-khing-01", status="In progress"),
+        }
+    )
+    publisher = FakePublisher()
+
+    def resolve_session(learner):
+        found = store.list_sessions(learner.id)
+        return (found[0].number, found[0].doc_id) if found else None
+
+    built = VideoPipeline(
+        source=FakeMediaSource(clips=clips),
+        encoder=FakeEncoder(),
+        publisher=publisher,
+        store=store,
+        docs=docs,
+        jobs=VideoJobStore(tmp_path / "jobs"),
+        workdir=tmp_path / "work",
+        profile=EncodeProfile(name="auto"),
+        resolve_session=resolve_session,
+    )
+
+    jobs = {job.learner_folder: job for job in built.run()}
+
+    assert jobs["น้องขิงขิง"].status == "done"
+    assert jobs["น้องอิคคิว"].status == "done"
+    assert jobs["น้องขิงขิง"].video_id != jobs["น้องอิคคิว"].video_id
+    assert len(publisher.uploads) == 2
+    # Each learner's job file lives at its own path, not a shared "unknown.json".
+    assert len(list((tmp_path / "jobs").glob("*.json"))) == 2
+
+
 def test_only_restricts_the_run_to_named_folders(pipeline):
     built, source, _e, publisher, _d, _j = pipeline
     source.clips = [
@@ -335,6 +388,28 @@ def test_resuming_a_job_that_never_downloaded_is_an_error_not_a_poisoned_record(
     assert job.status == "failed"
     assert "none were downloaded" in job.error
     assert not jobs.get("Ada Whitfield").done("downloaded")
+
+
+def test_two_clips_with_the_same_filename_do_not_clobber_each_other(pipeline):
+    """A phone's own numbering restarts across recording sessions, so two
+    distinct clips sharing one filename (e.g. two `IMG_8131.MOV`) is normal.
+    Downloading both to the same destination used to let the second silently
+    overwrite the first before either was combined — the run then reported
+    success and trashed both originals, having actually used only one twice."""
+    from baton.pipelines.video import VideoJob
+
+    built, source, _encoder, _publisher, _docs, _jobs = pipeline
+    same_name_clips = [
+        SourceClip(id="dup-1", name="IMG_8131.MOV", learner_folder="Ada Whitfield", size_bytes=16),
+        SourceClip(id="dup-2", name="IMG_8131.MOV", learner_folder="Ada Whitfield", size_bytes=16),
+    ]
+
+    paths = built._download(VideoJob(learner_folder="Ada Whitfield"), same_name_clips)
+
+    assert source.downloaded == ["dup-1", "dup-2"], "both clips must actually be fetched"
+    assert len({p.name for p in paths}) == 2, f"expected two distinct destinations, got {paths}"
+    on_disk = sorted(p.name for p in built._clip_dir("Ada Whitfield").glob("*.MOV"))
+    assert len(on_disk) == 2, f"expected two distinct files on disk, got {on_disk}"
 
 
 def test_a_stale_download_step_with_no_files_names_the_job_file(pipeline, tmp_path):

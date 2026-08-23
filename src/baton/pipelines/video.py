@@ -20,6 +20,7 @@ nobody's recording goes out that night.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -72,7 +73,22 @@ def _now() -> str:
 
 
 def _slug(value: str) -> str:
-    cleaned = _SAFE.sub("_", str(value)).strip("._") or "unknown"
+    """A filesystem-safe key for a learner folder.
+
+    ``_SAFE`` only keeps ASCII, so a folder named entirely in Thai (or any
+    other non-Latin script) strips to nothing and every such learner used to
+    collapse onto the same literal ``"unknown"`` file — one child's job record
+    silently became another's. The hash keeps that collision from happening
+    while staying deterministic and still readable as "this was non-ASCII".
+    """
+    cleaned = _SAFE.sub("_", str(value)).strip("._")
+    if not cleaned:
+        cleaned = (
+            "unknown_"
+            + hashlib.sha1(  # noqa: S324 - filename key, not a digest
+                str(value).encode("utf-8")
+            ).hexdigest()[:12]
+        )
     return cleaned[:100]
 
 
@@ -234,8 +250,21 @@ class VideoPipeline:
     def _download(self, job: VideoJob, clips: list[SourceClip]) -> list[Path]:
         target = self._clip_dir(job.learner_folder)
         paths = []
+        claimed: dict[str, str] = {}  # destination name -> the clip id that owns it
         for clip in clips:
-            destination = target / _slug(clip.name)
+            name = _slug(clip.name)
+            owner = claimed.get(name)
+            if owner is not None and owner != clip.id:
+                # A phone's own numbering restarts across recording sessions,
+                # so two distinct clips sharing one filename is normal, not a
+                # bug in the source. Downloading both to the same destination
+                # would let the second silently overwrite the first before
+                # either was combined — losing one clip's footage right before
+                # the run trashes both originals as "already collected".
+                stem, _, suffix = name.rpartition(".")
+                name = f"{stem or name}__{clip.id[:8]}" + (f".{suffix}" if suffix else "")
+            claimed[name] = clip.id
+            destination = target / name
             if not self._already_downloaded(destination, clip):
                 self.source.download(clip, destination)
             paths.append(destination)

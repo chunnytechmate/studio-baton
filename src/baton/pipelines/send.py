@@ -17,12 +17,51 @@ link is the document's real URL.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..adapters.chat.base import Messenger
 from ..adapters.db.base import LearnerStore
 from ..errors import GateError
+
+#: The studio's own phrasing, carried over verbatim from the message the
+#: original `push.py` sent — parents already know this voice.
+OPENING_PHRASES = (
+    "สรุปการเรียนของ",
+    "สรุปเนื้อหาการเรียนของ",
+    "สรุปการเรียนดนตรีของ",
+    "บันทึกการเรียนของ",
+)
+CLOSING_PHRASES = (
+    "พบกันใหม่ครั้งหน้านะครับ🥳",
+    "เก่งมาก ไว้พบกันใหม่ครั้งหน้านะครับ🥳",
+    "แล้วพบกันใหม่ครั้งหน้านะครับ 🥳",
+    "ยอดเยี่ยม! ไว้พบกันใหม่ครั้งหน้านะครับ🥳",
+)
+#: Substring match against the learner's instrument, first hit wins — same
+#: rule the original used, so "กลองและกีตาร์" still gets both icons.
+INSTRUMENT_ICONS = (
+    ("กลอง", "กีตาร์", "🥁🎸"),
+    ("กีตาร์", None, "🎸"),
+    ("กลอง", None, "🥁"),
+    ("เปียโน", None, "🎹"),
+    ("พิคโคโล", None, "🎹"),
+    ("ร้อง", None, "🎤"),
+    ("แซกโซโฟน", None, "🎷"),
+    ("แซโซ", None, "🎷"),
+    ("ไวโอลีน", None, "🎻"),
+    ("ไวโอลิน", None, "🎻"),
+)
+DEFAULT_INSTRUMENT_ICON = "🎸"
+
+
+def _instrument_icon(instrument: str) -> str:
+    for first, second, icon in INSTRUMENT_ICONS:
+        if first in instrument and (second is None or second in instrument):
+            return icon
+    return DEFAULT_INSTRUMENT_ICON
+
 
 #: Human phrasing for each field the gate knows about, used in the message a
 #: person reads when a send is blocked.
@@ -46,6 +85,11 @@ class SendContext:
     doc_id: str
     video_link: str = ""
     practice_track: str = ""
+    instrument: str = ""
+    #: The document's own date and titles — these live on the document, not
+    #: the database (see `Session`), so the caller reads them from there.
+    date: str = ""
+    titles: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
 
     def fields(self) -> dict[str, str]:
@@ -65,12 +109,15 @@ def gather_context(
     published: dict[str, Any],
     *,
     video_link: str = "",
+    date: str = "",
+    titles: str = "",
 ) -> SendContext:
     """Build the context from a published record.
 
-    The video link is the one thing not stored at publish time — recordings
-    often land on the document later — so it is supplied by the caller, which
-    reads it from the document.
+    The video link, date, and titles are not stored at publish time — they
+    live on the document itself and can change afterwards (a recording lands
+    later; a date gets corrected) — so all three are supplied by the caller,
+    which reads them from the document.
     """
     learner = store.get_learner(learner_id)
     practice_track = ""
@@ -86,6 +133,9 @@ def gather_context(
         doc_id=str(published.get("doc_id", "")),
         video_link=video_link,
         practice_track=practice_track,
+        instrument=learner.instrument if learner is not None else "",
+        date=date,
+        titles=titles,
     )
 
 
@@ -140,20 +190,41 @@ def gate_check(
     return missing, warnings
 
 
-def compose_message(context: SendContext, *, footer_links: bool = True) -> str:
-    """Build the final message: the stored summary plus Baton's own links.
+def compose_message(context: SendContext) -> str:
+    """Build the final message the studio's families already know the voice of.
 
-    The summary was composed at publish time, so this adds only what Baton can
-    vouch for — the document URL and, when present, the recording. A model
-    never writes these; that is why links are forbidden inside the summary
-    itself, where they would either duplicate these or be dead.
+    The summary was composed at publish time; everything around it — the
+    opening line, the instrument icon, the document and recording links — is
+    added here from Baton's own records. A model never writes these; that is
+    why links are forbidden inside the summary itself, where they would
+    either duplicate these or be dead.
+
+    Format matches the studio's original `push.py` byte-for-byte where the
+    same fields are available, chosen over Baton's own plainer format once a
+    side-by-side comparison showed parents would notice the difference.
     """
-    lines = [context.short_message]
-    if footer_links:
-        if context.doc_url:
-            lines.append(f"Lesson notes: {context.doc_url}")
-        if context.video_link:
-            lines.append(f"Recording: {context.video_link}")
+    icon = _instrument_icon(context.instrument)
+    opening = random.choice(OPENING_PHRASES)  # noqa: S311 - phrase variety, not a security decision
+    closing = random.choice(CLOSING_PHRASES)  # noqa: S311 - phrase variety, not a security decision
+    instrument_part = f" ({context.instrument})" if context.instrument else ""
+    date_part = f" - {context.date}" if context.date else ""
+
+    lines = [f"{icon} {opening}{context.learner_name}{instrument_part}{date_part}"]
+
+    if context.titles:
+        lines.append(f"\n🎵 {context.titles}")
+    if context.short_message:
+        lines.append(f"\n📝 {context.short_message}")
+
+    week = context.session_number if context.session_number else "ล่าสุด"
+    lines.append(f"\n📌 ลิ้งค์ Link Week {week} รายละเอียดการเรียนและวีดีโอ:\n{context.doc_url}")
+
+    if context.practice_track:
+        lines.append(f"\n🎧 Track สำหรับซ้อม:\n{context.practice_track}")
+    if context.video_link:
+        lines.append(f"\nเฉพาะ Video: {context.video_link}")
+
+    lines.append(f"\n{closing}")
     return "\n".join(lines)
 
 
@@ -165,6 +236,8 @@ def send_lesson(
     learner_id: str,
     published: dict[str, Any],
     video_link: str = "",
+    date: str = "",
+    titles: str = "",
     required: list[str] | None = None,
     optional: list[str] | None = None,
     dry_run: bool = False,
@@ -178,7 +251,9 @@ def send_lesson(
     required = ["doc_link", "short_summary", "session_number"] if required is None else required
     optional = ["practice_track", "video_link"] if optional is None else optional
 
-    context = gather_context(store, learner_id, published, video_link=video_link)
+    context = gather_context(
+        store, learner_id, published, video_link=video_link, date=date, titles=titles
+    )
     _, warnings = gate_check(context, required=required, optional=optional)
     message = compose_message(context)
 

@@ -181,16 +181,69 @@ def test_the_required_set_is_configuration_not_code():
 def test_the_message_is_the_published_one_plus_batons_own_links():
     message = compose_message(context())  # type: ignore[arg-type]
 
-    assert message.startswith("• Covered: Blackbird")
-    assert "Lesson notes: https://example.invalid/lesson-3" in message
-    assert "Recording: https://example.invalid/watch/3" in message
+    assert "• Covered: Blackbird" in message
+    assert "https://example.invalid/lesson-3" in message
+    assert "เฉพาะ Video: https://example.invalid/watch/3" in message
 
 
 def test_the_recording_line_is_absent_when_there_is_no_recording():
     message = compose_message(context(video_link=""))  # type: ignore[arg-type]
 
-    assert "Recording:" not in message
-    assert "Lesson notes:" in message
+    assert "เฉพาะ Video:" not in message
+    assert "https://example.invalid/lesson-3" in message
+
+
+def test_the_instrument_icon_matches_the_learner():
+    message = compose_message(context())  # type: ignore[arg-type]
+    from baton.pipelines.send import SendContext
+
+    guitar = compose_message(
+        SendContext(
+            learner_name="Ada",
+            doc_id="d",
+            doc_url="u",
+            short_message="s",
+            session_number=1,
+            instrument="กีตาร์",
+        )
+    )
+    drums = compose_message(
+        SendContext(
+            learner_name="Ada",
+            doc_id="d",
+            doc_url="u",
+            short_message="s",
+            session_number=1,
+            instrument="กลอง",
+        )
+    )
+
+    assert message  # a context with no instrument still composes
+    assert guitar.startswith("🎸")
+    assert drums.startswith("🥁")
+
+
+def test_titles_appear_only_when_present():
+    from baton.pipelines.send import SendContext
+
+    with_title = compose_message(
+        SendContext(
+            learner_name="Ada",
+            doc_id="d",
+            doc_url="u",
+            short_message="s",
+            session_number=1,
+            titles="Blackbird",
+        )
+    )
+    without_title = compose_message(
+        SendContext(
+            learner_name="Ada", doc_id="d", doc_url="u", short_message="s", session_number=1
+        )
+    )
+
+    assert "🎵 Blackbird" in with_title
+    assert "🎵" not in without_title
 
 
 def test_gathered_context_pulls_the_practice_track_from_the_assigned_piece():
@@ -198,6 +251,19 @@ def test_gathered_context_pulls_the_practice_track_from_the_assigned_piece():
 
     assert gathered.practice_track.endswith("track.mp3")
     assert gathered.learner_name == "Ada Whitfield"
+
+
+def test_gathered_context_pulls_the_instrument_from_the_learner():
+    gathered = gather_context(STORE, "1", PUBLISHED, video_link="v")
+
+    assert gathered.instrument == "guitar"
+
+
+def test_gathered_context_passes_through_the_documents_date_and_titles():
+    gathered = gather_context(STORE, "1", PUBLISHED, date="2026-08-23", titles="Blackbird")
+
+    assert gathered.date == "2026-08-23"
+    assert gathered.titles == "Blackbird"
 
 
 def test_gathered_context_survives_a_learner_with_no_piece():
