@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ...core.config import Config
 from ...errors import ConfigError
-from .base import Block, DocStatus, DocStore, PreservePolicy, PreserveRule
+from .base import Block, DocStatus, DocStore, PreservePolicy, PreserveRule, find_video_link
 from .notion import NotionDocStore
 
 #: Every driver this build implements.
@@ -35,5 +35,6 @@ __all__ = [
     "NotionDocStore",
     "PreservePolicy",
     "PreserveRule",
+    "find_video_link",
     "open_docs",
 ]

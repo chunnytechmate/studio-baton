@@ -8,6 +8,7 @@ install rather than an ImportError traceback.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
@@ -15,6 +16,21 @@ from typing import Any, TypeVar
 from ...core.config import Config
 from ...errors import ConfigError, UpstreamError
 from .base import VIDEO_SUFFIXES, SourceClip, UploadResult
+
+_VIDEO_ID = re.compile(r"(?:youtu\.be/|[?&]v=|/embed/)(?P<id>[A-Za-z0-9_-]{11})")
+
+
+def extract_video_id(url: str) -> str | None:
+    """The 11-character video id out of any of YouTube's URL shapes.
+
+    Pure string parsing — no API call, no `[google]` extra required — so a
+    caller can use this to decide whether a Notion link is even a YouTube
+    link before paying for credentials or a network round trip.
+    """
+    if not url:
+        return None
+    match = _VIDEO_ID.search(url)
+    return match.group("id") if match else None
 
 
 def _require_google() -> Any:
@@ -259,6 +275,55 @@ class YouTubePublisher:
             url=f"https://youtu.be/{video_id}",
             title=title,
         )
+
+    def _own_channel_ids(self) -> set[str]:
+        response = _google_call(
+            "youtube", self.service.channels().list(part="id", mine=True).execute
+        )
+        return {str(item["id"]) for item in response.get("items", [])}
+
+    def update_description(self, video_id: str, description: str) -> None:
+        """Replace a video's description, keeping its title, tags, and category.
+
+        Refuses to touch a video the configured account does not own. The
+        YouTube link on a session document is read off a Notion page, and
+        that field can legitimately hold a *reference* clip — a teacher's
+        tutorial on someone else's channel, not the learner's own upload.
+        Skipping the ownership check would build the update body from that
+        stranger's video and overwrite a third party's description with a
+        private lesson summary the moment the account happened to have edit
+        access to it (observed against a real reference link, 2026-08-09).
+        """
+        listing = _google_call(
+            "youtube", self.service.videos().list(part="snippet", id=video_id).execute
+        )
+        items = listing.get("items", [])
+        if not items:
+            raise UpstreamError(f"No YouTube video found for id {video_id}.", service="youtube")
+        snippet = items[0]["snippet"]
+
+        owner_channel_id = str(snippet.get("channelId", ""))
+        our_channel_ids = self._own_channel_ids()
+        if our_channel_ids and owner_channel_id not in our_channel_ids:
+            raise UpstreamError(
+                f"Video {video_id} belongs to channel {owner_channel_id} "
+                f"('{snippet.get('channelTitle', '?')}'), not to the configured account.",
+                service="youtube",
+                remedy="Check the YouTube link on the document — it may be a reference "
+                "video rather than the learner's own recording. Not updated.",
+            )
+
+        body = {
+            "id": video_id,
+            "snippet": {
+                "title": snippet.get("title", ""),
+                "description": description,
+                "tags": snippet.get("tags", []),
+                "categoryId": snippet.get("categoryId", self.category_id),
+            },
+        }
+        request = self.service.videos().update(part="snippet", body=body)
+        _google_call("youtube", request.execute)
 
     def health(self) -> None:
         request = self.service.channels().list(part="id", mine=True)

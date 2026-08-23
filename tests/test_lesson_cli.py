@@ -285,6 +285,81 @@ def test_publish_writes_the_summary_and_keeps_the_recording(studio, capsys):
     assert "vid" in {block.id for block in docs.list_blocks("doc-ada-03")}
 
 
+def test_publish_updates_the_youtube_description_when_a_video_is_linked(
+    studio, capsys, monkeypatch
+):
+    """The just-published summary lands on the video's description too, the
+    way the studio's previous pipeline did — but gated through Baton's own
+    ownership check rather than trusting whatever link sits on the page."""
+    from baton.adapters.fakes import FakePublisher
+
+    _, docs = studio
+    docs.blocks["doc-ada-03"] = [
+        Block(id="vid", type="video", url="https://youtu.be/dQw4w9WgXcQ"),
+    ]
+    fake_publisher = FakePublisher()
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+    payload = out(capsys)
+
+    assert payload["youtube"] == {"status": "ok", "video_id": "dQw4w9WgXcQ"}
+    description = fake_publisher.descriptions["dQw4w9WgXcQ"]
+    assert "Blackbird bars 9-16" in description
+    assert "Ada Whitfield" in description
+
+
+def test_publish_skips_the_youtube_step_when_youtube_is_not_configured(studio, capsys):
+    """The fixture's `baton.yaml` has no `media:` section — the ordinary shape
+    of a studio that only uses Baton for lesson summaries. This must not be
+    an error; `open_publisher` raising `ConfigError` is the expected signal
+    that there is nothing to update."""
+    _, docs = studio
+    docs.blocks["doc-ada-03"] = [
+        Block(id="vid", type="video", url="https://youtu.be/dQw4w9WgXcQ"),
+    ]
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+    assert out(capsys)["youtube"] is None
+
+
+def test_publish_skips_the_youtube_step_when_there_is_no_video_yet(studio, capsys, monkeypatch):
+    """`doc-ada-03`'s only block in the base fixture is a non-YouTube link —
+    the ordinary state before a recording has been attached."""
+    from baton.adapters.fakes import FakePublisher
+
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: FakePublisher())
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+    assert out(capsys)["youtube"] is None
+
+
+def test_publish_reports_but_does_not_fail_on_a_foreign_video(studio, capsys, monkeypatch):
+    """A reference link on the document — a tutorial on someone else's
+    channel — must not be overwritten, but the summary itself already landed
+    on the page, so the command still succeeds overall."""
+    from baton.adapters.fakes import FakePublisher
+
+    _, docs = studio
+    docs.blocks["doc-ada-03"] = [
+        Block(id="vid", type="video", url="https://youtu.be/dQw4w9WgXcQ"),
+    ]
+    fake_publisher = FakePublisher()
+    fake_publisher.foreign_video_ids.add("dQw4w9WgXcQ")
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+    payload = out(capsys)
+
+    assert payload["appended"] > 0  # the summary itself still landed
+    assert payload["youtube"]["status"] == "error"
+    assert "dQw4w9WgXcQ" not in fake_publisher.descriptions
+
+
 def test_publish_dry_run_changes_nothing(studio, capsys):
     prepared(studio, capsys)
     _, docs = studio

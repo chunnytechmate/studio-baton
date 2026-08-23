@@ -54,6 +54,31 @@ class Block:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
+def find_video_link(docs: DocStore, doc_id: str) -> str:
+    """The newest video block on a session document, or "" when there is none.
+
+    Shared by every caller that needs "the recording, if any" — `baton send`
+    and the YouTube description step both read the same document the same
+    way, rather than each growing its own copy that quietly drifts from the
+    other (the original system had this duplicated across skills).
+
+    A document-store failure degrades to "no recording link" rather than
+    raising: the field is optional everywhere it is read, so an outage here
+    must not stop whatever the caller was doing for its own required data.
+    """
+    from ...errors import BatonError
+
+    if not doc_id:
+        return ""
+    try:
+        for block in reversed(docs.list_blocks(doc_id)):
+            if block.type == "video" and block.url:
+                return block.url
+    except BatonError:
+        return ""
+    return ""
+
+
 @dataclass(frozen=True)
 class PreserveRule:
     """One condition under which a block survives a rewrite."""

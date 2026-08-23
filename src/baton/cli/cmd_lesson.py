@@ -18,23 +18,27 @@ rather than another guess.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .. import contracts
 from ..adapters.db import open_store
-from ..adapters.docs import open_docs
+from ..adapters.docs import find_video_link, open_docs
 from ..adapters.docs.base import PreservePolicy
+from ..adapters.media import open_publisher
+from ..adapters.media.google import extract_video_id
 from ..domain.resolve import resolve_learner
 from ..domain.status import StatusVocabulary
 from ..domain.whenever import today_in
-from ..errors import UpstreamError, UsageError
+from ..errors import BatonError, ConfigError, UpstreamError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
 from ..pipelines.publish import SummaryPublisher
 from ..pipelines.staging import PUBLISHED, SUMMARISED, LessonDraft, PublishedRecord, StagingStore
 from ..render import summary as render
+from ..render import youtube as render_youtube
 
 if TYPE_CHECKING:
     from .app import Context
@@ -200,6 +204,49 @@ def _titles_from(summary: dict[str, Any] | None) -> str:
         if isinstance(entry, dict) and str(entry.get("topic", "")).strip()
     ]
     return ", ".join(topics)
+
+
+def _update_youtube_description(
+    ctx: Context, docs, doc_id: str, learner, draft: LessonDraft
+) -> dict[str, Any] | None:
+    """Best-effort: put the just-published summary on the lesson's YouTube
+    video description too, the way the studio's previous pipeline did.
+
+    Returns ``None`` when there was nothing to do (no YouTube configured, no
+    video on the document yet, or the link on the document is not a YouTube
+    URL at all) — that is the ordinary case for most sessions, not a failure.
+    A configured-but-failing update (wrong owner, API error) is reported but
+    never raised: the document is already published, and this is a nice-to-
+    have on top of it, not a reason to make the command exit non-zero.
+    """
+    video_link = find_video_link(docs, doc_id)
+    video_id = extract_video_id(video_link) if video_link else None
+    if not video_id:
+        return None
+
+    date = ""
+    with contextlib.suppress(BatonError):  # cosmetic; the description renders without it
+        date = docs.get_status(doc_id).date
+
+    description = render_youtube.format_description(
+        draft.summary or {},
+        instrument=learner.instrument,
+        week=draft.session_number,
+        student_name=learner.name,
+        date=date,
+    )
+    try:
+        # Credentials are resolved lazily (on first API call, not on
+        # construction), so a studio that never configured YouTube only
+        # surfaces `ConfigError` here — not from `open_publisher` itself.
+        publisher = open_publisher(ctx.config)
+        publisher.update_description(video_id, description)
+    except ConfigError:
+        # This studio has not configured YouTube at all — nothing to update.
+        return None
+    except BatonError as exc:
+        return {"status": "error", "video_id": video_id, "error": str(exc)}
+    return {"status": "ok", "video_id": video_id}
 
 
 def _finish_session(
@@ -625,14 +672,34 @@ def handle_publish(ctx: Context) -> Exit:
     )
     _published(ctx).save(draft, short_message=message, doc_url=result.doc_url)
 
+    youtube_result = _update_youtube_description(
+        ctx, open_docs(ctx.config), draft.doc_id, learner, draft
+    )
+    if youtube_result is not None:
+        status = youtube_result["status"]
+        extra = {key: value for key, value in youtube_result.items() if key != "status"}
+        draft.record_target("youtube", status, **extra)
+        staging.save(draft)
+
     _finish_session(ctx, publisher, staging, draft, learner.name)
 
+    youtube_line = ""
+    if youtube_result and youtube_result["status"] == "ok":
+        youtube_line = "\n  YouTube description updated"
+    elif youtube_result and youtube_result["status"] == "error":
+        youtube_line = f"\n  YouTube description NOT updated: {youtube_result['error']}"
+
     ctx.report.result(
-        {**result.to_dict(), "completed": draft.targets["docs"].get("completed", {})},
+        {
+            **result.to_dict(),
+            "completed": draft.targets["docs"].get("completed", {}),
+            "youtube": youtube_result,
+        },
         human=f"Published {learner.name} — {label} "
         f"{draft.session_number}\n"
         f"  appended {result.appended}, removed {result.deleted}, kept {result.preserved}\n"
-        f"  marked the {label} done",
+        f"  marked the {label} done"
+        f"{youtube_line}",
     )
     return Exit.OK
 

@@ -423,6 +423,10 @@ class FakePublisher:
         self.uploads: list[dict[str, Any]] = []
         self.fail_with: Exception | None = None
         self._ids = itertools.count(start=1)
+        #: video ids the fake pretends belong to some other channel — for
+        #: exercising the ownership refusal without a real API call.
+        self.foreign_video_ids: set[str] = set()
+        self.descriptions: dict[str, str] = {}
 
     def upload(
         self, path: Any, *, title: str = "", description: str = "", privacy: str = "unlisted"
@@ -433,7 +437,17 @@ class FakePublisher:
 
         video_id = f"vid{next(self._ids)}"
         self.uploads.append({"path": str(path), "title": title, "privacy": privacy})
+        self.descriptions[video_id] = description
         return UploadResult(video_id=video_id, url=f"https://youtu.be/{video_id}", title=title)
+
+    def update_description(self, video_id: str, description: str) -> None:
+        if self.fail_with is not None:
+            raise self.fail_with
+        if video_id in self.foreign_video_ids:
+            from ..errors import UpstreamError
+
+            raise UpstreamError(f"Video {video_id} belongs to another channel.", service="youtube")
+        self.descriptions[video_id] = description
 
     def health(self) -> None:
         pass

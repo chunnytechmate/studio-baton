@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..adapters.chat import open_chat
 from ..adapters.db import open_store
-from ..adapters.docs import open_docs
+from ..adapters.docs import find_video_link, open_docs
 from ..domain.resolve import resolve_learner
 from ..errors import BatonError, UsageError
 from ..exits import Exit
@@ -85,35 +85,12 @@ def _required_optional(ctx: Context) -> tuple[list[str], list[str]]:
     return required, optional
 
 
-def _video_link(docs, doc_id: str) -> str:
-    """The newest video block on the session document, if any.
-
-    Read from the document rather than remembered from publish time, because
-    recordings are usually attached after the summary goes out.
-
-    A document-store failure here degrades to "no recording link": the field
-    is optional, so an outage must not stop the summary reaching the family.
-    If a studio has moved video_link into the required set, the gate then
-    blocks on it with the usual remedy — which is the correct outcome for a
-    studio that requires it.
-    """
-    if not doc_id:
-        return ""
-    try:
-        for block in reversed(docs.list_blocks(doc_id)):
-            if block.type == "video" and block.url:
-                return block.url
-    except BatonError:
-        return ""
-    return ""
-
-
 def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
     """The document's own date and titles, read fresh rather than from the
     published record — both can be corrected on the document after the
     summary went out, and the message should reflect the current page.
 
-    Same degrade-quietly stance as `_video_link`: these are cosmetic, not
+    Same degrade-quietly stance as `find_video_link`: these are cosmetic, not
     gated, so a document-store hiccup here must not block a send that would
     otherwise go.
     """
@@ -153,7 +130,7 @@ def _send_one(ctx: Context, name: str, *, session: int | None, dry_run: bool) ->
         recipient_id = messenger.resolve(ctx.args.to)
         docs = open_docs(ctx.config)
         doc_id = str(published.get("doc_id", ""))
-        video_link = _video_link(docs, doc_id)
+        video_link = find_video_link(docs, doc_id)
         date, titles = _date_and_titles(docs, doc_id)
 
         required, optional = _required_optional(ctx)
