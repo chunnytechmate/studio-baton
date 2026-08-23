@@ -30,6 +30,18 @@ _SDR_1080P = (
     "format=yuv420p"
 )
 
+#: Encoder args per `EncodeProfile.codec`. Deliberately CPU-decode,
+#: CPU-filter (rotation/tone-map/concat), GPU-encode-only when a codec asks
+#: for NVENC — offloading decode and the concat filter too would need a
+#: hwaccel/hwupload pipeline (format-mismatch prone, and a real VRAM cost for
+#: every concurrent decode surface); the encode itself is the expensive step
+#: that was timing out, and NVENC's own footprint for it is small regardless
+#: of how little VRAM the card has to spare.
+_CODEC_ARGS = {
+    "libx264": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
+    "h264_nvenc": ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "20"],
+}
+
 
 def _one_line(stderr: str | None) -> str:
     """The most informative line of an ffmpeg failure, as a single line.
@@ -88,7 +100,13 @@ class FfmpegEncoder:
         if profile.name == "passthrough" and len(inputs) == 1:
             args += ["-c", "copy"]
         else:
-            args += ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-c:a", "aac"]
+            codec_args = _CODEC_ARGS.get(profile.codec)
+            if codec_args is None:
+                raise ConfigError(
+                    f"Unknown media.encode.codec `{profile.codec}`.",
+                    remedy=f"Set it to one of: {', '.join(sorted(_CODEC_ARGS))}.",
+                )
+            args += [*codec_args, "-c:a", "aac"]
 
         args += profile.extra_args
         args.append(str(output))
@@ -98,8 +116,12 @@ class FfmpegEncoder:
         """Combine ``inputs`` into ``output``.
 
         Raises:
-            ConfigError: No inputs, or ffmpeg is missing.
-            UpstreamError: ffmpeg failed or exceeded its timeout.
+            ConfigError: No inputs, ffmpeg is missing, or the profile names an
+                unknown ``codec``.
+            UpstreamError: ffmpeg failed or exceeded its timeout — this is also
+                what a GPU codec configured but not actually available at run
+                time (driver gone, card busy) surfaces as, since ffmpeg is the
+                one that discovers that, not Baton.
         """
         if not inputs:
             raise ConfigError("Cannot combine an empty list of clips.")

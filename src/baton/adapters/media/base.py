@@ -56,6 +56,10 @@ class EncodeProfile:
     name: str = "auto"
     timeout_seconds: int = 1800
     extra_args: list[str] = field(default_factory=list)
+    #: Which encoder writes the output. "libx264" (CPU, the long-standing
+    #: default) or "h264_nvenc" (NVIDIA GPU — much faster, needs the driver
+    #: and a codec-capable ffmpeg build; see FfmpegEncoder._args).
+    codec: str = "libx264"
 
 
 @runtime_checkable
