@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ..core import jsonio
+from ..domain.models import Piece
 from ..errors import UsageError
 
 #: Draft lifecycle. `summarised` means a validated summary is attached.
@@ -28,6 +30,8 @@ SUMMARISED = "summarised"
 PUBLISHED = "published"
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]")
+
+PieceSnapshotStatus = Literal["captured", "none", "unavailable"]
 
 
 def _now() -> str:
@@ -54,6 +58,88 @@ def _slug(value: str) -> str:
     return cleaned[:100]
 
 
+def _invalid_snapshot() -> UsageError:
+    return UsageError(
+        "The staged lesson has an invalid piece snapshot.",
+        remedy="Re-stage the lesson so Baton can capture the Song DB row again.",
+    )
+
+
+@dataclass(frozen=True)
+class PieceSnapshot:
+    """The Song DB state observed when one lesson was staged."""
+
+    status: PieceSnapshotStatus
+    captured_at: str = ""
+    piece: Piece | None = None
+
+    @classmethod
+    def capture(cls, piece: Piece | None) -> PieceSnapshot:
+        if piece is None:
+            return cls(status="none", captured_at=_now())
+        return cls(status="captured", captured_at=_now(), piece=piece)
+
+    @classmethod
+    def unavailable(cls) -> PieceSnapshot:
+        """Represent a legacy record written before snapshots existed."""
+        return cls(status="unavailable")
+
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> PieceSnapshot:
+        """Read a snapshot from a draft or published-record mapping."""
+        if "piece_snapshot" not in record:
+            return cls.unavailable()
+
+        raw = record["piece_snapshot"]
+        if not isinstance(raw, Mapping):
+            raise _invalid_snapshot()
+
+        status = raw.get("status")
+        captured_at = raw.get("captured_at", "")
+        piece_data = raw.get("piece")
+
+        if status == "unavailable":
+            if captured_at or piece_data is not None:
+                raise _invalid_snapshot()
+            return cls.unavailable()
+
+        if not isinstance(captured_at, str) or not captured_at:
+            raise _invalid_snapshot()
+        if status == "none":
+            if piece_data is not None:
+                raise _invalid_snapshot()
+            return cls(status="none", captured_at=captured_at)
+        if status != "captured" or not isinstance(piece_data, Mapping):
+            raise _invalid_snapshot()
+
+        values = {
+            name: piece_data.get(name, "")
+            for name in ("id", "title", "source_link", "practice_track", "sheet_link")
+        }
+        if any(not isinstance(value, str) for value in values.values()):
+            raise _invalid_snapshot()
+        if not values["id"].strip() or not values["title"].strip():
+            raise _invalid_snapshot()
+        return cls(
+            status="captured",
+            captured_at=captured_at,
+            piece=Piece(**values),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "captured_at": self.captured_at,
+            "piece": self.piece.to_dict() if self.piece is not None else None,
+        }
+
+    def same_content(self, other: PieceSnapshot) -> bool:
+        """Compare observed Song DB content while ignoring capture time."""
+        own_piece = self.piece.to_dict() if self.piece is not None else None
+        other_piece = other.piece.to_dict() if other.piece is not None else None
+        return self.status == other.status and own_piece == other_piece
+
+
 @dataclass
 class LessonDraft:
     """One lesson being prepared."""
@@ -61,6 +147,7 @@ class LessonDraft:
     learner_id: str
     learner_name: str
     session_number: int
+    piece_snapshot: PieceSnapshot = field(default_factory=PieceSnapshot.unavailable)
     doc_id: str = ""
     titles: str = ""
     context: str = ""
@@ -82,6 +169,7 @@ class LessonDraft:
             "learner_id": self.learner_id,
             "learner_name": self.learner_name,
             "session_number": self.session_number,
+            "piece_snapshot": self.piece_snapshot.to_dict(),
             "doc_id": self.doc_id,
             "titles": self.titles,
             "context": self.context,
@@ -99,6 +187,7 @@ class LessonDraft:
             learner_id=str(data.get("learner_id", "")),
             learner_name=str(data.get("learner_name", "")),
             session_number=int(data.get("session_number", 0)),
+            piece_snapshot=PieceSnapshot.from_record(data),
             doc_id=str(data.get("doc_id", "")),
             titles=str(data.get("titles", "")),
             context=str(data.get("context", "")),

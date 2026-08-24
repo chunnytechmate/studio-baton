@@ -25,10 +25,12 @@ from typing import TYPE_CHECKING, Any
 
 from .. import contracts
 from ..adapters.db import open_store
+from ..adapters.db.base import LearnerStore
 from ..adapters.docs import find_video_link, open_docs
 from ..adapters.docs.base import PreservePolicy
 from ..adapters.media import open_publisher
 from ..adapters.media.google import extract_video_id
+from ..domain.models import Learner
 from ..domain.resolve import resolve_learner
 from ..domain.status import StatusVocabulary
 from ..domain.whenever import today_in
@@ -36,7 +38,14 @@ from ..errors import BatonError, ConfigError, UpstreamError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
 from ..pipelines.publish import SummaryPublisher
-from ..pipelines.staging import PUBLISHED, SUMMARISED, LessonDraft, PublishedRecord, StagingStore
+from ..pipelines.staging import (
+    PUBLISHED,
+    SUMMARISED,
+    LessonDraft,
+    PieceSnapshot,
+    PublishedRecord,
+    StagingStore,
+)
 from ..render import summary as render
 from ..render import youtube as render_youtube
 
@@ -161,6 +170,19 @@ def _resolve(ctx: Context, store, name: str):
         aliases=ctx.config.get("db.aliases", {}) or {},
         label=ctx.config.label("learner"),
     )
+
+
+def _capture_piece_snapshot(store: LearnerStore, learner: Learner) -> PieceSnapshot:
+    """Read the assigned Song DB row once, at the lesson boundary."""
+    if learner.current_piece_id is None:
+        return PieceSnapshot.capture(None)
+    piece = store.get_piece(learner.current_piece_id)
+    if piece is None:
+        raise UsageError(
+            f'{learner.name} is assigned missing piece id "{learner.current_piece_id}".',
+            remedy="Fix or clear the learner's current piece, then re-stage the lesson.",
+        )
+    return PieceSnapshot.capture(piece)
 
 
 def _short_summary_rules(ctx: Context) -> dict[str, Any]:
@@ -409,10 +431,12 @@ def handle_stage(ctx: Context) -> Exit:
             if record and int(record.get("session_number", 0)) < session_number:
                 previous_context = str(record.get("short_message", ""))
 
+        piece_snapshot = _capture_piece_snapshot(store, learner)
         draft = LessonDraft(
             learner_id=learner.id,
             learner_name=learner.name,
             session_number=session_number,
+            piece_snapshot=piece_snapshot,
             doc_id=doc_id,
             titles=titles,
             context=context,
@@ -435,18 +459,20 @@ def handle_contract(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
         learner = _resolve(ctx, store, ctx.args.name)
-        piece = store.get_piece(learner.current_piece_id) if learner.current_piece_id else None
     finally:
         store.close()
 
     draft = _staging(ctx).require(learner.id, learner.name)
+    learner_context = learner.to_dict()
+    learner_context.pop("current_piece_id", None)
+    piece = draft.piece_snapshot.piece
     rules = _short_summary_rules(ctx)
     theory = _theory(ctx)
 
     payload = {
         "schema": contracts.load_schema(contracts.LESSON_SUMMARY),
         "context": {
-            "learner": learner.to_dict(),
+            "learner": learner_context,
             "session_number": draft.session_number,
             "titles": draft.titles,
             "current_piece": piece.to_dict() if piece else None,
