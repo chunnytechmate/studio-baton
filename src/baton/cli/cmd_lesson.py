@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -46,6 +47,7 @@ from ..pipelines.staging import (
     PublishedRecord,
     StagingStore,
 )
+from ..render import piece as render_piece
 from ..render import summary as render
 from ..render import youtube as render_youtube
 
@@ -183,6 +185,21 @@ def _capture_piece_snapshot(store: LearnerStore, learner: Learner) -> PieceSnaps
             remedy="Fix or clear the learner's current piece, then re-stage the lesson.",
         )
     return PieceSnapshot.capture(piece)
+
+
+def _require_force_compatible(
+    draft: LessonDraft, published: Mapping[str, Any] | None, *, force: bool
+) -> None:
+    """Refuse a rewrite when old preserved resources cannot be attributed."""
+    if not force or published is None:
+        return
+    previous = PieceSnapshot.from_record(published)
+    if previous.status == "unavailable" or not draft.piece_snapshot.same_content(previous):
+        raise UsageError(
+            "Cannot force-publish this lesson with a different or unknown piece snapshot.",
+            remedy="Keep the published snapshot and correct the document manually; "
+            "automatic cross-snapshot repair is not available.",
+        )
 
 
 def _short_summary_rules(ctx: Context) -> dict[str, Any]:
@@ -552,7 +569,7 @@ def handle_render(ctx: Context) -> Exit:
     theory = _theory(ctx)
 
     if ctx.args.format == "blocks":
-        blocks = render.to_blocks(
+        blocks = render_piece.to_blocks(draft.piece_snapshot) + render.to_blocks(
             draft.summary,
             sections=sections,
             callout_texts=theory,
@@ -573,7 +590,14 @@ def handle_render(ctx: Context) -> Exit:
         ctx.report.result({"message": message}, human=message)
         return Exit.OK
 
-    markdown = render.to_markdown(draft.summary, sections=sections, callout_texts=theory)
+    markdown = "\n\n".join(
+        part
+        for part in (
+            render_piece.to_markdown(draft.piece_snapshot),
+            render.to_markdown(draft.summary, sections=sections, callout_texts=theory),
+        )
+        if part
+    )
     ctx.report.result({"markdown": markdown}, human=markdown)
     return Exit.OK
 
@@ -638,9 +662,10 @@ def handle_publish(ctx: Context) -> Exit:
     # studio that re-stages the same session to fix a title clears the mark and
     # the gate opens again. The published record is written per session and no
     # `stage` touches it, so it is the one that can still answer tomorrow.
-    published = draft.target_done("docs") or (
-        _published(ctx).get(learner.id, draft.session_number) is not None
-    )
+    published_store = _published(ctx)
+    published_record = published_store.get(learner.id, draft.session_number)
+    published = draft.target_done("docs") or published_record is not None
+    _require_force_compatible(draft, published_record, force=ctx.args.force)
 
     publisher = SummaryPublisher(
         open_docs(ctx.config),
@@ -652,7 +677,12 @@ def handle_publish(ctx: Context) -> Exit:
     label = ctx.config.label("session")
 
     if ctx.args.dry_run:
-        plan = publisher.plan(draft.doc_id, draft.summary, callout_texts=theory)
+        plan = publisher.plan(
+            draft.doc_id,
+            draft.summary,
+            piece_snapshot=draft.piece_snapshot,
+            callout_texts=theory,
+        )
         ctx.report.result(
             {**plan, "dry_run": True},
             human=f"Would append {plan['would_append']} blocks, delete "
@@ -681,7 +711,12 @@ def handle_publish(ctx: Context) -> Exit:
 
     ctx.report.step(f"publishing {learner.name} — {label} {draft.session_number}")
     try:
-        result = publisher.publish(draft.doc_id, draft.summary, callout_texts=theory)
+        result = publisher.publish(
+            draft.doc_id,
+            draft.summary,
+            piece_snapshot=draft.piece_snapshot,
+            callout_texts=theory,
+        )
     except Exception as exc:
         draft.record_target("docs", "failed", error=str(exc))
         staging.save(draft)
@@ -696,7 +731,7 @@ def handle_publish(ctx: Context) -> Exit:
         bullet=str(ctx.config.get("summary.short_summary.bullet", "•")),
         labels=ctx.config.get("summary.short_summary.labels", {}),
     )
-    _published(ctx).save(draft, short_message=message, doc_url=result.doc_url)
+    published_store.save(draft, short_message=message, doc_url=result.doc_url)
 
     youtube_result = _update_youtube_description(
         ctx, open_docs(ctx.config), draft.doc_id, learner, draft

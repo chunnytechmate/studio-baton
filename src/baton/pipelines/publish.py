@@ -25,7 +25,22 @@ from typing import Any
 
 from ..adapters.docs.base import Block, DocStore, PreservePolicy
 from ..domain.status import DONE
-from ..render import summary as render
+from ..render import piece as render_piece
+from ..render import summary as render_summary
+from .staging import PieceSnapshot
+
+
+def _without_preserved_resource_duplicates(
+    generated: list[dict[str, Any]], preserved: list[Block]
+) -> list[dict[str, Any]]:
+    existing = {
+        identity for block in preserved if (identity := render_piece.stored_identity(block))
+    }
+    return [
+        block
+        for block in generated
+        if (identity := render_piece.payload_identity(block)) is None or identity not in existing
+    ]
 
 
 @dataclass
@@ -66,7 +81,30 @@ class SummaryPublisher:
         self.sections = sections
         self.callout_icon = callout_icon
 
-    def plan(self, doc_id: str, summary: dict[str, Any], *, callout_texts=None) -> dict[str, Any]:
+    def _blocks(
+        self,
+        summary: dict[str, Any],
+        piece_snapshot: PieceSnapshot | None,
+        callout_texts: dict[str, str] | None,
+        preserved: list[Block],
+    ) -> list[dict[str, Any]]:
+        generated = render_piece.to_blocks(piece_snapshot) if piece_snapshot is not None else []
+        generated += render_summary.to_blocks(
+            summary,
+            sections=self.sections,
+            callout_texts=callout_texts,
+            callout_icon=self.callout_icon,
+        )
+        return _without_preserved_resource_duplicates(generated, preserved)
+
+    def plan(
+        self,
+        doc_id: str,
+        summary: dict[str, Any],
+        *,
+        piece_snapshot: PieceSnapshot | None = None,
+        callout_texts: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         """Work out what publishing would do, without doing any of it.
 
         Returns:
@@ -74,15 +112,16 @@ class SummaryPublisher:
         """
         existing = self.docs.list_blocks(doc_id) if doc_id else []
         preserved, replaceable = self.preserve.partition(existing)
-        blocks = render.to_blocks(
-            summary,
-            sections=self.sections,
-            callout_texts=callout_texts,
-            callout_icon=self.callout_icon,
-        )
+        blocks = self._blocks(summary, piece_snapshot, callout_texts, preserved)
+        piece = piece_snapshot.piece if piece_snapshot is not None else None
         return {
             "doc_id": doc_id,
             "would_append": len(blocks),
+            "would_append_resources": sum(
+                render_piece.payload_identity(block) is not None for block in blocks
+            ),
+            "piece_snapshot_status": piece_snapshot.status if piece_snapshot is not None else None,
+            "piece_id": piece.id if piece is not None else None,
             "would_delete": len(replaceable),
             "would_preserve": len(preserved),
             "preserved_types": sorted({block.type for block in preserved}),
@@ -94,6 +133,7 @@ class SummaryPublisher:
         doc_id: str,
         summary: dict[str, Any],
         *,
+        piece_snapshot: PieceSnapshot | None = None,
         callout_texts: dict[str, str] | None = None,
         replace: bool = True,
     ) -> PublishResult:
@@ -112,12 +152,7 @@ class SummaryPublisher:
         existing: list[Block] = self.docs.list_blocks(doc_id) if replace else []
         preserved, replaceable = self.preserve.partition(existing)
 
-        blocks = render.to_blocks(
-            summary,
-            sections=self.sections,
-            callout_texts=callout_texts,
-            callout_icon=self.callout_icon,
-        )
+        blocks = self._blocks(summary, piece_snapshot, callout_texts, preserved)
 
         # Append first: see the module docstring on why this order is not
         # arbitrary.
