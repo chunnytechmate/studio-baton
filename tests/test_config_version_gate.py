@@ -17,8 +17,9 @@ from baton.errors import ConfigError
 # The same minimal valid profile the `profile` fixture writes, with only the
 # version line swapped, so any ConfigError below is the version gate and not a
 # missing-required-key complaint.
-VALID_PROFILE = textwrap.dedent(
-    """
+VALID_PROFILE = (
+    textwrap.dedent(
+        """
     version: {version}
     locale: en
     timezone: Asia/Bangkok
@@ -31,13 +32,13 @@ VALID_PROFILE = textwrap.dedent(
     chat:
       driver: webhook
     """
-).strip() + "\n"
+    ).strip()
+    + "\n"
+)
 
 
 def _write_version(profile, version: str) -> None:
-    (profile / "baton.yaml").write_text(
-        VALID_PROFILE.format(version=version), encoding="utf-8"
-    )
+    (profile / "baton.yaml").write_text(VALID_PROFILE.format(version=version), encoding="utf-8")
 
 
 def test_boolean_version_is_rejected(profile):
