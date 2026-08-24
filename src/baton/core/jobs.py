@@ -481,8 +481,13 @@ class JobRunner:
                 for victim in entry.rglob("*"):
                     with suppress(OSError):
                         victim.unlink()
-                with suppress(OSError):
+                try:
                     entry.rmdir()
+                except OSError:
+                    # Something survived the unlink sweep (a subdirectory, a
+                    # concurrent writer). The dir is still on disk, so it must
+                    # not be counted as removed.
+                    continue
                 removed += 1
         return removed
 
