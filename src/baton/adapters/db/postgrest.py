@@ -307,7 +307,18 @@ class PostgrestStore:
             "POST", fields.table, json_body=payload, prefer="return=representation"
         )
         rows = created if isinstance(created, list) else [created]
-        return self._work(rows[0]) if rows and isinstance(rows[0], dict) else work
+        if not rows or not isinstance(rows[0], dict):
+            # The server ignored Prefer: return=representation. The row may
+            # well be written, so handing back the caller's Work (id unset)
+            # would hide that — the next add would duplicate it.
+            raise UpstreamError(
+                f"{self.driver} accepted the work but returned no "
+                f"representation to read the assigned id from.",
+                service=self.driver,
+                remedy="The row may exist on the server — check for it before "
+                "retrying, or this add will run twice.",
+            )
+        return self._work(rows[0])
 
     # -- lifecycle ---------------------------------------------------------
 
