@@ -42,9 +42,7 @@ def _store() -> PostgrestStore:
         {"Accept": "application/json"},
         Schema(
             learners=fields("learners", id="id", name="name"),
-            sessions=fields(
-                "sessions", id="id", learner_id="learner_id", number="number"
-            ),
+            sessions=fields("sessions", id="id", learner_id="learner_id", number="number"),
             pieces=fields("pieces", id="id", title="title"),
             works=fields(
                 "works",
