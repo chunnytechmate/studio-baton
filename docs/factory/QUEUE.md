@@ -10,6 +10,8 @@ must never block or override a live label.
   — **#4 (M1) was skipped by the cap and remains untriaged**
 - not covered by this run: #1 (M6) is `factory:awaiting-review` on an open PR — owned by
   a human decision, not re-triaged
+- updated: 2026-08-24 (run `2026-08-24T000806Z-triage-4`, UTC `2026-08-24T00:08Z`) —
+  picked up the cap-skipped #4. Every open issue now carries exactly one disposition.
 
 ## FQ-6: M3: TOCTOU ใน JobRunner.get — heartbeat stat race กับ prune → FileNotFoundError
 - disposition: ready-to-implement
@@ -251,8 +253,21 @@ must never block or override a live label.
 - confidence: high
 - notes: accept-and-document vs rewire is explicitly an owner call in the finding
 
-## Not covered this run
+## FQ-4: M1: alias ซ้ำใน contact เดียว → ระบบแจ้งกำกวมทั้งที่ชี้คนเดียวกัน
+- disposition: needs-info
+- source: https://github.com/chunnytechmate/studio-baton/issues/4
+- last_triaged: 2026-08-24
+- repro: confirmed (issue's line refs date from `fa8a041`; at HEAD the scoped bug does NOT reproduce — already fixed by `cf658ab`, exact matches keyed by contact key at `src/baton/adapters/chat/base.py:92-105`, covering test `tests/test_send.py:392` `test_a_duplicate_alias_under_one_contact_is_one_match` passes)
+- files_expected: none (verify-only outcome — no change expected)
+- load_bearing: true (any residual change would touch `src/baton/adapters/chat/**`)
+- gate_level: deep
+- done_when: human confirms fixed-at-HEAD and closes #4, or names a residual case — which then re-triages through the LOAD_BEARING route (ready-to-spec minimum, gate level deep)
+- confidence: high
+- notes: nothing left to implement or spec for the scoped bug; close-vs-residual is a call only the owner can make, hence needs-info
 
-- **FQ-4 (M1)** — untriaged, skipped by the 20-issue cap (least recently updated of the
-  qualifying set). Next triage run must pick it up first.
+## Not covered
+
 - **FQ-1 (M6)** — `factory:awaiting-review`, PR open. Human owns the next decision.
+
+FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z-triage-4`
+(needs-info — already fixed at HEAD; see its entry above).
