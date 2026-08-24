@@ -271,3 +271,39 @@ must never block or override a live label.
 
 FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z-triage-4`
 (needs-info — already fixed at HEAD; see its entry above).
+
+## FQ-31: P0/S0 freeze staged Song DB context for lesson contracts
+- disposition: ready-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/31
+- last_triaged: 2026-08-24
+- repro: confirmed (Gate 2 found live lookup after staging)
+- files_expected: src/baton/pipelines/staging.py, src/baton/cli/cmd_lesson.py, tests/test_piece_snapshot.py
+- load_bearing: false
+- gate_level: full
+- done_when: stage A, assign B, and contract still exposes A without live current_piece_id; explicit none/unavailable persist and invalid state fails closed
+- confidence: high
+- notes: spec handoff 2026-08-24T21:23:27Z; only this slice is initially claimable
+
+## FQ-32: P0/S1 publish frozen Song DB resources safely
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/32
+- last_triaged: 2026-08-24
+- repro: confirmed (publisher currently renders summary only)
+- files_expected: src/baton/render/piece.py, src/baton/pipelines/publish.py, src/baton/pipelines/staging.py, src/baton/cli/cmd_lesson.py, tests/test_piece_publish.py
+- load_bearing: false
+- gate_level: full
+- done_when: frozen resources precede summary; exact same-snapshot dedup is safe; changed/unknown forced republish makes no write
+- confidence: medium
+- notes: blocked by merge of FQ-31; block ownership has no persisted ids
+
+## FQ-33: P0/S2 send published practice track and document operations
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/33
+- last_triaged: 2026-08-24
+- repro: confirmed (send currently reads learner.current_piece_id live)
+- files_expected: src/baton/pipelines/send.py, tests/test_send.py, tests/test_lesson_piece_flow.py, README.md, docs/notion-setup.md
+- load_bearing: true
+- gate_level: deep
+- done_when: published A wins over live B through document and message; legacy never falls back; operational behavior is documented
+- confidence: medium
+- notes: blocked by merge of FQ-32; existing-test approval is narrow; Draft plus human read required
