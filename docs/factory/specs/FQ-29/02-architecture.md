@@ -1,205 +1,115 @@
 # Gate 2 — Architecture
 
-## Oracle
+## Oracle and decision
 
-This is a legacy-parity migration, but the legacy behavior is not the oracle
-for every dimension.
+The structural oracle is the audited `chunny_1` lesson-push order: song title,
+source link, practice track, sheet link, then summary. New synthetic golden tests
+pin the mapping and block shapes. The temporal oracle is approved Gate 1: after
+staging, a later assignment change cannot alter that lesson. Legacy live lookup
+at publish/send time is the bug, not an oracle.
 
-The structural oracle is the `chunny_1` lesson-push behavior captured during
-the parity audit: resolve the learner's assigned song, then place the song
-title, original/source link, practice track, and sheet link before the lesson
-summary. A synthetic song row and a golden block sequence will pin that shape;
-no live learner row or document is needed.
+Capture the assigned song when `lesson stage` creates its durable draft. Carry
+that immutable snapshot through contract, render, document publish, published
+record, and send. Re-staging refreshes it before publication.
 
-The temporal oracle is the approved Gate 1 product invariant: after a lesson
-is staged, later assignment changes must not alter that lesson. The legacy
-pipeline's live lookup at push/send time is specifically the behavior being
-corrected, so it cannot be the oracle for timing.
+## Systems touched
 
-Before migration code changes behavior, new characterization tests will pin:
+- Existing learner stores supply `current_piece_id` and one `get_piece` read.
+  SQLite, PostgREST, fallback, and fake mappings already expose id, title,
+  source, practice, and sheet fields; there is no DB schema/write change.
+- `LessonDraft` and `PublishedRecord` persist the snapshot in atomic JSON.
+- Lesson CLI captures it, supplies frozen summarizer context, renders it, and
+  prevents unsafe forced republishing.
+- `SummaryPublisher` prepends resources through the existing `DocStore` API.
+- Send gathering reads the published practice track, while learner instrument
+  and document date/title/video remain live as today.
+- Contract schema, YouTube/media, recipient selection, and messengers do not
+  change. Tests use fakes and never contact a person or real learner profile.
 
-1. the legacy song-field mapping and output order with synthetic data;
-2. the current Baton drift, where a changed assignment changes the later
-   practice link; and
-3. the approved behavior, where the staged lesson remains stable.
-
-## Architectural decision
-
-Capture the assigned song when `lesson stage` creates the lesson draft. Carry
-that immutable value through contract generation, document publishing, the
-published record, and message sending. No later step re-resolves the learner's
-current song for that lesson.
-
-Staging is the boundary because it is the first durable action for one lesson.
-Capturing only at publish would still allow the summary contract to see a song
-assigned after class. Capturing only at send is the current drift bug.
-
-Re-staging intentionally creates a new draft and therefore takes a new
-snapshot. That is the explicit correction path before publication.
-
-## Existing systems and modules touched
-
-### Learner and song database
-
-The existing learner store already exposes the required reads:
-
-- learner identity and `current_piece_id`;
-- song title;
-- original/source link;
-- practice track; and
-- sheet link.
-
-SQLite, PostgREST, fallback, and fake stores already map these fields. No new
-database table, column, query endpoint, or write is required.
-
-If a learner has no assigned song, staging records a deliberate null snapshot.
-If the learner names a song id that the store cannot resolve, staging refuses
-with an existing typed error and does not save a misleading draft.
-
-### Lesson staging and contract generation
-
-The lesson draft gains one serializable song snapshot. Contract generation
-reads that snapshot instead of querying the learner's current assignment.
-The summary contract schema itself does not change: the song remains context
-for the summarizer, not model-authored output.
-
-### Document publishing
-
-The publisher deterministically renders available snapshot fields before the
-summary in this order:
-
-1. song title;
-2. original/source link;
-3. practice track;
-4. sheet link; and
-5. validated lesson summary.
-
-Missing optional links produce no placeholder block.
-
-The existing preserve policy continues protecting recordings and manually
-attached resources. On a forced republish, lesson-owned resource blocks are
-deduplicated against preserved blocks by normalized identity (block type plus
-URL, or block type plus text/icon). The replaceable title and summary are
-rewritten, while an identical preserved bookmark, callout, or embed is not
-appended twice.
-
-Dry-run planning reports the song identity and the resource blocks that would
-be appended without performing a write.
-
-### Published lesson record
-
-The local published record stores the same song snapshot alongside the frozen
-short message. This remains the durable handoff between publish and send.
-
-Older draft or published files without the new field remain readable. They are
-treated as `snapshot unavailable`; Baton does not look up the learner's current
-song to guess historical data. The practice-track field stays empty and the
-normal send gate emits a warning or blocks if that studio configured the field
-as required.
-
-### Message sending
-
-Message gathering reads the practice track only from the published song
-snapshot. It may still read the learner's current instrument and the
-document's current date, titles, and newest video because those fields are not
-part of this product decision.
-
-The messenger and recipient-selection layers do not change. Automated tests
-continue to use the fake messenger; this feature never sends a real message as
-part of verification.
-
-### YouTube description
-
-The YouTube description remains summary-based and is outside this change. It
-does not currently display Song DB resources, so freezing them does not require
-a media or YouTube API change.
-
-## Data structures
-
-The lesson draft and published record add this optional value:
+## Data shape and compatibility
 
 ```json
-{
-  "piece_snapshot": {
-    "id": "piece-7",
-    "title": "Fictional Study in C",
-    "source_link": "https://example.invalid/source",
-    "practice_track": "https://example.invalid/practice",
-    "sheet_link": "https://example.invalid/sheet",
-    "captured_at": "2026-08-25T00:00:00+00:00"
-  }
-}
+{"piece_snapshot":{"status":"captured","captured_at":"2026-08-25T00:00:00+00:00","piece":{"id":"piece-7","title":"Fictional Study in C","source_link":"https://example.invalid/source","practice_track":"https://example.invalid/practice","sheet_link":"https://example.invalid/sheet"}}}
 ```
 
-`piece_snapshot` may be null only when no song was assigned at staging time or
-when reading an older record written before this feature. URL fields may be
-empty strings because they are optional; the id and title are required when a
-snapshot is present.
+Status is `captured`, `none`, or `unavailable`. `captured` requires timestamp,
+id, and title; links may be empty. `none` is a deliberate no-assignment observed
+at staging, with timestamp and null piece. A missing key on legacy state becomes
+`unavailable`, with empty timestamp and null piece. Malformed state fails closed.
 
-No public network endpoint is added. Existing CLI commands keep their names
-and arguments.
+Contract context keeps the compatible name `current_piece` but sources it from
+the snapshot and removes live `current_piece_id` from the learner dictionary.
+Older records never guess from the current assignment: practice track is empty,
+so the existing configurable send gate warns or blocks.
 
-## End-to-end call flow
+## Document behavior
 
-1. `lesson stage` resolves the learner.
-2. It reads the learner's current song id once and resolves that song once.
-3. It atomically saves the lesson draft with the snapshot and lesson notes.
-4. `lesson contract` supplies the saved snapshot as summarizer context.
-5. Ingest and render retain the draft unchanged.
-6. `lesson publish --dry-run` plans snapshot resource blocks plus summary
-   blocks; normal publish writes them in the approved order.
-7. Publish saves the same snapshot in the per-session published record.
-8. A later send reads that published snapshot, composes the practice link, and
-   applies the existing fail-closed gate.
-9. Reassigning the learner at any point after step 3 affects only future staged
-   lessons.
+Generated blocks are fixed and ordered before summary blocks:
 
-## External dependencies
+1. `heading_2`, text `🎵 <title>`;
+2. source `bookmark` URL, if present;
+3. `callout`, icon `🎧`, text `Practice track: <URL>`, if present;
+4. sheet `embed` URL, if present.
 
-| Dependency | Required | Change |
-| --- | --- | --- |
-| Configured learner/song store | Yes, already required for staging | Read existing fields once; no schema change |
-| Local atomic JSON state | Yes, already used for drafts and published records | Add one backward-compatible optional object |
-| Configured document store | Yes for publishing | Append deterministic blocks through the existing interface |
-| Messaging provider | Only for a real send | No adapter change; tests use the fake |
-| New package or service | No | None |
+Preserve policy still owns deletion safety. Baton never deletes an arbitrary
+preserved block. Exact resource identity after edge trimming is `(bookmark,
+URL)`, `(callout, exact text, icon)`, or `(embed, URL)`; URL case/query/fragment
+remain significant. The replaceable heading has no resource identity.
 
-## Load-bearing review
+Before any `--force` plan or write against an existing published record, compare
+snapshot status and all song fields, ignoring only `captured_at`. Changed or
+legacy-unknown snapshots are refused because old preserved links cannot be
+safely attributed. For the same snapshot, exact resources already preserved are
+skipped, missing ones are appended, and replaceable heading/summary are rewritten.
+Dry run reports snapshot status/id and resource counts without writing.
 
-No load-bearing path needs modification.
+## Call flow
 
-In particular, the design avoids changes to:
+1. Stage resolves learner/session, reads the assigned song zero or one time,
+   rejects a dangling id, and atomically saves notes plus snapshot.
+2. Contract reads only the draft snapshot; ingest retains the draft.
+3. Render shows frozen song resources plus validated summary.
+4. Publish loads any existing record, runs the force guard, plans/writes snapshot
+   blocks and summary, and stores the same snapshot in the published record.
+5. Send reads that published snapshot and applies the unchanged fail-closed gate.
+6. Reassignment after step 1 affects only future staged lessons.
 
-- summary contracts;
-- chat adapters;
-- error and exit-code definitions;
-- dependency manifests;
-- workflows and factory policy; and
-- existing test files.
+## Dependencies and load-bearing review
 
-Implementation will use new test files. If later design work discovers that a
-load-bearing path or existing test must change, the specification stops and
-returns to the owner before that work begins.
+No new runtime package, service, endpoint, adapter method, schema, or migration.
+Required existing dependencies are learner store, local JSON state, and document
+store; a real messenger is needed only outside tests.
 
-Because no load-bearing path is planned, a factory-critic pass is not required
-at this gate.
+No load-bearing source path changes. One existing test is load-bearing:
+`tests/test_send.py` asserts the obsolete live-song lookup. On 2026-08-25 the
+owner approved replacing only that assertion and its fixture support. The PR
+stays Draft, needs human read, and uses `deep` gates. No other existing test,
+gate assertion, dependency manifest, factory policy, or workflow may change.
 
-## What could break elsewhere
+## Critic pass and response
 
-- A draft staged before this feature has no snapshot. Sending it may lose a
-  practice link that was previously guessed from the current assignment. This
-  is intentional fail-closed behavior and must be explicit in CLI warnings.
-- A profile with an invalid current song reference will fail earlier, during
-  staging instead of contract or send. The remedy must tell the teacher to fix
-  or clear the assignment.
-- Forced republishing could duplicate preserved resource blocks unless the
-  normalized-identity deduplication is covered by tests.
-- Profiles customize preserve rules. Deduplication must work whether bookmark,
-  embed, or callout blocks are preserved or replaceable.
-- Staging files are user state. Deserialization must default a missing field
-  safely and must not invalidate existing drafts.
-- Published files are the send handoff. A partial publish must never combine a
-  newly resolved song with an older short message; only the draft snapshot may
-  be persisted.
-- Changing `gather_context` must not stop it from reading the learner's current
-  instrument or the document's current date, titles, and video.
+Fresh critic result:
+
+```text
+position: concerns
+strongest_objection: Preserved blocks have no ownership provenance, so normalized identity only prevents exact duplicates; re-staging a published session with a different snapshot and using --force can leave old preserved Baton links beside new links.
+assumptions_introduced: staging may capture a pre-correction assignment; live current_piece_id could conflict with frozen context; null and missing legacy state were conflated; exact shapes/URL normalization were unspecified; existing-test approval is narrow.
+maintainability_cost: snapshot interpretation spans staging, contract, publishing, and sending while resource ownership remains implicit.
+simpler_alternative: reject --force when draft and published snapshots differ; distinguish deliberate no-song from legacy unavailable.
+would_a_stranger_understand: no
+```
+
+Response: adopt that simpler alternative; define the three states, fixed block
+shapes, exact identities, and removal of live id above. Ownership remains an
+explicit limitation and is retested at the program-design gate.
+
+## Breakage risks
+
+- Staging before an assignment correction freezes the wrong song; re-stage is
+  the correction path only before first publish.
+- Dangling song ids now fail earlier at stage with a fix/clear remedy.
+- A changed or unknown forced republish requires human inspection/cleanup.
+- Preserved manual/recording blocks stay untouched even when visually similar.
+- Legacy sends may lose a guessed practice link; that is deliberate fail-closed
+  behavior, not automatic data repair.
+- Append-before-delete and current session-completion recovery must remain intact.
