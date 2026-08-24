@@ -41,9 +41,9 @@ def _aged_finished_job(profile: Path, capsys, label: str) -> str:
     # time would.
     meta_path = profile / "state" / "jobs" / job_id / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    meta["ended_at"] = (
-        datetime.now(timezone.utc) - timedelta(days=30)
-    ).isoformat(timespec="seconds")
+    meta["ended_at"] = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(
+        timespec="seconds"
+    )
     meta_path.write_text(json.dumps(meta), encoding="utf-8")
     return job_id
 
