@@ -326,7 +326,10 @@ def load(explicit: str | Path | None = None) -> Config:
     merged = _deep_merge(merged, _env_overrides())
 
     version = merged.get("version")
-    if version != 1:
+    # `True == 1` and `1.0 == 1` in Python, so the value comparison alone would
+    # let `version: true` and `version: 1.0` through the gate. Require an int
+    # that is not a bool.
+    if isinstance(version, bool) or not isinstance(version, int) or version != 1:
         raise ConfigError(
             f"Unsupported config version {version!r} in {config_file}.",
             remedy="This build understands `version: 1`. Upgrade Baton or the profile.",
