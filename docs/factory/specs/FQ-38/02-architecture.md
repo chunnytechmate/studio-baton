@@ -1,110 +1,187 @@
 # FQ-38 — Architecture
 
-## Migration oracle
+## Scope and migration oracle
 
-The oracle is the required GitHub Actions result on the exact pull-request head and on the
-resulting `main` commit. Factory readiness is equivalent only when the local full gate,
-negative proof, independent verification, and every required GitHub check agree. A local
-GREEN result alone is never an oracle.
+This migration separates early local feedback from authoritative remote enforcement.
+Local gates are never described as equivalent to the full CI matrix.
 
-Flow behavior is characterized from live GitHub state: one approved feature bundle enters
-implementation once, produces one reviewable result, and asks the owner for one final
-merge-or-close decision. Audit-only routines must leave durable evidence without creating
-another pending merge decision.
+The preventive oracle is the required GitHub Actions check set produced by GitHub's
+synthetic pull-request merge ref against the current `main`, with strict base freshness and
+each context bound to the trusted GitHub Actions app. Independent verification separately
+proves the exact source head against its recorded base. A successful push check on `main`
+is post-merge health evidence, not a preventive oracle.
+
+Flow success is measured for standard cohesive features. Routine fixes need only the final
+merge-or-close decision. A standard feature that needs product direction receives one
+complete spec-pack decision and one final merge-or-close decision. High-risk or
+load-bearing work may retain more approval gates; FQ-38 itself uses the current four-gate
+bootstrap because it changes the safety system.
+
+## Permission boundary
+
+GitHub currently sees the agent as the repository owner, so branch protection alone cannot
+be a complete boundary: the same credential can administer or remove it. The target model
+uses a separate least-privilege factory credential with repository contents, issues, pull
+requests, checks/actions read, and metadata permissions, but no repository administration,
+ruleset bypass, release, environment, secret, or package administration. The owner keeps
+the administrative credential outside agent environments.
+
+Until credential separation is complete, repository rules add accidental protection but
+the contract and hooks remain the only barrier against an agent changing those rules. The
+factory must report that state as `enforcement: partial`, never `enforcement: active`.
 
 ## Systems touched
 
-- Local factory gates: make formatting part of the same required lint judgment as GitHub
-  CI, without adding a dependency or changing the existing gate levels.
-- Implementation workflow: open work before final readiness, wait for terminal GitHub
-  checks, then apply `factory:verified` and move the source issue to human review only when
-  both CI and the independent verifier accept.
-- Specification workflow: approved vertical slices remain testable checkpoints, but a
-  cohesive feature uses one queue item, one branch, and one implementation PR by default.
-- Factory contract and charter: define the cohesive-feature exception, separate code/test
-  and evidence diff budgets, audit-only evidence, and the true human-decision queue.
-- Control-room reporting: count open verified/rejected factory PRs that actually require a
-  human decision; red or pending work remains agent-owned and audit-only evidence is not a
-  review item.
-- GitHub repository settings: protect `main`, require pull requests and the existing CI
-  checks, disallow force pushes/deletion, and apply the rule to administrators. Required
-  review approvals remain zero because the owner is the sole reviewer and merge decision.
+- GitHub repository settings: protect `main`; protect the append-only audit branch; bind
+  required contexts only after observing their exact names and app identifiers on green CI.
+- Local factory gate runner: add Ruff format checking to the required lint judgment while
+  retaining the existing gate levels and summary shape.
+- Implementation workflow: keep work Draft and agent-owned through CI and verification;
+  transition to human review only after both accept the same current head/base.
+- Specification workflow: add a standard one-decision spec pack while retaining the
+  current four gates for load-bearing/high-risk work.
+- Contract and charter: define readiness, recovery, audit storage, credential state, and
+  cohesive feature delivery without weakening merge, load-bearing, existing-test, or
+  independent-verifier boundaries.
+- Control room and monitor: count actual human decisions and reconcile partial state writes.
 
-## State and record shapes
+`.github/workflows/**` and `.factory/gates.conf` are not changed in the first migration.
+The existing CI workflow remains authoritative; local commands are aligned only where they
+are reproducible on one workstation.
 
-The existing `factory-handoff:v1` fields remain valid. A spec-approved cohesive feature
-adds optional fields; old consumers may ignore them:
+## Gate layers
+
+The local full gate provides reproducible early feedback:
+
+1. Ruff lint plus Ruff format check over the same repository scope used by CI.
+2. Mypy using the repository configuration.
+3. The complete local pytest suite on the available supported interpreter.
+
+GitHub remains authoritative for its synthetic merge ref, six interpreter/platform test
+jobs, coverage invocation, leak/history scan, and trusted-app context. The exact required
+context inventory and GitHub Actions app id are captured as migration evidence before any
+required-check rule is enabled. Strict required checks force a stale branch to update and
+rerun before merge.
+
+Load-bearing migration work uses the existing deep gate. `pip-audit` is provisioned as a
+factory execution tool in the local/verifier environment, not added to Studio Baton's
+runtime or locked project dependencies. If the audit tool cannot run, deep remains
+`MISCONFIGURED` and implementation stops.
+
+## Delivery model and budgets
+
+The existing `factory-handoff:v1` remains compatible. A spec-approved standard feature may
+add:
 
 ```text
 delivery: cohesive
-slices: <ordered slice identifiers>
-code_test_budget: 800
-evidence_budget: 400
+checkpoints: <ordered acceptance identifiers>
 ```
 
-Routine single fixes retain the current 400 changed-line total. A cohesive feature must be
-explicitly approved at spec Gate 4; it may use at most 800 changed code/test lines plus 400
-factory evidence lines. Load-bearing and existing-test rules are unchanged.
+A cohesive item is still one GitHub queue issue, one deterministic branch, one
+implementation run, and one PR. Checkpoint completion is persisted in one editable
+`factory-progress:v1` comment on the source issue so an interrupted run can resume without
+inventing state. Every source-head change invalidates prior CI and verifier evidence.
 
-Audit-only routines write a dedicated GitHub comment instead of opening a PR:
+The current 400 changed-line stop remains unchanged during FQ-38. Counting is additions
+plus deletions from the recorded merge base using text numstat; binary files, renames whose
+count cannot be established, and scope-category ambiguity require a human read. A feature
+that cannot fit is not eligible for cohesive delivery and must be sliced under the old
+model. Raising the limit requires a later `factory-tune` decision backed by completed-run
+evidence; FQ-38 does not pre-authorize 800 or 1,200-line PRs.
 
-```text
-<!-- factory-run:v1 -->
-run_id: <unique UTC id>
-stage: triage | monitor | tune | status
-status: succeeded | stopped | infrastructure-failed
-started_at: <UTC>
-finished_at: <UTC>
-gate_status: GREEN | RED | MISCONFIGURED | not-run
-human_required: true | false
-summary: <bounded single-line result>
-```
+Standard specs change from four interruptions to one complete packet: product,
+architecture, critic result where required, program design, and slices are presented
+together for one explicit direction approval. Load-bearing/high-risk specs retain the four
+separate gates. Queue writes follow the same approved packet and do not add another
+approval request.
 
-The comment lives on a dedicated open factory-audit issue. Operational label/handoff
-changes remain on their source issues. A scheduled consolidated snapshot may copy these
-records into the repository, but the snapshot does not block routine flow.
+## Readiness state machine
 
-## End-to-end flow
+1. **Building** — source issue is `factory:in-progress`; PR is Draft; no review-result
+   label. Draft creation is a progress notification, not an owner decision.
+2. **CI pending/red** — the issue remains in progress. One bounded repair cycle is allowed
+   on the same queue item. A changed head reruns local gates, CI, and verification.
+3. **Verifier rejected** — one bounded repair cycle is allowed. A second rejection, or the
+   same gate failure twice, leaves the Draft PR labeled `factory:rejected`, moves the issue
+   to the appropriate named human/blocking state, and records the exact question.
+4. **Infrastructure failure** — no verified label is applied. The issue becomes
+   `factory:needs-info` only when a named owner/external action is genuinely required;
+   otherwise it remains agent-owned for bounded retry.
+5. **Ready** — required GitHub checks are terminal-green on the current synthetic merge
+   ref, the source branch contains the current strict base, and a fresh verifier accepts
+   the exact source head. An immutable readiness record stores source SHA, base SHA, check
+   run URL, verifier verdict, gate line, and human-read flag. Only then is
+   `factory:verified` applied and the issue moved to `factory:awaiting-review`.
+6. **Human decision** — when no human read is required the agent may mark the PR ready for
+   review; otherwise it remains Draft until the owner reads it. The owner alone merges,
+   closes, or enables auto-merge.
 
-1. Intake identifies either a routine single fix or a cohesive feature needing a spec.
-2. A spec-approved feature creates one implementation queue item containing ordered slice
-   checkpoints and one combined `done_when` condition.
-3. The implementation run claims one deterministic branch and completes the checkpoints
-   as separate commits, using fake data and negative proofs.
-4. The local required gate includes lint, format parity, types, and tests. Any disagreement
-   blocks the run.
-5. A PR is opened before final readiness so GitHub checks run. While checks are pending or
-   red, the work remains agent-owned and does not consume the human-decision queue.
-6. A fresh verifier reviews the exact remote head. The head must not change after the
-   accepted verdict without re-verification.
-7. Only terminal-green required GitHub checks plus an accepted verifier may apply
-   `factory:verified` and move the issue to `factory:awaiting-review`.
-8. The owner makes the final merge-or-close decision. An agent never enables auto-merge or
-   merges; the owner may enable GitHub auto-merge as that final decision.
-9. Triage, monitor, and tune runs update live state and append a bounded audit comment;
-   they do not open an immediate-decision PR.
+The durable readiness record is written before labels. Label writes are idempotent. The
+monitor reconciles a partial transition from the record and exact SHAs; it never infers
+GREEN from a label. If `main` advances, strict checks invalidate readiness, the issue
+returns to building, and the updated head is re-verified.
 
-## Migration order
+The true human-decision count is the union of open PRs carrying a current-SHA accepted or
+rejected readiness record and open issues with a named `needs-info` question. Pending/red
+Draft PRs without such a record remain agent-owned. Audit activity is reported separately.
 
-1. Repair the current formatting baseline with mechanical-only changes. The existing test
-   edit requires explicit owner approval, a Draft PR, and a human read.
-2. Add local format parity and prove that the local full gate fails on the old baseline and
-   agrees with GitHub after repair.
-3. Protect `main` only after the required check names have been observed on a green run;
-   verify the rule through the GitHub API before relying on it.
-4. Change readiness timing and control-room counting.
-5. Enable cohesive-feature handoffs and audit-comment evidence.
-6. Reconcile open PRs onto the green baseline, re-run verification where heads change, and
-   continue FQ-29 without weakening its approved product behavior.
+## Durable audit evidence
 
-Each step is independently reversible. Repository rules are created last among safety
-prerequisites so a misspelled required check cannot lock the repair path.
+Audit-only triage, monitor, tune, and status runs do not open PRs. They append the same full
+run-record files used today to a dedicated `factory-audit` Git branch. The branch is not
+merged into `main`; it is protected from force push and deletion. Factory credentials may
+create unique files under `docs/factory/runs/` but have no ruleset administration.
 
-## External dependencies
+Protocol:
 
-No new package, service, credential, learner record, or messaging integration is needed.
-The design uses the existing GitHub API/CLI, Actions checks, issue comments, labels, local
-toolchain, and fake test data.
+1. Fetch the current audit head and verify existing records are unchanged.
+2. Add exactly one unique run-record file; modifying or deleting an existing audit record
+   fails closed.
+3. Push without force. On a non-fast-forward race, rebase the unique addition and retry a
+   bounded number of times.
+4. Live issue labels/comments remain the operational state; the audit branch is historical
+   evidence only.
+
+Existing records on `main` remain valid. No periodic merge is required, so audit retention
+does not create a human merge decision. Disabling audit-branch protection or rewriting its
+history is an owner-only break-glass action.
+
+## Bootstrap order
+
+1. Record the owner's exact one-time approvals for protected policy paths and the
+   formatting-only change to `tests/test_piece_snapshot.py`. The PR stays Draft and needs a
+   human read; assertions and behavior may not change.
+2. Create `main` PR-only/admin-enforced/no-force/no-delete protection with zero required
+   checks. This prevents direct pushes while avoiding a red-check lockout.
+3. Provision `pip-audit` as factory tooling and prove the deep gate is configured before
+   changing protected policy.
+4. Repair the current formatting baseline and clarify the interactive existing-test rule
+   in one Draft PR. Run deep gates and independent verification. The owner performs the
+   bootstrap merge under zero-required-check protection after reading the mechanical diff.
+5. Reconcile open PRs onto the green baseline and observe one fully green check inventory,
+   including exact context names and trusted app ids.
+6. Add strict required checks to `main` protection, verify the rule through the API, and
+   run a harmless negative probe demonstrating that a red required check blocks merge.
+7. Create and protect `factory-audit`, migrate only future audit records to it, then change
+   readiness, control-room, standard-spec, and cohesive-delivery behavior.
+8. Replace the owner-level agent credential with the least-privilege factory credential.
+   Enforcement becomes `active` only after permission probing confirms ruleset changes and
+   merges are denied to that credential.
+
+Steps that change repository rules are recorded with the before/after payload and an
+owner-only rollback command. Required checks are never enabled from guessed names.
+
+## External dependencies and owner setup
+
+- One factory execution tool: `pip-audit`, isolated from project dependencies.
+- One least-privilege GitHub App or fine-grained token created by the owner; credential
+  creation and removal of the owner token from agent environments cannot be delegated to an
+  agent using that same credential.
+- Existing GitHub Actions, issue/PR APIs, labels, hooks, and fake test data.
+
+No learner record, real transcript/video, outbound message, release, runtime dependency, or
+vendor integration is involved.
 
 ## Load-bearing paths involved
 
@@ -113,33 +190,27 @@ toolchain, and fake test data.
 - `.claude/scripts/gates.sh`
 - `.claude/skills/factory-spec/SKILL.md`
 - `.claude/skills/factory-implement/SKILL.md`
-- `.claude/commands/factory.md`
-- matching `.agents/skills/` adapters if their behavior text changes
-- GitHub `main` branch protection/ruleset settings
-- the pre-existing `tests/test_piece_snapshot.py`, formatting only, during baseline repair
+- `.claude/commands/factory.md` and monitor/tune command text that writes audit records
+- matching `.agents/skills/` adapters when their contract-facing behavior changes
+- GitHub `main` and `factory-audit` protection/ruleset settings
+- existing `tests/test_piece_snapshot.py`, formatting only during bootstrap
 
-`.factory/gates.conf`, `.github/workflows/**`, product contracts, chat adapters, and real
-profiles are deliberately not changed unless a later gate proves the stated design cannot
-be implemented without them.
+The exact protected-file list is finalized at Gate 3. No product contracts, chat adapters,
+real profiles, release files, or dependency locks are in scope.
 
-## What could break elsewhere
+## Failure and rollback
 
-- A required-check name can drift or be misspelled and block every merge; protection is
-  enabled only after an exact green check inventory and has a documented rollback.
-- Old routines may assume every run record is a repository file or every slice has its own
-  issue. Adapters must accept both old and optional cohesive/audit forms during migration.
-- Waiting for remote checks keeps an agent run alive longer, but it removes premature human
-  handoffs rather than adding owner work.
-- Larger cohesive diffs can become hard to review. The higher budget is spec-only, split
-  into checkpoint commits, and never relaxes load-bearing or existing-test review.
-- GitHub comments are less immutable than Git commits. Bounded audit comments retain the
-  platform history; consolidated snapshots provide periodic repository retention without
-  becoming a synchronization boundary.
-- Open PRs created under the old readiness semantics may carry misleading labels. Migration
-  must re-evaluate them against terminal CI before counting them as human decisions.
-
-## Rollback
-
-Disable the new repository ruleset through the GitHub settings/API, revert the factory
-policy PR, and return routines to per-slice issues and file run records. Product code and
-learner data are not migrated, so rollback does not require a data conversion.
+- A misspelled required context is recovered by the owner temporarily removing only that
+  context through the documented settings/API payload; PR-only/no-force/no-delete
+  protection remains active.
+- A CI or verifier failure follows the bounded readiness transitions above; it is not
+  reclassified as human-ready merely to drain the queue.
+- An interrupted cohesive run resumes from the exact progress comment and remote SHAs or
+  fails closed if they disagree.
+- An audit push race retries only the unique new file; existing audit history is never
+  rewritten.
+- Policy rollback is a reviewed revert PR. `main` PR-only protection, the human merge
+  boundary, existing-test approval, load-bearing protection, and independent verification
+  are never disabled as a rollback shortcut.
+- Active cohesive items finish under their recorded handoff or require an explicit owner
+  decision to split; rollback does not silently reinterpret them.
