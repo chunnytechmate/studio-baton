@@ -1,105 +1,141 @@
 # FQ-52 — Non-self-referential evidence architecture
 
-## Root cause and oracle
+## Authority, supersession, and oracle
 
-FQ-48 made a repository run record both a member of the final commit and a container for
-that commit's SHA. Git commit identity includes the complete tree, so this demands a
-cryptographic fixed point. Reordering commits cannot solve it, and CI cannot attest an
-uncommitted tree.
+FQ-48 made a repository run record both part of the final commit and a container for that
+commit's SHA. Git commit identity includes the complete tree, so this demands an infeasible
+cryptographic fixed point. CI also cannot attest an uncommitted tree.
 
-GitHub remains the temporary external oracle. The corrected boundary separates:
+After human approval and merge, FQ-52 supersedes only three FQ-48 requirements: storing the
+current source/merge/check identities and GREEN verdict inside the committed bootstrap run
+record; opening the Draft PR after that verdict; and treating that record as the final
+verdict container. Every other FQ-48 invariant remains in force. FQ-41 activation must bind
+both actual protocol merge SHAs and all approved architecture/design/slice blob ids.
 
-1. a committed **intent record**, which contains stable inputs but never its own commit
-   SHA or a GREEN claim; and
-2. a post-CI **attestation**, which is attached to the already-final commit and therefore
-   does not change it.
+GitHub remains the temporary oracle. A committed **intent record** contains stable inputs
+but never its own commit SHA or a GREEN claim. A post-CI **attestation pair** is attached to
+the already-final commit: a canonical pinned PR comment plus one raw GitHub commit-status
+event. Neither changes the commit.
 
-The attestation is a canonical PR comment plus a GitHub commit-status event on the exact
-source SHA. The status context contains the SHA-256 of the exact comment body and links to
-that comment. GitHub's API creates status events but provides no update or delete endpoint;
-the verifier reads the uncombined status history and requires exactly one matching event.
-Editing or deleting the comment breaks its digest or URL, while reposting the same context
-creates a duplicate and fails closed. This uses GitHub's documented commit-status and issue
-comment APIs, not repository settings or branch-rule mutation.
+## Tamper-evident attestation pair
 
-## Systems and records
+Before the final intent commit, the activator creates one placeholder PR comment and puts
+its numeric id, node id, URL, author login/id, and marker in the intent record. After final
+CI and cold criticism, that same comment is updated once to a canonical
+`FACTORY_BOOTSTRAP_CANDIDATE:v1` payload. It does not claim GREEN.
 
-The correction touches the Factory specification, the FQ-41 handoff, its deterministic
-branch, one repository run record, GitHub pull-request comments, commit statuses, Actions
-checks, and issue labels. It does not touch Studio Baton runtime modules.
+The activator hashes the reread raw comment body and creates a success commit status on the
+exact final source SHA. Pre-merge uses the stable case-normalized context
+`factory/bootstrap/fq-41/premerge`; closure uses `factory/bootstrap/fq-41/closure`. The
+full body digest is in the status description and the exact comment URL is its target.
+Validation paginates raw status history, never combined status, and requires exactly one
+event for the stable context across every PR commit for that phase. It binds status id,
+SHA, state, context, description, target URL, creator login/id, and creation time, plus the
+pinned comment identity, author, body, and body digest.
 
-The intent record carries the issue and PR numbers, protocol merge and blob identities,
-approved base and target-file blobs, exact patch digest, semantic-proof digest, expected CI
-check names and app id, attestation marker, and `gate_status: pending-external`. It omits
-source, synthetic merge, suite, run, check ids, critic verdict, and GREEN status because
-those facts do not exist until the final head is checked.
+GitHub exposes create/list status operations but no status update/delete operation. An
+edited or deleted comment breaks the status digest/URL; a replacement cannot match the
+intent-pinned id; and a repeated status POST creates a second stable-context event and is
+rejected. Only the validated candidate-plus-success-status pair derives the verbatim
+`FACTORY_BOOTSTRAP ... status=GREEN` line. The PR body displays that derived line for the
+human, but validation always recomputes it from the pair.
 
-The pre-merge attestation carries the intent-record blob, final source and base SHAs,
-fetched synthetic-merge SHA and parents, exact suite/run/check identities, critic evidence,
-semantic result, patch digest, and the verbatim `FACTORY_BOOTSTRAP` GREEN verdict. Its
-commit-status context is unique to the issue and full attestation-body digest.
+## One-shot adoption of the correction
 
-A separate post-merge closure attestation binds the human merge commit, its parents, the
-exact successful `main` CI suite, and the pre-merge attestation status id and digest. Only
-that closure makes FQ-41 complete and permits #40 activation.
+FQ-52 itself cannot receive green repository CI before FQ-41 repairs the inherited format
+baseline. Its docs-only Draft PR therefore uses one explicit
+`FACTORY_SPEC_CORRECTION: status=ACCEPTED` verdict, never bootstrap GREEN. It is valid only
+for the FQ-52 spec/status, queue snapshot, preserved blocked-run record, and one spec run
+record; any other path rejects.
 
-## End-to-end recovery flow
+The correction verdict binds the final head/base/fetched synthetic merge, exact changed
+paths and line budget, all six successful cross-version/platform test jobs, successful leak
+job, successful Ruff lint step, and format failure containing only the two already-declared
+baseline files with output equal to current `main`. Because workflow ordering skips mypy
+after format fails, the writer and cold critic each run mypy independently on the fetched
+synthetic merge and bind command, tool version, exit status, and output digest. They also
+confirm the new FQ-52 documents format cleanly and introduce no new CI failure. A Draft PR,
+cold critic acceptance, and explicit human merge remain mandatory. The correction verdict
+expires at the FQ-52 merge and cannot authorize any implementation PR with red or pending
+CI.
 
-1. Human approves all FQ-52 gates and merges its docs-only correction PR. That PR makes no
-   bootstrap GREEN claim. Its review must show the inherited baseline failure is still
-   exactly the two declared formatting files, while every test, leak scan, and independent
-   critic result succeeds.
-2. The continuing owner-authorized session verifies the actual FQ-52 merge and spec blobs.
-   Because the base changed, it regenerates and reproves the FQ-41 patch and obtains a new
-   exact approval even if the target blobs and patch digest are unchanged.
-3. The stale FQ-41 reservation is removed only with owner authorization bound to its exact
-   remote SHA. A fresh deterministic branch is claimed from the corrected `main`; the issue
-   moves from `needs-info` to `in-progress` only after remote evidence reconciles.
-4. The approved formatting is applied and committed. A Draft PR is opened solely to create
-   the CI container; it is explicitly not ready for review and its provisional run is not
-   evidence.
-5. The intent record, now able to name the PR, is committed and pushed. This is the final
-   source head. Any later commit invalidates all following evidence.
-6. One latest GitHub Actions suite must contain exactly the eight expected successful checks
-   from app id 15368 and bind the final source, current base, and fetched synthetic merge.
-7. A fresh critic reads the final diff and identities cold. Rejection, reservation drift,
-   changed PR head/base, missing status permission, or any unavailable field stops
-   `MISCONFIGURED` before attestation.
-8. The activator posts one canonical attestation comment, rereads its exact body and URL,
-   hashes the body, and creates one success commit status on the final source whose unique
-   context contains that digest. It then rereads the raw status history and comment. Only
-   an exact singleton match produces `FACTORY_BOOTSTRAP ... status=GREEN`.
-9. The PR receives `factory:verified`, FQ-41 moves to `awaiting-review`, and the human owns
-   the merge decision. Agents never merge.
-10. After human merge, the activator verifies the exact successful `main` suite and emits
-    the closure comment/status pair on the merge commit. It then marks FQ-41 complete and
-    permits only #40 to enter its next approved bootstrap state.
+## Recovery and permission preflight
 
-## External dependencies
+The correction PR preserves the existing blocked FQ-41 run-record content in `main` before
+the stale branch is removed. After merge, the activator verifies the FQ-52 merge and blobs.
+The previous patch approval is base-bound and therefore expires; the patch is regenerated,
+semantically reproved, and explicitly reapproved even if its target blobs and digest match.
 
-- GitHub Actions is required for the exact app-bound check suite already named by FQ-48.
-- GitHub issue-comment APIs store the readable attestation payload. Comments are mutable,
-  so their content is never trusted without the commit-status digest.
-- GitHub commit-status APIs provide SHA-bound, append-only status events. A read/write
-  permission probe against no live SHA is impossible, so implementation first inspects
-  token permissions and stops before applying the patch if commit-status write authority
-  is absent or ambiguous.
-- No package, runtime dependency, release service, learner data, or live messaging system
-  is added.
+Before branch deletion or patch application, the same credential must prove issue-comment
+and commit-status write authority. The principal is the owner user `chunnytechmate`, GitHub
+id `220607386`; agent/bot identities reject. A uniquely marked durable comment on #41 proves
+comment write/reread. A one-shot pending status on the exact stale branch SHA, under stable
+context `factory/bootstrap/fq-41/preflight/<FQ-52-merge-prefix>`, proves status write and raw
+history read. The response and reread must bind creator and principal. Missing scope,
+ambiguous identity, duplicate context, or failed reread stops before destructive recovery.
 
-## Load-bearing scope and blast radius
+Only then may exact-SHA owner authorization remove the stale remote reservation. A fresh
+deterministic branch is claimed from corrected `main`. Progress, the handoff, and the label
+are reconciled in that order. The handoff records FQ-48 and FQ-52 identities, fresh claim,
+base, file blobs, approval, proof, and preflight ids while retaining links to the old
+MISCONFIGURED evidence. No successor becomes ready.
 
-Execution still modifies the existing snapshot test, so the exact owner approval and Draft
-human read remain mandatory. The correction governs load-bearing Factory behavior even
-though its specification files are documentation. It does not authorize edits to the
-charter, contract, workflow, gates, skills, repository settings, or branch protection.
+## FQ-41 end-to-end flow
 
-The main risks are stale PR identity, duplicate or forged status contexts, an edited
-attestation comment, insufficient token permission, a provisional CI run mistaken for the
-final run, and a correction PR that introduces a new failure. Exact SHAs, full body digest,
-raw status-history cardinality, app id, suite membership, final-head rereads, and inherited-
-failure comparison make each case fail closed. The known docs-only correction exception
-expires when FQ-52 merges; it cannot authorize any implementation PR with red or pending CI.
+1. Apply and commit only the newly approved formatting patch.
+2. Open a Draft PR as a CI container; its first run is provisional and never evidence.
+3. Create the pinned placeholder comment. Commit the intent record naming the PR and
+   placeholder, then push. That commit is the immutable final source head.
+4. Select one latest completed GitHub Actions suite containing exactly the eight expected
+   successful checks from app id 15368. Bind current PR source/base, fetched synthetic merge,
+   its parents/tree, suite, run, and check ids. Any later commit rejects permanently and
+   requires owner-authorized branch restart rather than re-attestation.
+5. A fresh critic binds its accepted verdict to final source/base/merge, intent-record blob,
+   complete diff, semantic proof, patch approval, and exact CI identity. Its canonical
+   result is posted as a separate comment; the attestation binds that comment id and body
+   digest.
+6. Update the pinned candidate comment, create the pre-merge status once, then reread PR
+   head/base, remote branch, merge ref, CI suite/checks, critic comment, candidate comment,
+   and fully paginated raw statuses. Only a complete exact reconciliation derives GREEN.
+7. Apply `factory:verified` to the PR and move #41 to `factory:awaiting-review`. The PR stays
+   Draft until the owner reads it. Any drift removes verification, returns #41 to
+   `needs-info`, and requires a fresh exact branch restart; no second pre-merge status is
+   posted.
+8. The owner must choose **Create a merge commit**. Squash and rebase are not valid for this
+   bootstrap even though the repository currently permits all three and has no protection
+   rules. Closure requires REST `merged_by` login/id to be the authorized owner, parents
+   exactly `[attested base, attested source]`, tree equal to the attested synthetic merge,
+   and `main` to advance from that base. Agent, bot, stale-base, squash, or rebase merges are
+   `MISCONFIGURED`; they cannot be undone automatically and permanently block #40.
+9. On that merge commit, require the exact eight-check successful `main` push suite from app
+   15368. Create and reconcile the closure candidate/status pair using its separate stable
+   context, binding the pre-merge status id/digest and actual merge provenance.
+10. After closure succeeds, remove `factory:awaiting-review`, close #41, and permit only the
+    already-approved #40 bootstrap activator to preclaim. #40 never enters generic ready.
+
+## Partial-write and race recovery
+
+- Placeholder created but intent absent: reread the exact placeholder, then commit intent.
+- Intent pushed but CI incomplete: wait; never substitute provisional or historical runs.
+- Candidate updated but status absent: query all raw statuses first; POST once only when the
+  stable context is absent. An unknown POST result is recovered by GET, never blind retry.
+- Status created but response/read failed: retry GET only. One exact event resumes; a
+  mismatch or duplicate is permanent `MISCONFIGURED`.
+- Post-status head/base/merge/check/comment drift: remove verification if present and require
+  exact owner-authorized branch restart; never attest a second head in place.
+- Human merge without valid shape/provenance: preserve evidence, block closure and #40, and
+  request human recovery; never rewrite `main`.
+- Closure comment/status partial writes follow the same query-before-create rule. #41 stays
+  awaiting review or needs-info and #40 stays waiting until exact closure reconciliation.
+
+## Dependencies and blast radius
+
+GitHub Actions, issue comments, raw commit-status history, PR/merge APIs, and the existing
+local Python toolchain are required. No dependency, workflow, rule, release, learner data,
+runtime module, or live messaging path is added or changed. Execution still formats an
+existing load-bearing test, so exact owner approval and Draft human review remain mandatory.
+Without branch protection, an unauthorized merge cannot be prevented here; it is detected
+and successors fail closed. Protection remains the later approved activation work.
 
 Official API references:
 
