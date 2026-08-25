@@ -1,126 +1,123 @@
 # FQ-48 — Bootstrap recovery architecture
 
-## Oracle
+## Oracle and authority boundary
 
-The recovery has three trust stages rather than pretending the missing Factory can verify
-itself.
+FQ-48 does not pretend the missing Factory can verify itself. After this spec is approved
+and merged, its architecture, design, and slices are the immutable temporary recovery
+protocol. They authorize only the exact recovery issue numbers, paths, order, verdicts,
+and expiry recorded here. Live handoffs point to their Git blob ids and the FQ-48 merge
+SHA; a mismatch fails closed.
 
-1. The baseline-repair PR is judged by GitHub CI on its exact synthetic merge commit, an
-   assertion-preserving diff check, and a fresh verifier. It must make both the PR and
-   merged `main` green before policy bootstrap begins.
-2. The authority-adoption PR is the only policy bootstrap exception. It is docs-only,
-   Draft, restricted to approved authority files, checked by green CI and a fresh critic,
-   and merged only by the owner.
-3. Once the tracked authority exists, candidate gate tooling is introduced and exercised
-   in its own PR. After that PR merges, every remaining load-bearing slice must produce a
-   real deep `FACTORY_GATES` verdict; missing tooling is `MISCONFIGURED`.
+The temporary protocol may run only in this continuing interactive owner session. It is
+not an unattended Factory path and cannot be resumed by a stranger without a fresh owner
+authorization. Gate approvals decide the design; the one bootstrap authorization is the
+later, exact approval to format the existing test. Gate 4 does not pre-authorize that edit.
+This one-time limitation is honest: fresh unattended workers become supported only after
+the recovery lane finishes.
 
-No PR after baseline recovery may rely on an inherited red check.
+Trust advances through three independent oracles:
 
-## Bounded bootstrap lane
+1. Baseline repair requires every GitHub CI check green on the exact synthetic merge SHA,
+   semantic equivalence of the formatted test, and a cold critic.
+2. Authority adoption requires green CI, an exact path/line budget, and a cold critic
+   against the merged FQ-48 protocol.
+3. Candidate gate tooling must produce a real deep `FACTORY_GATES` GREEN verdict before
+   it merges. Every later load-bearing item uses the merged runner and normal deep gates.
 
-The corrected queue begins with four ordered items:
+No bootstrap PR may merge with red/pending/missing CI, a `MISCONFIGURED` gate, or an
+unreviewed head.
 
-1. **#41 — green baseline.** Formatting-only changes to the existing FQ-29 design and
-   existing snapshot test. The owner must explicitly approve the existing-test edit in
-   the implementation session. No assertion, value, test name, or product behavior may
-   change.
-2. **#40 — tracked authority.** Adopt the approved AGENTS/Claude adapters, contract, and
-   charter. The contract records the bounded bootstrap lane and its exact issue allowlist.
-3. **#42 — executable gates.** Track the gate runner/config and isolated deep-tool
-   provisioning. Candidate deep gates must run successfully before this PR can be merged.
-4. **New workflow item — load-bearing execution.** Track the implement adapters and make an
-   explicitly approved load-bearing handoff legal only when deep gates and independent
-   verification succeed. Merging it expires the bootstrap exception.
+## Temporary recovery verdict
 
-These four items use one issue, one deterministic branch, one Draft PR, one fresh verifier,
-and one human merge each. Only #41 is initially claimable. A handoff carries:
+Positions before a trusted gate runner use a separate, fail-closed verdict:
 
 ```text
-delivery: bootstrap
-bootstrap_spec: FQ-48
-bootstrap_position: <1..4>
-blocked_by: <predecessor or none>
-owner_approval: Gate 4 approval date
+FACTORY_BOOTSTRAP: position=<1|2> status=GREEN head=<40-hex> merge=<40-hex>
+checks=<exact app-bound check ids> critic=<run-id> semantic=<PROVEN|not-applicable>
 ```
 
-For positions 1–3, the current generic `factory-implement` routine is not used because it
-would correctly reject the load-bearing work. They run only in the same interactive,
-owner-approved bootstrap workflow defined by the tracked contract. The allowlist is exact,
-cannot accept new issue numbers, and expires when position 4 merges. Any disagreement among
-label, handoff, issue number, predecessor merge, branch, or approval date fails closed.
+Only positions 1 and 2 may emit it. GREEN requires all expected GitHub checks terminal
+green on the current head/base, the allowed-file set exact, diff at most 400 lines, a clean
+checkout, and a fresh critic acceptance. Position 1 additionally requires AST-equivalent
+Python before/after and unchanged test names, assertions, literals, and collected-test
+count. Any unavailable field is `MISCONFIGURED`, never GREEN.
+
+Bootstrap run records use the existing frontmatter fields shown in the merged FQ-38 run
+record plus the verdict, exact SHAs, checks, critic id, approval evidence, and expiry.
+They are added as unique files under `docs/factory/runs/`; no absent README is required
+to interpret them.
+
+## Ordered recovery lane
+
+1. **#41 — green baseline.** Format only the existing FQ-29 design and snapshot test.
+   The owner approves the exact test patch in this implementation turn. GitHub CI must
+   become green; no assertion, name, literal, collected test, or behavior changes.
+2. **#40 — tracked authority.** Author a concise AGENTS/Claude adapter, contract, charter,
+   and run schema directly from merged FQ-48 requirements. Workspace-only files are not
+   copied or treated as approved sources. This is the sole policy-adoption exception.
+3. **#42 — executable gates.** Track gate config/runner, isolated `pip-audit`
+   provisioning, and parity tests. The candidate runner must pass deep gates from a clean
+   checkout; its PR uses both green CI and the candidate verdict.
+4. **New verifier item.** Track the negative-proof primitive and Claude/Codex verifier
+   adapters with contract tests. It uses the merged deep runner.
+5. **New implement item.** Track implement adapters and the narrowly approved
+   load-bearing handoff rule. It uses deep gates and the merged verifier. Its merge expires
+   the temporary recovery protocol.
+
+Each position is one deterministic branch, Draft PR, fresh critic/verifier, and human
+merge. Only its immediate successor becomes ready after the predecessor PR is confirmed
+merged and merged-main CI is green. Closed-without-merge, stale base, or SHA disagreement
+leaves all successors waiting.
+
+The review queue currently has #35 and #37. The FQ-48 spec may occupy the third slot, but
+no recovery item is claimed until the spec PR is merged or closed. Thereafter only one
+recovery PR may be open, keeping the queue at or below three.
 
 ## Corrected normal sequence
 
-After the bootstrap lane:
+After position 5 merges, #39 becomes ready and proves enforcement previews and denied
+capabilities with synthetic payloads. Then #43 adds immutable audit evidence, #44 adds
+exact-head readiness and standard flow, #45 moves audit routines off product PRs, and #46
+reconciles legacy PRs and activates enforcement only after live denial probes pass.
 
-1. #39 proves enforcement previews and denied-capability probes with synthetic payloads.
-2. #43 adds immutable audit evidence.
-3. #44 adds exact-head progress/readiness and the standard feature flow.
-4. #45 moves audit-only routines off the product merge queue.
-5. #46 reconciles legacy PRs, proves real permission denial, and activates enforcement.
+Existing #40, #41, and #42 are reordered; #39 and #43–#46 retain their safety outcomes.
+Gate 4 atomically replaces every predecessor in the live handoffs so exactly one item is
+ready. Queue snapshots remain audit-only.
 
-#39 remains `wait-to-implement` until the workflow item is merged. Existing #40, #41, and
-#42 are reordered rather than duplicated. Their live handoffs are rewritten only after
-Gate 4 approval. Obsolete dependencies are replaced atomically; no two items are ready.
+## Systems and external dependencies
 
-## Systems touched
+- GitHub CI is the temporary oracle and must be green on exact head/base/app-bound checks.
+- `pip-audit` is pinned Factory tooling isolated from Studio Baton's project environment
+  and lock file. Provisioning failure makes deep gates `MISCONFIGURED`.
+- FQ-48 supplies the temporary verdict, semantic proof, and run schema until tracked
+  adapters exist.
+- Fork credentials, branch rules, and audit protection remain preview-only until #46.
 
-- GitHub issue labels and canonical handoff comments for #39–#46 and the new workflow item.
-- Tracked repository authority: AGENTS/Claude adapters, contract, and charter.
-- Local gate runner/config plus isolated security-audit tooling.
-- Factory implement adapters, later readiness/audit/control-room components from FQ-38.
-- The two known formatting-baseline files in #41 only.
-
-GitHub rules, fork credentials, audit-branch protection, and strict required contexts remain
-preview-only until #46. No learner profile, product adapter, runtime dependency, release,
-real message, or real media path is involved.
-
-## External dependencies
-
-- `pip-audit` is an exactly recorded Factory execution tool, isolated from Studio Baton's
-  project environment and lock file. Provisioning failure makes deep gates
-  `MISCONFIGURED`; it never becomes a project dependency.
-- GitHub Actions is the baseline oracle and must be green on the exact current head/base.
-- Fork and credential setup remains deferred to activation and stays owner-controlled.
+No learner data, product adapter, runtime dependency, release, real message, or real media
+path is involved.
 
 ## Load-bearing scope
 
-- #41: existing `tests/test_piece_snapshot.py` (format only, same-session approval).
-- #40: `AGENTS.md`, `CLAUDE.md`, `docs/factory/CONTRACT.md`, and
-  `docs/factory/CHARTER.md`.
-- #42: `.factory/gates.conf`, `.claude/scripts/gates.sh`, isolated-tool bootstrap, and
-  new gate-parity tests.
-- Workflow item: canonical and Codex implement skills plus the minimum contract amendment.
-- #39 and #43–#46 retain the approved FQ-38 protected scope.
+- #41: existing `tests/test_piece_snapshot.py` only for exact approved formatting.
+- #40: `AGENTS.md`, `CLAUDE.md`, contract, charter, and run schema.
+- #42: gate config/runner, isolated-tool bootstrap, and new parity tests.
+- Verifier item: prove-test and verifier adapters plus new contract tests.
+- Implement item: implement adapters, minimum contract change, and new contract tests.
+- #39 and #43–#46 retain merged FQ-38 protected scope.
 
-Every PR stays below 400 changed lines and Draft. Existing-test approval for #41 does not
-authorize assertion changes. Policy approval does not authorize live repository mutation.
+Every PR stays Draft and below 400 changed lines. Gate 3 must prove the budget for each
+position, not estimate it. Approval of policy files never authorizes live GitHub settings.
 
-## End-to-end call flow
+## End-to-end flow and failure modes
 
-Gate 4 approval → rewrite handoffs with #41 ready → owner approves the exact existing-test
-format edit → #41 CI/verifier/merge → confirm merged-main green → #40 authority
-CI/critic/merge → #42 provision candidate tooling and pass candidate deep gates → merge →
-workflow item passes tracked deep gates and fresh verification → merge and expire bootstrap
-lane → #39 becomes ready → #39/#43/#44/#45 merge in order → #46 applies only explicitly
-approved settings and proves denied permissions → enforcement becomes active.
+Approve/merge FQ-48 → handoffs remain waiting → owner approves the exact #41 patch → #41
+bootstrap verdict/CI/critic/merge → confirm merged-main green → #40 bootstrap
+verdict/CI/critic/merge → #42 candidate deep/CI/verifier/merge → verifier item deep/proof/
+merge → implement item deep/proof/merge and expire recovery → #39 → #43 → #44 → #45 →
+#46 activation.
 
-Every predecessor is checked by merged PR state and merged-main SHA, not merely a closed
-issue or label. A failed or closed-without-merge predecessor leaves successors waiting.
-
-## What could break
-
-- A broad bootstrap exception could become a permanent bypass. The exact issue allowlist,
-  ordered predecessors, expiry, and Draft/human merge requirements prevent reuse.
-- Mechanical formatting could hide a test change. Token-level assertion/name/value checks
-  and a cold verifier make any semantic change a rejection.
-- Candidate gates could grade themselves too generously. Green GitHub CI and an independent
-  critic remain separate oracles until the runner is merged.
-- A tool install could alter project dependencies. Isolation and lockfile-diff rejection
-  prevent that.
-- Concurrent label edits could expose two ready items. Queue reconciliation verifies the
-  complete state set after every write and fails closed on disagreement.
-- Authority files could exceed the review budget. The authority slice uses the already
-  approved local sources and compact run evidence; exceeding 400 lines returns to Gate 4
-  rather than silently splitting authority.
+A broad or stale exception is rejected by the exact issue allowlist, blob ids, order, SHA
+checks, and expiry. Formatting deception is rejected by AST/literal/assertion/test-count
+equivalence. Candidate self-grading is bounded by separate green CI and a cold critic.
+Tool leakage is rejected by project lockfile/environment diffs. Concurrent queue edits are
+reconciled as one complete state set; disagreement exposes zero ready items.
