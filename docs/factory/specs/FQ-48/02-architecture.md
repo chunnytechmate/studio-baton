@@ -5,8 +5,8 @@
 FQ-48 does not pretend the missing Factory can verify itself. After this spec is approved
 and merged, its architecture, design, and slices are the immutable temporary recovery
 protocol. They authorize only the exact recovery issue numbers, paths, order, verdicts,
-and expiry recorded here. Live handoffs point to their Git blob ids and the FQ-48 merge
-SHA; a mismatch fails closed.
+and expiry recorded here. Gate 4 records candidate blob ids while every item remains
+waiting. Activation later attaches the verified FQ-48 merge SHA; a mismatch fails closed.
 
 The temporary protocol may run only in this continuing interactive owner session. It is
 not an unattended Factory path and cannot be resumed by a stranger without a fresh owner
@@ -65,13 +65,15 @@ to interpret them.
    the temporary recovery protocol.
 
 Each position is one deterministic branch, Draft PR, fresh critic/verifier, and human
-merge. Only its immediate successor becomes ready after the predecessor PR is confirmed
-merged and merged-main CI is green. Closed-without-merge, stale base, or SHA disagreement
-leaves all successors waiting.
+merge. Bootstrap positions never enter the generic ready queue. The continuing interactive
+activator preclaims the deterministic branch while the item is waiting, then atomically
+attaches the real protocol identity and moves only that item to `in-progress`. It may do
+so only after the predecessor PR and merged-main CI are green. Closed-without-merge, stale
+base, session loss, or SHA disagreement leaves every successor waiting.
 
-The review queue currently has #35 and #37. The FQ-48 spec may occupy the third slot, but
-no recovery item is claimed until the spec PR is merged or closed. Thereafter only one
-recovery PR may be open, keeping the queue at or below three.
+No recovery claim occurs unless the live human-decision queue is at most two. The FQ-48
+spec or one recovery PR may then occupy the third slot, but a later item cannot be claimed
+until its predecessor leaves the queue.
 
 ## Corrected normal sequence
 
@@ -81,8 +83,10 @@ exact-head readiness and standard flow, #45 moves audit routines off product PRs
 reconciles legacy PRs and activates enforcement only after live denial probes pass.
 
 Existing #40, #41, and #42 are reordered; #39 and #43–#46 retain their safety outcomes.
-Gate 4 atomically replaces every predecessor in the live handoffs so exactly one item is
-ready. Queue snapshots remain audit-only.
+Gate 4 atomically rewrites every recovery handoff to `wait-to-implement`, blocked by #48
+protocol activation, with candidate blob ids only. After position 5 merges, the temporary
+activator expires and #39 alone enters the normal ready queue. Queue snapshots remain
+audit-only.
 
 ## Systems and external dependencies
 
@@ -110,14 +114,16 @@ position, not estimate it. Approval of policy files never authorizes live GitHub
 
 ## End-to-end flow and failure modes
 
-Approve/merge FQ-48 → handoffs remain waiting → owner approves the exact #41 patch → #41
-bootstrap verdict/CI/critic/merge → confirm merged-main green → #40 bootstrap
-verdict/CI/critic/merge → #42 candidate deep/CI/verifier/merge → verifier item deep/proof/
-merge → implement item deep/proof/merge and expire recovery → #39 → #43 → #44 → #45 →
-#46 activation.
+Approve/merge FQ-48 → verify candidate blobs in the actual merge → generate the #41 patch
+read-only in a temporary copy → owner approves that exact patch → preclaim #41 and attach
+the merge SHA → #41 bootstrap verdict/CI/critic/merge → confirm merged-main green →
+preclaim #40 → #40 bootstrap verdict/CI/critic/merge → preclaim #42 → candidate deep/CI/
+verifier/merge → verifier item → implement item → expire recovery → #39 normal ready →
+#43 → #44 → #45 → #46 activation.
 
 A broad or stale exception is rejected by the exact issue allowlist, blob ids, order, SHA
 checks, and expiry. Formatting deception is rejected by AST/literal/assertion/test-count
 equivalence. Candidate self-grading is bounded by separate green CI and a cold critic.
 Tool leakage is rejected by project lockfile/environment diffs. Concurrent queue edits are
-reconciled as one complete state set; disagreement exposes zero ready items.
+reconciled as one complete state set; disagreement exposes zero ready items. If the
+interactive session ends before a preclaim, fresh owner authorization is required.
