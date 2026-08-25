@@ -20,9 +20,11 @@ on an owner-controlled fork; an upstream coordinator has Issues/Pull Requests wr
 Contents/Checks/Actions read on Studio Baton, but no upstream Contents write or repository
 administration. Builder branches and audit history live on the protected fork; cross-fork
 PRs target upstream `main`. The merge API requires upstream Contents write, so neither
-credential can merge. The owner keeps upstream administration outside agent environments.
+credential can merge. Repository auto-merge is disabled so Pull Requests write cannot arm
+a future merge. The owner keeps upstream administration outside agent environments.
 Status remains `enforcement: partial` until probes prove both credentials cannot merge,
-push upstream `main`, change rules, force-push, or delete protected branches.
+enable auto-merge, push upstream `main`, change rules, force-push, or delete protected
+branches.
 
 ## Systems and gate layers
 
@@ -80,7 +82,7 @@ load-bearing specs retain separate approvals.
    before labels. Then, and only then, apply
    `factory:verified` and `awaiting-review`.
 6. **Human decision:** agent may mark ready only when no human read is required; otherwise
-   it stays Draft. Owner alone merges, closes, or enables auto-merge.
+   it stays Draft. Owner alone manually merges or closes; repository auto-merge stays off.
 
 Readiness records live at `docs/factory/readiness/<pr>-<source-sha>.md` on the audit branch.
 Accepted work requiring a human read is counted as a decision while remaining Draft; the
@@ -119,7 +121,8 @@ factory, even though the original blob remains recoverable from history.
    least-privilege credentials; then change readiness, reporting, standard-spec, and
    cohesive-delivery behavior.
 7. Remove the upstream owner credential from agent environments. Enforcement becomes active
-   only after upstream merge/push/ruleset and fork force-push/delete probes are denied.
+   only after upstream merge/auto-merge/push/ruleset and fork force-push/delete probes are
+   denied.
 
 Every ruleset mutation records before/after payload and an owner-only recovery command.
 Required contexts are never guessed.
