@@ -40,11 +40,13 @@ class CheckContext:
     name: str
     app_id: int
 
+
 @dataclass(frozen=True)
 class EnforcementInventory:
     source_sha: str
     merge_sha: str
     contexts: tuple[CheckContext, ...]
+
 
 def inventory_green_checks(pr: int) -> EnforcementInventory: ...
 def preview_bootstrap_rules(repo: str) -> dict[str, object]: ...
@@ -66,6 +68,7 @@ class ProgressRecord:
     gate_failures: int
     verifier_rejections: int
 
+
 @dataclass(frozen=True)
 class ReadinessRecord:
     issue: int
@@ -78,6 +81,7 @@ class ReadinessRecord:
     proof_line: str
     verifier: str
     human_read: bool
+
 
 def validate_resume(progress: ProgressRecord, remote_sha: str, label: str) -> None: ...
 def validate_audit_ref(ref: str) -> None: ...
