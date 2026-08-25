@@ -308,8 +308,8 @@ FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z
 - confidence: medium
 - notes: blocked by merge of FQ-32; existing-test approval is narrow; Draft plus human read required
 
-## FQ-48: wait-only corrected recovery (2026-08-25)
-- #41 waits on #48 activation — green baseline tracer.
+## FQ-48/FQ-52: wait-only corrected recovery (2026-08-25)
+- #52 awaits correction review; #41 stays needs-info until its merge and fresh exact approvals.
 - #40 waits on #41 — tracked authority.
 - #42 waits on #40 — executable deep gates.
 - #49 waits on #42 — verifier/proof tooling.
