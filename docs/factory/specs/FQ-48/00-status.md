@@ -1,8 +1,8 @@
 item: FQ-48
 gate_1_product: approved 2026-08-25
 gate_2_architecture: approved 2026-08-25
-gate_3_design: pending
-gate_4_slices: not-started
+gate_3_design: approved 2026-08-25
+gate_4_slices: pending
 slices_completed: 0 / ?
 open_questions:
-  - Owner approval of Gate 3 recovery protocol and budgets
+  - Owner approval of Gate 4 slices and wait-only queue rewrite
