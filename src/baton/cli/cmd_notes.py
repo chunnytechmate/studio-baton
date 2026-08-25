@@ -76,12 +76,14 @@ def _read_note(ctx: Context) -> str:
     text: str | None = getattr(ctx.args, "text", None)
     source: str | None = getattr(ctx.args, "file", None)
 
-    if bool(text) == bool(source):
+    # Truthiness is the wrong test here: `--text ""` was provided, so it is
+    # an empty note, not a missing argument.
+    if (text is None) == (source is None):
         raise UsageError(
             "Pass exactly one of --text or --file.",
             remedy="Use `--file -` to read the note from stdin.",
         )
-    if text:
+    if text is not None:
         return text
     if source == "-":
         return sys.stdin.read()
@@ -100,9 +102,16 @@ def _title_for(note: str, given: str | None, timezone: str) -> str:
     """
     if given:
         return given.strip()
+    in_fence = False
     for line in note.splitlines():
         stripped = line.strip()
-        if not stripped:
+        if stripped.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        if in_fence or not stripped or stripped.startswith("|"):
+            # A fence (and anything inside it) and a table row are scaffolding,
+            # not a title: a page called "```python" or "| a | b |" reads as a
+            # conversion bug.
             continue
         # Strip the marker as well as the text: a page called "- buy strings"
         # reads as a mistake, and the marker carries no meaning in a title.
