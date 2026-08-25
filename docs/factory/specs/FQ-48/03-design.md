@@ -10,10 +10,23 @@ class ProtocolIdentity:
 
 
 @dataclass(frozen=True)
-class PatchApproval:
+class PatchProposal:
     base_sha: str
     path_blobs: tuple[tuple[str, str], ...]
     patch_sha256: str
+
+
+@dataclass(frozen=True)
+class ProvenPatch:
+    proposal: PatchProposal
+    semantic: Literal["PROVEN"]
+    proof_evidence: str
+
+
+@dataclass(frozen=True)
+class PatchApproval:
+    proven: ProvenPatch
+    owner_evidence: str
     approved_at: str
 
 
@@ -37,18 +50,29 @@ class BootstrapVerdict:
 
 
 def verify_protocol_identity(merge_sha: str, blobs: Mapping[str, str]) -> ProtocolIdentity: ...
-def propose_format_patch(base_sha: str, paths: tuple[str, ...]) -> tuple[bytes, PatchApproval]: ...
-def prove_semantic_equivalence(base_sha: str, patch: bytes) -> str: ...
+def propose_format_patch(base_sha: str, paths: tuple[str, ...]) -> tuple[bytes, PatchProposal]: ...
+def prove_semantic_equivalence(proposal: PatchProposal, patch: bytes) -> ProvenPatch: ...
+def record_patch_approval(
+    proven: ProvenPatch, owner_evidence: str, approved_at: str
+) -> PatchApproval: ...
 def inventory_bootstrap_ci(pr: int, expected: tuple[str, ...]) -> CheckIdentity: ...
 def preclaim_bootstrap(
-    issue: int, base_sha: str, protocol: ProtocolIdentity, approval: PatchApproval | None
+    issue: int,
+    position: Literal[1, 2],
+    base_sha: str,
+    protocol: ProtocolIdentity,
+    approval: PatchApproval | None,
 ) -> str: ...
 def reconcile_activation(
     issue: int, branch_sha: str
 ) -> Literal["waiting", "partial", "in-progress", "inconsistent"]: ...
-def emit_bootstrap_verdict(identity: CheckIdentity, semantic: str, critic_evidence: str) -> str: ...
+def emit_bootstrap_verdict(verdict: BootstrapVerdict) -> str: ...
 def recover_bootstrap_session(issue: int, branch_sha: str, owner_authorization: str) -> str: ...
 ```
+
+Validation rejects instead of returning partial values. Position 1 preclaim requires the
+matching approved proven patch; position 2 requires `not-applicable`. The
+preclaim return is the claimed 40-hex branch SHA.
 
 `.factory/scripts/bootstrap-tools.sh --check|--install --version <pin>` exits 0 only
 when isolated `pip-audit` is usable, exits 2 when unavailable, and never changes
@@ -90,26 +114,25 @@ Each allocation includes a 25-line run record and is a hard changed-line maximum
 
 | Item | Exact paths | Allocation |
 |---|---|---:|
-| #41 | FQ-29 `03-design.md`; `tests/test_piece_snapshot.py`; run | 35+10+25=70 |
-| #40 | `AGENTS.md`; `CLAUDE.md`; contract; charter; runs README; run | 15+55+105+135+35+25=370 |
-| #42 | `.factory/gates.conf`; gate runner; `.factory/scripts/bootstrap-tools.sh`; `tests/test_factory_gate_parity.py`; run | 12+200+35+115+25=387 |
+| #41 | `docs/factory/specs/FQ-29/03-design.md`; `tests/test_piece_snapshot.py`; run | 35+10+25=70 |
+| #40 | `AGENTS.md`; `CLAUDE.md`; `docs/factory/CONTRACT.md`; `docs/factory/CHARTER.md`; `docs/factory/runs/README.md`; run | 15+55+105+135+35+25=370 |
+| #42 | `.factory/gates.conf`; `.claude/scripts/gates.sh`; `.factory/scripts/bootstrap-tools.sh`; `tests/test_factory_gate_parity.py`; run | 12+200+35+115+25=387 |
 | verifier | `.factory/scripts/prove-test.sh`; `.claude/skills/factory-verify/SKILL.md`; `.agents/skills/factory-verify/SKILL.md`; `tests/test_factory_verifier_protocol.py`; run | 110+80+15+135+25=365 |
-| implement | `.claude/skills/factory-implement/SKILL.md`; `.agents/skills/factory-implement/SKILL.md`; contract; `tests/test_factory_implement_protocol.py`; run | 170+15+25+130+25=365 |
+| implement | `.claude/skills/factory-implement/SKILL.md`; `.agents/skills/factory-implement/SKILL.md`; `docs/factory/CONTRACT.md`; `tests/test_factory_implement_protocol.py`; run | 170+15+25+130+25=365 |
 | #39 | `.factory/scripts/github_enforcement.py`; `tests/test_factory_github_enforcement.py`; `docs/factory/GITHUB.md`; run | 130+150+80+25=385 |
-| #43 | `.factory/scripts/audit_record.py`; `tests/test_factory_audit.py`; runs README; run | 130+170+50+25=375 |
-| #44 | Claude/Codex implement+spec skills; `tests/test_factory_readiness.py`; contract; run | 30+120+10+12+140+35+25=372 |
+| #43 | `.factory/scripts/audit_record.py`; `tests/test_factory_audit.py`; `docs/factory/runs/README.md`; run | 130+170+50+25=375 |
+| #44 | Claude/Codex implement+spec skills; `tests/test_factory_readiness.py`; `docs/factory/CONTRACT.md`; run | 30+120+10+12+140+35+25=372 |
 | #45 | Claude triage+monitor skills+tune command; three Codex adapters; `tests/test_factory_audit_routines.py`; run | 85+70+60+36+105+25=381 |
-| #46 | Claude factory command; Codex status skill; enforcement; doctor; `tests/test_factory_activation.py`; GITHUB doc; run | 55+12+40+55+110+75+25=372 |
+| #46 | `.claude/commands/factory.md`; `.agents/skills/factory-status/SKILL.md`; `.factory/scripts/github_enforcement.py`; `.factory/scripts/doctor.sh`; `tests/test_factory_activation.py`; `docs/factory/GITHUB.md`; run | 55+12+40+55+110+75+25=372 |
 
-Here `contract` and `charter` mean `docs/factory/CONTRACT.md` and
-`docs/factory/CHARTER.md`; `run` uses the pattern above. Skill paths are canonical
+Here `run` uses the pattern above. Skill paths are canonical
 `.claude/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`; command paths
 are canonical under `.claude/commands/`. Before edits, expanded paths and per-file
 allocations are recorded; any expansion or actual total over 400 returns to spec.
 
 ## Proposal, activation, and recovery
 
-`propose_format_patch` is read-only. In a temporary checkout it applies the approved
+`propose_format_patch` is read-only. In a temporary checkout it applies the proposed
 bytes and proves identical Python AST without attributes, collected node ids, function
 names, assertion/literal AST nodes, and full test result; the Markdown change is confined
 to fenced Python formatting.
