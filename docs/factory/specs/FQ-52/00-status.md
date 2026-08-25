@@ -1,8 +1,8 @@
 item: FQ-52
 gate_1_product: approved 2026-08-25
-gate_2_architecture: pending
-gate_3_design: not-started
+gate_2_architecture: approved 2026-08-25
+gate_3_design: pending
 gate_4_slices: not-started
 slices_completed: 0 / ?
 open_questions:
-  - Owner approval of Gate 2 evidence boundary and recovery flow
+  - Owner approval of Gate 3 exact records, calls, files, and tests
