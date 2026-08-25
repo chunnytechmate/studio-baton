@@ -12,6 +12,14 @@ must never block or override a live label.
   a human decision, not re-triaged
 - updated: 2026-08-24 (run `2026-08-24T000806Z-triage-4`, UTC `2026-08-24T00:08Z`) —
   picked up the cap-skipped #4. Every open issue now carries exactly one disposition.
+- updated: 2026-08-25 (run `2026-08-25T000903Z-triage-queue`, UTC `2026-08-25T00:09Z`) —
+  incremental: 3 issues qualified (updated since the last triage record; none untriaged),
+  0 skipped by the cap. **#29 → wait-to-implement** (owner approved spec Gates 1-4 and
+  merged spec PR #30, so `awaiting-review` no longer applies; the umbrella is now blocked
+  on slice work). **#33 wait-to-implement re-confirmed** (blocker live: #32's PR #35 is
+  open, unmerged). **#32 left untouched** as `factory:awaiting-review` — open PR, human
+  owns the decision; not re-triaged. Closed since earlier snapshots (entries above are
+  audit history, live state is GitHub): #1, #7, #14, #31.
 
 ## FQ-6: M3: TOCTOU ใน JobRunner.get — heartbeat stat race กับ prune → FileNotFoundError
 - disposition: ready-to-implement
@@ -267,10 +275,26 @@ must never block or override a live label.
 
 ## Not covered
 
-- **FQ-1 (M6)** — `factory:awaiting-review`, PR open. Human owns the next decision.
+- **FQ-32 (P0/S1)** — `factory:awaiting-review` on open PR #35 (labeled
+  `factory:verified`). Human owns the merge decision; per the contract this state is
+  outside triage's four dispositions, so it was read and left as-is. Its entry below
+  records the live state for audit.
 
 FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z-triage-4`
-(needs-info — already fixed at HEAD; see its entry above).
+(needs-info — already fixed at HEAD; see its entry above). FQ-1 (M6), excluded by the
+2026-08-23 run for the same awaiting-review reason, has since closed (completed).
+
+## FQ-29: P0: lesson summaries can drift to a learner's newer song
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/29
+- last_triaged: 2026-08-25
+- repro: not-attempted (umbrella/tracker issue — the defect is spec'd and sliced; nothing to reproduce at this level this run)
+- files_expected: none directly — file scope lives on the slice handoffs (#32, #33)
+- load_bearing: false (this issue edits nothing itself; slice #33 declares load_bearing: true, deep gates, Draft + human read)
+- gate_level: full
+- done_when: slices #32 and #33 are merged and closed, then a human closes umbrella #29
+- confidence: high
+- notes: owner approved spec Gates 1-4 and merged spec PR #30 on 2026-08-24, so the prior `awaiting-review` no longer applies; the umbrella is blocked on unmerged slice work (PR #35 open under human review, #33 behind it)
 
 ## FQ-31: P0/S0 freeze staged Song DB context for lesson contracts
 - disposition: ready-to-implement
@@ -285,25 +309,25 @@ FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z
 - notes: spec handoff 2026-08-24T21:23:27Z; only this slice is initially claimable
 
 ## FQ-32: P0/S1 publish frozen Song DB resources safely
-- disposition: wait-to-implement
+- disposition: awaiting-review (live queue state on an open PR — outside triage's four dispositions; recorded here for audit, not re-classified)
 - source: https://github.com/chunnytechmate/studio-baton/issues/32
-- last_triaged: 2026-08-24
-- repro: confirmed (publisher currently renders summary only)
+- last_triaged: 2026-08-25 (state read and left as-is)
+- repro: not-attempted (nothing to reproduce — implemented, PR #35 open with gates GREEN and verifier accepted; awaiting a human merge decision)
 - files_expected: src/baton/render/piece.py, src/baton/pipelines/publish.py, src/baton/pipelines/staging.py, src/baton/cli/cmd_lesson.py, tests/test_piece_publish.py
 - load_bearing: false
 - gate_level: full
 - done_when: frozen resources precede summary; exact same-snapshot dedup is safe; changed/unknown forced republish makes no write
-- confidence: medium
-- notes: blocked by merge of FQ-31; block ownership has no persisted ids
+- confidence: high (state read: PR #35 open, non-draft, labeled factory:verified)
+- notes: the issue's ready-to-implement handoff (triaged 2026-08-24T22:03:08Z) was consumed by the implementation run; next move belongs to a human (merge/close PR #35) — after merge, #33 unblocks
 
 ## FQ-33: P0/S2 send published practice track and document operations
 - disposition: wait-to-implement
 - source: https://github.com/chunnytechmate/studio-baton/issues/33
-- last_triaged: 2026-08-24
-- repro: confirmed (send currently reads learner.current_piece_id live)
+- last_triaged: 2026-08-25
+- repro: confirmed (blocker live at triage time: #32's PR #35 open and unmerged)
 - files_expected: src/baton/pipelines/send.py, tests/test_send.py, tests/test_lesson_piece_flow.py, README.md, docs/notion-setup.md
 - load_bearing: true
 - gate_level: deep
 - done_when: published A wins over live B through document and message; legacy never falls back; operational behavior is documented
 - confidence: medium
-- notes: blocked by merge of FQ-32; existing-test approval is narrow; Draft plus human read required
+- notes: blocked by merge of FQ-32 (PR #35); existing-test approval is narrow; Draft plus human read required; handoff comment re-stamped by run 2026-08-25T000903Z, disposition unchanged
