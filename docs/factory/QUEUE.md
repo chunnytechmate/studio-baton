@@ -307,3 +307,13 @@ FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z
 - done_when: published A wins over live B through document and message; legacy never falls back; operational behavior is documented
 - confidence: medium
 - notes: blocked by merge of FQ-32; existing-test approval is narrow; Draft plus human read required
+
+## FQ-38: approved enforcement-flow slices (2026-08-25)
+- FQ-39 Slice 0 — `ready-to-implement`: synthetic enforcement tracer.
+- FQ-40 Slice 1 — `wait-to-implement`, blocked by #39: tracked authority.
+- FQ-41 Slice 2 — `wait-to-implement`, blocked by #40: green bootstrap.
+- FQ-42 Slice 3 — `wait-to-implement`, blocked by #41: local/CI gate parity.
+- FQ-43 Slice 4 — `wait-to-implement`, blocked by #42: immutable audit branch.
+- FQ-44 Slice 5 — `wait-to-implement`, blocked by #43: exact-head readiness.
+- FQ-45 Slice 6 — `wait-to-implement`, blocked by #44: audit-only routines.
+- FQ-46 Slice 7 — `wait-to-implement`, blocked by #45: enforced activation.
