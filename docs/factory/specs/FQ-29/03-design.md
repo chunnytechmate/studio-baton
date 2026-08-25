@@ -13,11 +13,14 @@ protected source, schema, dependency, workflow, adapter, or unrelated test edit.
 
 ```python
 PieceSnapshotStatus = Literal["captured", "none", "unavailable"]
+
+
 @dataclass(frozen=True)
 class PieceSnapshot:
     status: PieceSnapshotStatus
     captured_at: str = ""
     piece: Piece | None = None
+
     @classmethod
     def capture(cls, piece: Piece | None) -> PieceSnapshot: ...
     @classmethod
@@ -36,6 +39,8 @@ serialize the same snapshot.
 
 ```python
 ResourceIdentity = tuple[str, str, str]
+
+
 def to_blocks(snapshot: PieceSnapshot) -> list[dict[str, Any]]: ...
 def to_markdown(snapshot: PieceSnapshot) -> str: ...
 def payload_identity(block: Mapping[str, Any]) -> ResourceIdentity | None: ...
@@ -48,16 +53,29 @@ render nothing. Identity covers resources, never heading.
 `src/baton/pipelines/publish.py`:
 
 ```python
-def _without_preserved_resource_duplicates(generated: list[dict[str, Any]],
-    preserved: list[Block]) -> list[dict[str, Any]]: ...
+def _without_preserved_resource_duplicates(
+    generated: list[dict[str, Any]], preserved: list[Block]
+) -> list[dict[str, Any]]: ...
+
+
 class SummaryPublisher:
-    def plan(self, doc_id: str, summary: dict[str, Any], *,
-        piece_snapshot: PieceSnapshot | None = None,
-        callout_texts: dict[str, str] | None = None) -> dict[str, Any]: ...
-    def publish(self, doc_id: str, summary: dict[str, Any], *,
+    def plan(
+        self,
+        doc_id: str,
+        summary: dict[str, Any],
+        *,
         piece_snapshot: PieceSnapshot | None = None,
         callout_texts: dict[str, str] | None = None,
-        replace: bool = True) -> PublishResult: ...
+    ) -> dict[str, Any]: ...
+    def publish(
+        self,
+        doc_id: str,
+        summary: dict[str, Any],
+        *,
+        piece_snapshot: PieceSnapshot | None = None,
+        callout_texts: dict[str, str] | None = None,
+        replace: bool = True,
+    ) -> PublishResult: ...
 ```
 
 `None` retains summary-only behavior. Both methods assemble song then summary,
@@ -68,8 +86,9 @@ snapshot status/id/resource count.
 
 ```python
 def _capture_piece_snapshot(store: LearnerStore, learner: Learner) -> PieceSnapshot: ...
-def _require_force_compatible(draft: LessonDraft,
-    published: Mapping[str, Any] | None, *, force: bool) -> None: ...
+def _require_force_compatible(
+    draft: LessonDraft, published: Mapping[str, Any] | None, *, force: bool
+) -> None: ...
 ```
 
 Capture reads at most one piece; dangling id stops before save. Contract uses
