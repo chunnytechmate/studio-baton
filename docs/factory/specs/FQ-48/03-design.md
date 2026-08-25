@@ -1,6 +1,6 @@
 # FQ-48 — Recovery program design
 
-## Protocol records
+## Records and contracts
 
 ```python
 @dataclass(frozen=True)
@@ -18,138 +18,133 @@ class PatchApproval:
 
 
 @dataclass(frozen=True)
+class CheckIdentity:
+    pull_request: int
+    suite_id: int
+    run_id: int
+    source_sha: str
+    base_sha: str
+    merge_sha: str
+    checks: tuple[tuple[str, int, int, str], ...]  # name, app id, check id, conclusion
+
+
+@dataclass(frozen=True)
 class BootstrapVerdict:
     position: Literal[1, 2]
-    source_sha: str
-    merge_sha: str
-    checks: tuple[tuple[str, int, int, str], ...]
+    identity: CheckIdentity
     critic_evidence: str
     semantic: Literal["PROVEN", "not-applicable"]
+
+
+def verify_protocol_identity(merge_sha: str, blobs: Mapping[str, str]) -> ProtocolIdentity: ...
+def propose_format_patch(base_sha: str, paths: tuple[str, ...]) -> tuple[bytes, PatchApproval]: ...
+def prove_semantic_equivalence(base_sha: str, patch: bytes) -> str: ...
+def inventory_bootstrap_ci(pr: int, expected: tuple[str, ...]) -> CheckIdentity: ...
+def preclaim_bootstrap(
+    issue: int, base_sha: str, protocol: ProtocolIdentity, approval: PatchApproval | None
+) -> str: ...
+def reconcile_activation(
+    issue: int, branch_sha: str
+) -> Literal["waiting", "partial", "in-progress", "inconsistent"]: ...
+def emit_bootstrap_verdict(identity: CheckIdentity, semantic: str, critic_evidence: str) -> str: ...
+def recover_bootstrap_session(issue: int, branch_sha: str, owner_authorization: str) -> str: ...
 ```
 
-The FQ-48 merge tree must contain the candidate blobs recorded at Gate 4 for
-`02-architecture.md`, this file, and `04-slices.md`. Position 1 approval binds the
-current `main` SHA, both original file blobs, and SHA-256 of exact `ruff format --diff`
-bytes. Any later byte, base, path, or blob change invalidates approval.
+`.factory/scripts/bootstrap-tools.sh --check|--install --version <pin>` exits 0 only
+when isolated `pip-audit` is usable, exits 2 when unavailable, and never changes
+`pyproject.toml`, `uv.lock`, or the project environment. The candidate
+`.claude/scripts/gates.sh fast|full|deep` exits 0 GREEN, 1 RED, or 2 MISCONFIGURED and
+always prints one final `FACTORY_GATES:` line.
 
-Bootstrap run records copy the frontmatter schema from
-`docs/factory/runs/2026-08-25T085056Z-spec-38.md`, then add `source_sha`, `base_sha`,
-`merge_sha`, `protocol_blobs`, `approval_patch_sha256`, `critic_evidence`, and the
-verbatim verdict. A concise critic finding is stored in the merged run file and PR body.
+## Identity and verdict
 
-## Exact CI inventory
+Gate 4 records candidate blob ids for `02-architecture.md`, this file, and
+`04-slices.md`. Activation verifies those blobs in the actual FQ-48 merge tree.
+Position 1 approval binds current `main`, both original file blobs, and SHA-256 of exact
+`ruff format --diff` bytes; any changed byte/base/path/blob invalidates it.
 
-The temporary oracle is workflow `.github/workflows/ci.yml`, app
-`github-actions@15368`, with exactly these successful check names on the current source
-SHA: `lint and types`, `no leaked paths, secrets, or personal data`,
-`test (py3.10 on ubuntu-latest)`, `test (py3.11 on ubuntu-latest)`,
-`test (py3.12 on ubuntu-latest)`, `test (py3.13 on ubuntu-latest)`,
-`test (py3.14 on ubuntu-latest)`, and `test (py3.12 on macos-latest)`.
-The PR REST merge SHA and current base SHA are recorded before verdict. Missing, duplicate,
-extra workflow jobs, changed app id/name, stale base, or non-success is
-`FACTORY_BOOTSTRAP status=MISCONFIGURED` and returns to spec.
+The CI oracle is `.github/workflows/ci.yml`, app `github-actions@15368`, with exactly
+eight latest-suite successes: `lint and types`; `no leaked paths, secrets, or personal
+data`; tests on Ubuntu Python 3.10, 3.11, 3.12, 3.13, 3.14; and macOS Python 3.12.
+`inventory_bootstrap_ci` selects one latest completed suite for the PR/source and ignores
+historical suites; duplicates inside the selected suite reject. Its PR association must
+bind the exact source/base, current PR head/base must still match, REST
+`merge_commit_sha` must equal fetched `refs/pull/<pr>/merge`, and that commit's parents
+and tree must be the bound base/head synthetic merge. Every check belongs to that suite,
+has app id 15368, and succeeds.
 
-## Files and hard budgets
+```text
+FACTORY_BOOTSTRAP: position=<1|2> status=GREEN source=<40-hex> base=<40-hex>
+merge=<40-hex> suite=<id> run=<id> checks=<name@app:id,...>
+critic=<evidence> semantic=<PROVEN|not-applicable>
+```
 
-Changed-line budgets include a maximum 25-line run record and remain below 400:
+Missing/ambiguous identity produces `status=MISCONFIGURED`, never GREEN. Run records use
+`docs/factory/runs/<UTC>-bootstrap-<issue>.md`, copying the frontmatter of
+`2026-08-25T085056Z-spec-38.md` and adding source/base/merge, protocol blobs, approval
+digest, critic evidence, and the verbatim verdict.
 
-| Position/item | Exact files | Maximum |
+## Exact files and budgets
+
+Each allocation includes a 25-line run record and is a hard changed-line maximum:
+
+| Item | Exact paths | Allocation |
 |---|---|---:|
-| #41 baseline | `docs/factory/specs/FQ-29/03-design.md`, `tests/test_piece_snapshot.py`, run record | 80 |
-| #40 authority | `AGENTS.md`, `CLAUDE.md`, contract, charter, `docs/factory/runs/README.md`, run record | 375 |
-| #42 gates | `.factory/gates.conf`, `.claude/scripts/gates.sh`, `.factory/scripts/bootstrap-tools.sh`, `tests/test_factory_gate_parity.py`, run record | 390 |
-| verifier item | `.factory/scripts/prove-test.sh`, Claude/Codex verify skills, `tests/test_factory_verifier_protocol.py`, run record | 370 |
-| implement item | Claude/Codex implement skills, contract, `tests/test_factory_implement_protocol.py`, run record | 370 |
-| #39 tracer | its current three declared files plus run record | 390 |
-| #43 audit | its current three declared files plus run record | 390 |
-| #44 readiness | its current declared skills/contract/test files plus run record | 390 |
-| #45 routines | concise triage/monitor/tune adapters, new routine test, run record | 390 |
-| #46 activation | concise status/doctor/enforcement/docs/test files, run record | 390 |
+| #41 | FQ-29 `03-design.md`; `tests/test_piece_snapshot.py`; run | 35+10+25=70 |
+| #40 | `AGENTS.md`; `CLAUDE.md`; contract; charter; runs README; run | 15+55+105+135+35+25=370 |
+| #42 | `.factory/gates.conf`; gate runner; `.factory/scripts/bootstrap-tools.sh`; `tests/test_factory_gate_parity.py`; run | 12+200+35+115+25=387 |
+| verifier | `.factory/scripts/prove-test.sh`; `.claude/skills/factory-verify/SKILL.md`; `.agents/skills/factory-verify/SKILL.md`; `tests/test_factory_verifier_protocol.py`; run | 110+80+15+135+25=365 |
+| implement | `.claude/skills/factory-implement/SKILL.md`; `.agents/skills/factory-implement/SKILL.md`; contract; `tests/test_factory_implement_protocol.py`; run | 170+15+25+130+25=365 |
+| #39 | `.factory/scripts/github_enforcement.py`; `tests/test_factory_github_enforcement.py`; `docs/factory/GITHUB.md`; run | 130+150+80+25=385 |
+| #43 | `.factory/scripts/audit_record.py`; `tests/test_factory_audit.py`; runs README; run | 130+170+50+25=375 |
+| #44 | Claude/Codex implement+spec skills; `tests/test_factory_readiness.py`; contract; run | 30+120+10+12+140+35+25=372 |
+| #45 | Claude triage+monitor skills+tune command; three Codex adapters; `tests/test_factory_audit_routines.py`; run | 85+70+60+36+105+25=381 |
+| #46 | Claude factory command; Codex status skill; enforcement; doctor; `tests/test_factory_activation.py`; GITHUB doc; run | 55+12+40+55+110+75+25=372 |
 
-The remaining exact expansions are:
+Here `contract` and `charter` mean `docs/factory/CONTRACT.md` and
+`docs/factory/CHARTER.md`; `run` uses the pattern above. Skill paths are canonical
+`.claude/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`; command paths
+are canonical under `.claude/commands/`. Before edits, expanded paths and per-file
+allocations are recorded; any expansion or actual total over 400 returns to spec.
 
-- verifier: `.factory/scripts/prove-test.sh`, `.claude/skills/factory-verify/SKILL.md`,
-  `.agents/skills/factory-verify/SKILL.md`, `tests/test_factory_verifier_protocol.py`,
-  run record;
-- implement: `.claude/skills/factory-implement/SKILL.md`,
-  `.agents/skills/factory-implement/SKILL.md`, contract,
-  `tests/test_factory_implement_protocol.py`, run record;
-- #39: `.factory/scripts/github_enforcement.py`,
-  `tests/test_factory_github_enforcement.py`, `docs/factory/GITHUB.md`, run record;
-- #43: `.factory/scripts/audit_record.py`, `tests/test_factory_audit.py`, runs README,
-  run record;
-- #44: `.claude/skills/factory-{implement,spec}/SKILL.md`,
-  `.agents/skills/factory-{implement,spec}/SKILL.md`,
-  `tests/test_factory_readiness.py`, contract, run record;
-- #45: `.claude/skills/factory-{triage,monitor}/SKILL.md`,
-  `.claude/commands/factory-tune.md`,
-  `.agents/skills/factory-{triage,monitor,tune}/SKILL.md`,
-  `tests/test_factory_audit_routines.py`, run record;
-- #46: `.claude/commands/factory.md`, `.agents/skills/factory-status/SKILL.md`,
-  enforcement script, doctor,
-  `tests/test_factory_activation.py`, `docs/factory/GITHUB.md`, run record.
+## Proposal, activation, and recovery
 
-Before editing, each implementation writes a proposed per-file line allocation totaling at
-most its row. Crossing either allocation or actual 400 changed lines returns to spec.
-Workspace-only authority is not a source: #40 authors concise complete policy solely from
-merged FQ-48 and the current product conventions.
+`propose_format_patch` is read-only. In a temporary checkout it applies the approved
+bytes and proves identical Python AST without attributes, collected node ids, function
+names, assertion/literal AST nodes, and full test result; the Markdown change is confined
+to fenced Python formatting.
 
-Concrete allocations (path order follows the table) are: #41 `35+10+25=70`; #40
-`15+55+105+135+35+25=370`; #42 `12+200+35+115+25=387`; verifier
-`110+80+15+135+25=365`; implement `170+15+25+130+25=365`; #39
-`130+150+80+25=385`; #43 `130+170+50+25=375`; #44
-`30+120+10+12+140+35+25=372`; #45 `85+70+60+36+105+25=381`; and #46
-`55+12+40+55+110+75+25=372`. The observed read-only Ruff patch for #41 is 45 changed
-lines, below its 70-line allocation.
+Main call stack: verify merged protocol → count live decisions (must be ≤2) → propose/prove
+patch → obtain exact owner approval → preclaim branch while issue waits → write progress →
+write real-SHA handoff → label `in-progress` → reconcile → implement → CI identity →
+cold critic → verdict → run record → Draft PR → human merge → merged-main CI → successor.
 
-## Position 1 read-only proposal and proof
+Activation writes branch first, progress second, handoff third, label last, then rereads
+all remote state. Recovery is idempotent:
 
-Run `ruff format --diff` for the two #41 paths and hash stdout without editing them.
-Create a temporary checkout at the bound base, apply those exact bytes there, and prove:
+| Observed state | Safe action |
+|---|---|
+| no branch | leave every issue waiting |
+| branch only | matching authorized session may write progress |
+| branch + progress | may write matching handoff |
+| branch + progress + handoff, waiting | may set `in-progress` |
+| exact complete `in-progress` | acknowledge and continue |
+| duplicate/mismatched evidence | preserve branch/label, record failure if possible, stop |
 
-- `ast.dump(ast.parse(...), include_attributes=False)` is identical for the Python test;
-- collected node ids, function names, assertion/literal AST nodes, and full test result are
-  identical;
-- only Markdown fenced Python formatting changes in the design document;
-- the generated patch matches the approved digest byte-for-byte.
+Loss after the label write may therefore be complete-but-unacknowledged, not waiting.
+Only a fresh owner-authorized activator matching branch SHA, protocol, approval, and
+session may resume or restore a partial state. If rollback/comment writes fail, preserve
+the reserved branch and current waiting/in-progress label, open no PR, claim no successor,
+report the external-write failure, and stop. Bootstrap issues are never generic-ready.
 
-Only then may the activator apply the patch to the claimed branch.
+## Tests and least-certain decisions
 
-## Safe activation and write order
+Gate tests cover format parity, isolated audit discovery, and missing-tool
+`MISCONFIGURED`. Verifier tests reject base/head/proof/dirty/evidence drift. Implement
+tests reject unapproved load-bearing work, expired bootstrap, and generic bootstrap claims.
+FQ-38 enforcement/audit/readiness/routine/activation negative outcomes remain required.
 
-1. Confirm every recovery issue is waiting, open decision count is at most two, FQ-48 is
-   merged, candidate blobs match its merge tree, and the interactive authorization is live.
-2. Generate/prove the #41 proposal read-only and obtain exact owner approval.
-3. Push the deterministic claim commit from the bound base while #41 is still waiting.
-   A failed push leaves all GitHub state unchanged.
-4. Write one progress comment with branch/source/base, protocol identity, patch approval,
-   and session id; update the handoff with real merge SHA; then change only #41 to
-   `in-progress`.
-5. Re-read branch, comments, label, all successor labels, and review count. Any partial
-   write moves #41 back to waiting if possible, records `activation-incomplete` on #48,
-   opens no PR, and stops. No bootstrap issue is ever labeled ready.
-
-Session loss before the branch push leaves all waiting. Loss after push resumes only in a
-fresh owner-authorized interactive session that matches the immutable progress record and
-remote SHA; otherwise the branch stays reserved and #41 stays waiting. Successor preclaims
-repeat steps 1, 3–5 only after predecessor merge and merged-main CI green.
-
-## Tests
-
-- Gate parity tests prove unformatted Python/Markdown is red, formatted input is green,
-  isolated `pip-audit` is found, and missing tooling is `MISCONFIGURED`.
-- Verifier tests prove base/head drift, proof failure, dirty worktree, and evidence mismatch
-  reject; an exact negative proof accepts.
-- Implement tests prove only approved load-bearing handoffs pass, bootstrap expiry is
-  irreversible, generic ready claims cannot consume bootstrap items, and old handoffs work.
-- Existing FQ-38 synthetic enforcement, audit integrity, readiness, routine, and activation
-  test outcomes remain unchanged.
-
-## Three least-certain decisions
-
-1. GitHub check attachment uses source SHA while Actions checks out the PR merge ref; Gate 3
-   records both REST merge SHA and source/base rather than claiming they are the same.
-2. The temporary verdict is intentionally procedural until #42; a cold critic and green
-   app-bound CI are the independent oracles, not an untracked local script.
-3. The authority and later adapter budgets require concise rewrites rather than copying
-   local files; any loss of a current safety rule is a verifier rejection.
+Least certain: GitHub attaches checks to source while testing the merge ref, so both are
+cryptographically bound; procedural verdicts rely on green GitHub CI plus a cold critic
+until #42; concise authority/skill rewrites must preserve every safety rule, and omission
+is a verifier rejection.
