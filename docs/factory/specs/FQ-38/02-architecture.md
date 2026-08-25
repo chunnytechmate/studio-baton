@@ -14,13 +14,15 @@ four gates; FQ-38 uses them because it changes the safety system.
 
 ## Permission boundary
 
-The current agent credential is the repository owner, so rules alone are only partial
-enforcement: that credential can administer them. The target factory credential has
-contents, issues, pull requests, checks/actions read, and metadata permissions, but no
-administration, bypass, release, environment, secret, or package administration. The owner
-keeps the administrative credential outside agent environments. Status reports
-`enforcement: partial` until permission probes prove the factory credential cannot merge or
-alter rules.
+The current owner credential can administer rules and merge, so protection alone is partial.
+The target is fork-based with two non-owner credentials: a builder has Contents write only
+on an owner-controlled fork; an upstream coordinator has Issues/Pull Requests write and
+Contents/Checks/Actions read on Studio Baton, but no upstream Contents write or repository
+administration. Builder branches and audit history live on the protected fork; cross-fork
+PRs target upstream `main`. The merge API requires upstream Contents write, so neither
+credential can merge. The owner keeps upstream administration outside agent environments.
+Status remains `enforcement: partial` until probes prove both credentials cannot merge,
+push upstream `main`, change rules, force-push, or delete protected branches.
 
 ## Systems and gate layers
 
@@ -50,10 +52,14 @@ checkpoints: <ordered acceptance identifiers>
 ```
 
 A cohesive item is one issue, deterministic branch, run, and PR. Progress persists in one
-`factory-progress:v1` source-issue comment; every source-SHA change invalidates prior CI and
-verifier evidence. The current 400-line stop remains: additions plus deletions from the
-recorded merge base. Binary/ambiguous rename changes require human review. Oversize work
-uses the old slices. A higher limit needs a later evidence-backed `factory-tune` decision.
+`factory-progress:v1` source-issue comment containing run id, fork branch, source/base SHAs,
+checkpoint states, and gate/verifier repair counters; it is operational, not evidence.
+Every source-SHA change invalidates prior CI and verifier evidence. A resumed session does
+not reclaim: it writes `resume_of`, verifies the issue is still in progress and the remote
+SHA equals the progress comment, then continues; disagreement fails closed. The current
+400-line stop remains: additions plus deletions from the recorded merge base.
+Binary/ambiguous rename changes require human review. Oversize work uses the old slices. A
+higher limit needs a later evidence-backed `factory-tune` decision.
 
 Standard specs present product, architecture, critic result, design, and slices as one
 packet for one explicit approval; approved queue writes add no extra stop. High-risk and
@@ -64,17 +70,22 @@ load-bearing specs retain separate approvals.
 1. **Building:** issue `in-progress`, Draft PR, no review-result label.
 2. **CI red/pending:** remains agent-owned; one repair cycle. New SHA reruns all evidence.
 3. **Verifier rejected:** one repair cycle; second rejection/failure becomes a named blocked
-   question with Draft PR `factory:rejected`.
+   question with Draft PR `factory:rejected`. The same CI/gate failure twice follows this
+   rejected path.
 4. **Infrastructure failure:** no verified label; `needs-info` only for a named external or
    owner action, otherwise bounded agent retry.
 5. **Ready:** strict required checks are terminal-green and a fresh verifier accepts the
-   current source/base. An append-only readiness record stores both SHAs, check URL, gate
-   line, verdict, and human-read flag before labels. Then, and only then, apply
+   current source/base. An append-only readiness record stores issue/PR, source/base/merge
+   SHAs, check contexts/run URLs, gate/proof lines, verdict, timestamp, and human-read flag
+   before labels. Then, and only then, apply
    `factory:verified` and `awaiting-review`.
 6. **Human decision:** agent may mark ready only when no human read is required; otherwise
    it stays Draft. Owner alone merges, closes, or enables auto-merge.
 
-Label writes are idempotent and reconciled from the readiness record, never vice versa.
+Readiness records live at `docs/factory/readiness/<pr>-<source-sha>.md` on the audit branch.
+Accepted work requiring a human read is counted as a decision while remaining Draft; the
+owner marks it ready after reading. Label writes are idempotent and reconciled from the
+readiness record, never vice versa.
 Strict base advancement invalidates readiness and requires updated CI/verification. The
 human queue is current-SHA accepted/rejected PRs plus named `needs-info` questions; pending
 Drafts remain agent-owned and audit work is separate.
@@ -86,12 +97,17 @@ Audit-only routines append the existing full run-record format to protected bran
 `docs/factory/runs/<run-id>.md`; existing records may not change. Non-fast-forward races
 rebase only the unique addition and retry boundedly. The branch forbids force push/deletion.
 Live issue state remains operational; the audit branch is historical only. Existing records
-on `main` remain valid and no periodic merge is required.
+on `main` remain valid and no periodic merge is required. A record's immutable value is the
+first-introduction blob in protected history; readers verify the branch-tip blob still
+matches it. Any mutation/deletion marks audit integrity `MISCONFIGURED` and stops the
+factory, even though the original blob remains recoverable from history.
 
 ## Bootstrap
 
-1. Gate 4 records exact one-time approval for protected policy files and formatting-only
-   `tests/test_piece_snapshot.py`; its Draft PR needs human read and cannot alter assertions.
+1. Gate 4 records protected policy scope, but it does not pre-authorize an existing-test
+   edit. At the actual interactive baseline implementation, the owner must explicitly
+   approve formatting-only `tests/test_piece_snapshot.py` in that same session or make the
+   edit personally. Its Draft PR needs human read and cannot alter assertions.
 2. Enable admin-enforced PR-only/no-force/no-delete `main` protection with zero required
    checks, avoiding red-baseline lockout.
 3. Provision `pip-audit`; prove deep gates work before protected policy changes.
@@ -99,19 +115,20 @@ on `main` remain valid and no periodic merge is required.
    gates and a fresh verifier must pass before the owner bootstrap-merges it.
 5. Reconcile open PRs, observe one green exact check/app inventory, then require those
    contexts strictly and prove a harmless red probe blocks merge.
-6. Create/protect `factory-audit`; then change readiness, reporting, standard-spec, and
+6. Create the owner-controlled fork, its protected `factory-audit` branch, and the two
+   least-privilege credentials; then change readiness, reporting, standard-spec, and
    cohesive-delivery behavior.
-7. Replace the owner credential with the least-privilege factory credential. Enforcement
-   becomes active only after merge/ruleset permission probes are denied.
+7. Remove the upstream owner credential from agent environments. Enforcement becomes active
+   only after upstream merge/push/ruleset and fork force-push/delete probes are denied.
 
 Every ruleset mutation records before/after payload and an owner-only recovery command.
 Required contexts are never guessed.
 
 ## Dependencies, protected scope, and rollback
 
-External setup is limited to isolated `pip-audit` tooling and one owner-created
-least-privilege GitHub App/fine-grained token. No learner data, real media/message, release,
-runtime dependency, or dependency lock is involved.
+External setup is isolated `pip-audit`, one owner-controlled fork, a fork-scoped builder
+credential, and an upstream read/coordinator credential without Contents write. No learner
+data, real media/message, release, runtime dependency, or dependency lock is involved.
 
 Load-bearing scope: `docs/factory/{CONTRACT,CHARTER}.md`, `.claude/scripts/gates.sh`, factory
 spec/implement skills, factory control/monitor/tune commands, matching `.agents/skills/`
