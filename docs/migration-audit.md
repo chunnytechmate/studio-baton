@@ -66,9 +66,9 @@ deliberately-deferred decision that is written down as deferred.
 | 3 | Calendar | `google-calendar/scripts/{scal,gcal}.py` | `pipelines/schedule.py`, `adapters/cal/google.py`, `cli/cmd_calendar.py` | ✅ done — 1 finding, fixed | Claude 2026-08-27 |
 | 4 | Lesson summary | `music-class-summarizer/` | `pipelines/{staging,publish}.py`, `cli/cmd_lesson.py`, `render/` | 🟡 partial — 2 findings (1 fixed, 1 open), see notes | Claude 2026-08-27 |
 | 5 | Send to LINE | `send-lesson-line/` | `pipelines/send.py`, `cli/cmd_send.py`, `adapters/chat/` | ✅ done — 3 findings, open | Codex 2026-08-27 |
-| 6 | Send recording / YouTube link | `send-recording-line/`, `send-youtube-line/` | `baton send recording`; **no `send youtube` yet** | ⬜ unclaimed | — |
+| 6 | Send recording / YouTube link | `send-recording-line/`, `send-youtube-line/` | `baton send recording`; **no `send youtube` yet** | ✅ done — 3 findings, open | Claude 2026-08-27 |
 | 7 | Course archive + clear | `notion-clear-student/` | `cli/cmd_course.py`, `domain/archive.py` | ✅ spot-checked — no gap | Claude 2026-08-27 |
-| 8 | Student records | `student-management/`, `student-lookup/` | `cli/cmd_learner.py`, `adapters/db/` | ⬜ unclaimed | — |
+| 8 | Student records | `student-management/`, `student-lookup/` | `cli/cmd_learner.py`, `adapters/db/` | ✅ done — 2 findings, open | Claude 2026-08-27 |
 | 9 | Prep report / notes | `student-management/scripts/prep_report.py`, `song_manager.py` | `cli/cmd_prep.py`, `cmd_notes.py`, `domain/prep.py` | ✅ done — 2 findings, open | Codex 2026-08-27 |
 | 10 | Retired skills | `archived-skills/{get-latest-lesson,list-completed-lessons,list-inprogress-lessons,student-works}` | `baton learner`, `calendar in-progress` | ✅ done — 4 findings, open | Codex 2026-08-27 |
 
@@ -438,6 +438,122 @@ never written by Baton at all, and `practice_goals` reads empty because the
 goals render as `to_do` blocks that `homework_types` claims first. The second
 is by design; the first may be another gap.
 
+### F16 — recording messages lost the session-document link 🔴 open
+
+**Lane 6.** The old `send_recording.py` ended every recording message with
+"📝 รายละเอียด Notion: \<url\>" — the learner's latest finished session page,
+fetched live through `student_lookup.get_latest_lesson_for_student` and
+attached fail-open (a fetch failure still sent the message). The v4 changelog
+records adding it on purpose: a parent tapping a recording could continue into
+the lesson it came from.
+
+`compose_recording` (`pipelines/recording.py`) sends the header, the title,
+type and date, and the two link labels — nothing else. No code path fetches a
+document URL for a recording, so the message is a dead end where it used to
+lead somewhere.
+
+Suggested shape: gather `PublishedRecord.latest(learner.id)`'s `doc_url` in
+`handle_recording` (the record already exists, and after a publish it *is*
+"the latest lesson page") and append it as an optional, fail-open line —
+kept out of the gate, since the old behaviour sent without it when the fetch
+failed and links that exist must not be blocked by one that cannot.
+
+### F17 — there is no way to send the latest lesson's video by itself 🔴 open
+
+**Lane 6.** `send-youtube-line/scripts/send_youtube.py` was a one-command
+workflow with its own trigger vocabulary ("ส่งวีดีโอ/ลิงก์ youtube ของน้องX",
+kept deliberately separate from "ผลงาน/record" and "สรุปการเรียน" in the old
+skill registry): resolve the learner, take the latest finished session, scan
+its blocks for a YouTube URL, and send a **video-first** message — instrument
+header with week and Thai date, the lesson title, a ~150-character summary
+snippet read from the page, and the link. No video on the page was its own
+explicit refusal: "ยังไม่มีวีดีโอสำหรับสัปดาห์นี้".
+
+Baton's nearest answer is `send lesson`, which sends the whole published
+summary with the video line at the bottom — a different message answering a
+different request, and it re-sends the full summary to a parent who asked
+only for the video. Every ingredient exists (`find_video_link`,
+`PublishedRecord.latest`, the F10 date format, `learner latest`'s section
+reader); no command composes them.
+
+Suggested shape: `baton send video "<name>" --to <contact>` with `--dry-run`
+and optional `--session N`, fail-closed on "no video link on that session"
+(distinct from a work with no links, which is `send recording`'s refusal).
+The summary snippet can come from the same section reader `learner latest`
+already uses.
+
+### F18 — `find_video_link` recognises only `video` blocks 🔴 open
+
+**Lane 6; sharpens lane 5's gate.** The old readers accepted a YouTube URL in
+three block shapes: `get_youtube_url_from_page` matched `video.external`,
+`bookmark`, and `embed`, and the in-progress readiness check additionally
+scanned `rich_text` links inside paragraphs and list items. That tolerance
+was load-bearing: Notion's UI turns a pasted URL into a bookmark, so a video
+link added by hand rather than by the pipeline is a bookmark.
+
+`find_video_link` (`adapters/docs/base.py`) matches `block.type == "video"`
+only. A page whose only video link is a bookmark or an embed reads as having
+no recording: the "เฉพาะ Video:" line goes missing from `send lesson`, the
+YouTube description step sees nothing — and since F6 moved `video_link` into
+the required gate, such a page now **blocks the send entirely** while looking,
+to a person reading the Notion page, like it has its video.
+
+Verified against both code paths, not yet reproduced in the gateway — worth
+one run against a real legacy page known to carry a bookmarked link before
+fixing. Suggested shape: accept `bookmark`/`embed` blocks (configurable block
+types under `docs`), keeping the newest-last ordering.
+
+### F19 — there is no way to onboard a learner 🔴 open
+
+**Lane 8.** `add_student.py` did the whole first day: insert the learner
+(name, instrument, tone, has_instrument, prompt_level) behind a
+case-insensitive duplicate gate, then register their session pages — parse
+Notion URLs in all three shapes the studio actually sees (`notion.site/5-…`,
+`notion.so/workspace/…`, `app.notion.com/p/…`), auto-detect the week from the
+URL's numeric prefix or `W<n>-url` tokens, and insert the `student_pages` rows
+carrying `database_id` plus the full link; optional `master_link` update;
+`--dry-run` and an interactive confirm before any write.
+
+Baton has no counterpart at any layer: `cmd_learner` exposes
+list/show/sessions/latest/next/in-progress/works/add-work/pieces/assign, and
+the `LearnerStore` protocol has no create method. `prompt_level` and
+`master_link` are not modelled on `Learner` at all. Every new learner still
+needs the old script or hand-written inserts.
+
+Two hard-won details worth carrying into a port: the learner id is computed
+client-side (the table does not auto-increment), and the script forces it
+above a fallback-safe floor when *that response* was served by the fallback
+mirror — checked per-response rather than by the sticky fallback flag,
+because the flag stays set after Supabase recovers mid-run. The duplicate
+gate is case-insensitive exact, not fuzzy.
+
+Suggested shape: `baton learner add "<name>" --instrument … --tone …
+--has-instrument` with repeatable `--page-url` (week auto-detected from the
+URL prefix, sequential fallback) and `--db-link`, `--dry-run` before the
+real write. The id-floor logic belongs in the fallback adapter, not the CLI.
+
+### F20 — a hand-recorded work never reaches the session page 🔴 open
+
+**Lane 8.** `push_recording_to_notion.py` put a recording onto the learner's
+page: a "🎬 ผลงาน Record" heading, one bold title paragraph per work, a
+YouTube `video` block and a Drive `bookmark`, **clearing previously
+auto-pushed video/bookmark blocks first** so a re-push replaced instead of
+appended. It targeted the In-progress page, a `--week` the caller names, or
+the latest Done page as a fallback, and could set Status → Done.
+
+In Baton the pipeline path is covered — `pipelines/video.py` appends the
+video block behind an `_already_linked` guard — but that is the only writer.
+`learner add-work` records the DB row and writes nothing to any page, so a
+recording that did not go through the pipeline (a teacher's own edit, a clip
+shared directly) has no command that links it to the session, and the Drive
+side of a recording never lands on a page at all. Closing the session is
+deliberately publish-only now; the page-presentation gap is the durable part.
+
+Suggested shape: an optional `--link-to-page` on `learner add-work` (or a
+`learner attach-work` command) appending the same block shape with the
+clear-first idempotency rule, defaulting to the session In progress. Leave
+session-closing to publish unless the studio asks for the old behaviour.
+
 ---
 
 ## Notes on partially-audited lanes
@@ -579,6 +695,52 @@ Recorded so nobody re-checks them:
 regression — `AGENTS.md` still routes general calendar work to `gcal.py` — but
 it is the one thing blocking the calendar lane from being switched over to
 Baton entirely.
+
+### Lane 6 — send recording, checked and otherwise equivalent or better
+
+- The two-invocation list-then-pick design is stricter than the old
+  validation, not looser: `validate_student.py` silently took the first
+  `ilike` match (shortest name) as *the* student; Baton ends at exit 3 with
+  the candidates and makes a person choose.
+- The message keeps the old plain-text shape (header, instrument icon,
+  per-work title, YouTube/Drive labels) and adds the work type and performed
+  date — Thai-formatted since the F10 fix. Deterministic phrasing, unlike
+  `compose_message`'s random openings, is deliberate; so is refusing a work
+  with no links at all, which the old script would have announced as an
+  empty recording.
+- LINE delivery retries (3 attempts, exponential backoff) are preserved by
+  the shared `core.retry.http_request` path lane 5 already checked; the
+  `recipients.json` alias table became `chat.contacts` + `send contacts`.
+- Read-side fields the old validator returned (notes, tags, difficulty) are
+  F14's loss, not this lane's.
+- One visible workflow change, recorded here rather than as a finding: the
+  old skill sent several works as one message (multiple 📌 sections, and a
+  Flex carousel before v4); Baton's rule is one pick one work, so "send all
+  of X's covers" arrives as several messages. The links still arrive and the
+  rule is written down in the agent skill — if the studio wants combined
+  delivery back, that is a feature to ask for, not a regression to restore
+  silently.
+
+### Lane 8 — student records, checked and otherwise equivalent or better
+
+- `student_lookup.py`'s read surface maps onto `learner latest / sessions /
+  next / in-progress / works` with the gaps already recorded as F11–F14. Its
+  next-empty rule was itself ported *from* Baton (the script's header cites
+  commit 6fcd410 and the owner's 2026-08-17 decision), so parity there is by
+  construction, including the stale-In-progress skip.
+- `update_notion_status.py` became `calendar book`: marking the page In
+  progress with its date *before* the event exists is a stronger ordering
+  than the old book-then-run-a-second-script sequence. One behavioural
+  difference, not a gap: the old script copied the previous week's Titles
+  onto the newly booked page; Baton writes titles at stage/publish time and
+  `complete()` only fills blanks. Nothing in Baton reads an in-progress
+  page's Titles, and the lesson contract carries the previous session's
+  summary, which subsumes the carry-forward.
+- `--schedule` (today's teaching order with homework) is `baton prep` —
+  lane 9.
+- The old lookup's name matching (exact → prefix-stripped → `ilike`, auto-pick
+  shortest) is the loose resolution every other lane replaced with
+  exact-or-alias; stricter is the gate, not a loss.
 
 ---
 
