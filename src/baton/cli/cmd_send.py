@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 from ..adapters.chat import open_chat
 from ..adapters.db import open_store
 from ..adapters.docs import find_video_link, open_docs
+from ..domain.localdate import DateFormat
+from ..domain.models import Learner
 from ..domain.resolve import resolve_learner
 from ..errors import BatonError, GateError, NeedsHumanError, UsageError
 from ..exits import Exit
@@ -113,6 +115,16 @@ def _required_optional(ctx: Context) -> tuple[list[str], list[str]]:
     return required, optional
 
 
+def _date_format(ctx: Context) -> DateFormat:
+    """How this studio writes a lesson date for the families it teaches.
+
+    Empty by default, which passes the document's own value through unchanged.
+    The studio this came from writes "23 ส.ค. 2569", and the message said
+    "2026-08-23" from the rewrite until this existed.
+    """
+    return DateFormat.from_config(ctx.config.section("chat.date"))
+
+
 def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
     """The document's own date and titles, read fresh rather than from the
     published record — both can be corrected on the document after the
@@ -131,12 +143,24 @@ def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
     return status.date, status.titles
 
 
-def _send_one(ctx: Context, name: str, *, session: int | None, dry_run: bool) -> dict[str, Any]:
-    """Resolve, gather, gate, and send for one learner. Raises on any refusal."""
+def _send_one(
+    ctx: Context,
+    name: str,
+    *,
+    session: int | None,
+    dry_run: bool,
+    resolved: Learner | None = None,
+) -> dict[str, Any]:
+    """Resolve, gather, gate, and send for one learner. Raises on any refusal.
+
+    ``resolved`` lets a batch pass in a learner it resolved up front, so the
+    duplicate check and the send act on the same person — the check cannot
+    compare raw strings and the send compare records.
+    """
     messenger = open_chat(ctx.config)
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, name)
+        learner = resolved if resolved is not None else _resolve(ctx, store, name)
         records = PublishedRecord(ctx.config.state_dir / "published")
 
         if session is not None:
@@ -160,6 +184,7 @@ def _send_one(ctx: Context, name: str, *, session: int | None, dry_run: bool) ->
         doc_id = str(published.get("doc_id", ""))
         video_link = find_video_link(docs, doc_id)
         date, titles = _date_and_titles(docs, doc_id)
+        date = _date_format(ctx).of_text(date)
 
         required, optional = _required_optional(ctx)
         return send_lesson(
@@ -267,6 +292,7 @@ def handle_recording(ctx: Context) -> Exit:
         work=work,
         learner_name=learner.name,
         instrument=learner.instrument,
+        date=_date_format(ctx).of_text(work.performed_date),
         dry_run=ctx.args.dry_run,
     )
 
@@ -287,9 +313,30 @@ def handle_batch(ctx: Context) -> Exit:
     sent — but the summary at the end has to say exactly which did not go.
     """
     requested = list(ctx.args.learners)
-    if len(set(requested)) != len(requested):
+
+    # Resolve the whole batch before anything is sent. Two different strings
+    # can name one learner through `db.aliases` — "เจ" and "น้องเจ" — and a
+    # comparison of the raw names lets that pair through, after which each
+    # entry sends its own message. The duplicate that matters is the person,
+    # not the spelling.
+    store = open_store(ctx.config)
+    try:
+        resolved: list[Learner] = []
+        for name in requested:
+            resolved.append(_resolve(ctx, store, name))
+    finally:
+        store.close()
+
+    duplicates = sorted(
+        {
+            learner.name
+            for learner in resolved
+            if [item.id for item in resolved].count(learner.id) > 1
+        }
+    )
+    if duplicates:
         raise UsageError(
-            "The same learner appears twice in this batch.",
+            "The same learner appears twice in this batch: " + ", ".join(duplicates) + ".",
             remedy="Remove the duplicate; sending twice is what it would cause.",
         )
 
@@ -297,9 +344,9 @@ def handle_batch(ctx: Context) -> Exit:
     blocked: list[dict[str, Any]] = []
     sent = 0
 
-    for name in requested:
+    for name, learner in zip(requested, resolved, strict=True):
         try:
-            result = _send_one(ctx, name, session=None, dry_run=ctx.args.dry_run)
+            result = _send_one(ctx, name, session=None, dry_run=ctx.args.dry_run, resolved=learner)
             results.append(result)
             if result.get("sent"):
                 sent += 1

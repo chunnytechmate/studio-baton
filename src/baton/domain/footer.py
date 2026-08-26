@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Any
 
 from .archive import ERAS
+from .localdate import DateFormat, DateFormatError
 
 
 class FooterError(ValueError):
@@ -77,19 +78,18 @@ class Footer:
         return bool(self.lines)
 
     def _date(self, moment: datetime) -> str:
-        pattern = self.date_format
-        if "{month}" in pattern:
-            if not self.months:
-                raise FooterError(
-                    "`summary.footer.date_format` uses {month} but no month names are configured.",
-                )
-            pattern = pattern.replace("{month}", self.months[moment.month - 1])
-        # strftime owns the year's shape but not its value: an era offset can
-        # push it past what a real date can hold, so the year is formatted from
-        # a stand-in that exists only to carry it. Same trick as SpanFormat.
-        offset = ERAS[self.era]
-        stamp = moment.replace(year=moment.year + offset) if offset else moment
-        return stamp.strftime(pattern)
+        """The stamp, formatted the way every other date this studio writes is.
+
+        Shared with the lesson message rather than reimplemented: the era
+        offset and the configured month names are the same decision in both
+        places, and having made it twice is how they would come to differ.
+        """
+        try:
+            return DateFormat(format=self.date_format, era=self.era, months=self.months).render(
+                moment
+            )
+        except DateFormatError as exc:
+            raise FooterError(f"`summary.footer.date_format` is unusable: {exc}") from exc
 
     def pattern(self) -> re.Pattern[str] | None:
         """A regex matching what :meth:`render` writes, whatever the clock said.

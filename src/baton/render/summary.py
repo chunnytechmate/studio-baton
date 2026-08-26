@@ -14,13 +14,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..domain.footer import Segment, emphasis
+from ..domain.sections import WRITTEN_HEADINGS
 
-DEFAULT_SECTIONS = {
-    "overview": "Overview",
-    "covered": "What we covered",
-    "focus": "Focus areas",
-    "goals": "Practice goals",
-}
+#: Re-exported so callers keep importing it from here. The definition lives
+#: in `domain.sections` alongside the keywords that read these headings back.
+DEFAULT_SECTIONS = WRITTEN_HEADINGS
 
 
 def _rich_text(text: str) -> list[dict[str, Any]]:

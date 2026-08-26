@@ -56,7 +56,9 @@ _LINK_LABELS = (
 )
 
 
-def compose_recording(work: Work, *, learner_name: str = "", instrument: str = "") -> str:
+def compose_recording(
+    work: Work, *, learner_name: str = "", instrument: str = "", date: str | None = None
+) -> str:
     """The message families receive for one recording.
 
     Deterministic by design, unlike :func:`baton.pipelines.send.compose_message`
@@ -89,8 +91,9 @@ def compose_recording(work: Work, *, learner_name: str = "", instrument: str = "
     parts = [work.title]
     if work.type:
         parts.append(f"({work.type})")
-    if work.performed_date:
-        parts.append(work.performed_date)
+    performed = work.performed_date if date is None else date
+    if performed:
+        parts.append(performed)
     body = "".join(
         [
             f"\n\n📌 {' '.join(parts)}",
@@ -107,10 +110,17 @@ def send_recording(
     work: Work,
     learner_name: str,
     instrument: str = "",
+    date: str | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Compose the links message and (unless ``dry_run``) deliver it."""
-    message = compose_recording(work, learner_name=learner_name, instrument=instrument)
+    """Compose the links message and (unless ``dry_run``) deliver it.
+
+    Args:
+        date: The performed date already written the studio's way. ``None``
+            uses the work's own value, so a caller with no date configuration
+            gets exactly what the record holds.
+    """
+    message = compose_recording(work, learner_name=learner_name, instrument=instrument, date=date)
     if dry_run:
         return {
             "dry_run": True,

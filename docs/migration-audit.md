@@ -13,7 +13,7 @@ This document is the standing audit that looks for the rest of them. It is a
 working file: claim a lane before auditing it, record what you checked, and
 leave the verdict where the next person can find it.
 
-**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70)
+**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70), 0.3.2 (F6, F7, F10, F15)
 
 ---
 
@@ -185,7 +185,7 @@ Suggested shape: let `publish` resume a `youtube: failed` target the way it
 already resumes an unfinished `docs` target (`_finish_session(resumed=True)`),
 without re-appending blocks.
 
-### F6 — the default send gate no longer requires the YouTube link 🔴 open
+### F6 — the default send gate no longer requires the YouTube link ✅ fixed in 0.3.2
 
 **Lane 5.** The old gate refused to send unless the Notion page, exact-week
 `line_summary`, week number, **and YouTube link** were all present. It checked
@@ -206,13 +206,13 @@ for an otherwise-complete lesson. Baton's
 same context passes. The studio profile inherits the packaged gate lists; it
 does not override them.
 
-Suggested fix: move `video_link` from `send_lesson_optional` to
-`send_lesson_required` in this studio's profile (immediate protection), and
-decide whether the packaged default should match the legacy studio or remain
-generic. Add an end-to-end test that no `Messenger.send` call occurs when the
-document has no video block.
+Fixed: `video_link` is back in `gates.send_lesson_required` in the packaged
+defaults, matching the legacy studio. A studio that does not record lessons
+moves it to the optional list — the test suite covers both stances, including
+that no `Messenger.send` occurs under the required stance when the document
+cannot be read.
 
-### F7 — a batch can send the same learner twice through an alias 🔴 open
+### F7 — a batch can send the same learner twice through an alias ✅ fixed in 0.3.2
 
 **Lane 5.** The old batch resolved every requested name first, compared the
 canonical learner names, and refused the whole batch when two inputs resolved
@@ -230,9 +230,11 @@ and chooses random opening/closing phrases, so the message text (and therefore
 the idempotency key) may differ. These are two requested sends, not an HTTP
 retry.
 
-Suggested fix: resolve the full batch before the first send, reject duplicate
-learner ids, then reuse those resolved learners during delivery so the check
-and the action cannot diverge.
+Fixed exactly as suggested: `handle_batch` resolves every entry first,
+refuses the batch on duplicate learner *ids* (naming the person, not the
+spelling), and passes the resolved learners into `_send_one` so the check and
+the delivery cannot diverge. The test pins the real pair — full name plus
+alias — and that nothing was sent.
 
 ### F8 — the piece catalogue became read-only 🔴 open
 
@@ -275,7 +277,7 @@ Suggested shape: add `piece show/search/assignments` queries (or enrich a
 single catalogue command) and test both sides of the relationship, including
 learners whose `current_piece_id` points at a missing row.
 
-### F10 — lesson messages lost the studio's Thai date format 🔴 open
+### F10 — lesson messages lost the studio's Thai date format ✅ fixed in 0.3.2
 
 **Lane 5.** The old sender converted an ISO lesson date to a Thai family-facing
 date with abbreviated Thai month and Buddhist Era year. In the gateway,
@@ -287,10 +289,18 @@ The rest of the message was deliberately matched byte-for-byte to the old
 `push.py`, so this visible date regression is a lost formatting detail rather
 than a generic-studio decision recorded in configuration.
 
-Suggested fix: format the document date before composition using configurable
-month names and era offset (the footer formatter already has both), while
-leaving unparseable free-form dates unchanged. Pin both ISO and free-form cases
-in the message-format tests.
+Fixed: a shared `domain/localdate.py` (a `chat.date` config block — format,
+era, month names) formats the document date before either message is
+composed, and the footer's stamp is built on the same formatter, so the era
+decision cannot come to differ between the page and the message. Unparseable
+free-form dates pass through unchanged. Verified in the gateway:
+
+```
+🥁 สรุปการเรียนของน้องพร้อม (กลอง) - 23 ส.ค. 2569
+```
+
+The studio's profile sets `chat.date` to abbreviated Thai months with the
+Buddhist era, matching the old `format_date_thai`.
 
 ### F11 — `learner latest` drops unrecognised summary sections 🔴 open
 
@@ -369,7 +379,7 @@ link validation, dry-run, and a confirmation gate for delete. The old
 `google_drive_link` is already preserved by this studio's `drive_link`
 mapping; that part is not a gap.
 
-### F13 — every Baton-published page reads back with an empty `content` 🔴 open
+### F15 — every Baton-published page reads back with an empty `content` ✅ fixed in 0.3.2
 
 **Cross-lane (4 and 9).** Found while cross-checking the other lanes, which is
 why neither lane caught it: the writer and the reader are in different lanes
@@ -413,12 +423,15 @@ mechanism keeping them in step. Patching the keyword list alone fixes today's
 symptom and leaves the trap armed — renaming a heading in `summary.sections`
 breaks prep again, silently.
 
-Suggested fix: have `SectionRules` accept the configured `summary.sections`
-headings as keywords automatically, in addition to the configured ones, the
-way the footer's strip pattern is now derived from the footer's own lines.
-Keep the explicit keywords for pages the old pipeline wrote. Note the two trees
-do not even share a taxonomy (`covered` vs `content`, `goals` vs
-`practice_goals`), so the mapping has to be stated somewhere on purpose.
+Fixed: a new `domain/sections.py` holds both vocabularies and the explicit
+mapping between them (`WRITTEN_HEADINGS`, `READ_KEYWORDS`, `WRITES_INTO`), and
+`SectionRules.from_config` folds every configured written heading into the
+keywords of the section it feeds — the same derive-don't-duplicate move as the
+footer's strip pattern. The old pipeline's Thai keywords keep their priority,
+so legacy pages read exactly as before. A round-trip test suite publishes a
+summary through the renderer and reads it back through the reader, which is
+the test whose absence let this through. Verified in the gateway: all four
+Baton-published learners prep-ready again.
 
 Worth checking as part of the fix: `next_goal` is in `prep.warning` and is
 never written by Baton at all, and `practice_goals` reads empty because the
