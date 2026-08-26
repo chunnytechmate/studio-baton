@@ -18,12 +18,15 @@ link is the document's real URL.
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..adapters.chat.base import Messenger
 from ..adapters.db.base import LearnerStore
+from ..domain.models import Learner
 from ..errors import GateError
+from .staging import PieceSnapshot
 
 #: The studio's own phrasing, carried over verbatim from the message the
 #: original `push.py` sent — parents already know this voice.
@@ -103,6 +106,35 @@ class SendContext:
         }
 
 
+def _practice_track(
+    store: LearnerStore, learner: Learner | None, published: Mapping[str, Any]
+) -> str:
+    """The practice track as it stood for the lesson being sent.
+
+    Reading the learner's *current* piece here is the drift issue #29
+    describes: a summary published on Monday and sent on Friday, after the
+    learner moved on, would carry Friday's track under Monday's lesson. The
+    piece is snapshotted when the lesson is staged, so the record being sent
+    already knows which one was taught.
+
+    Only a record written before snapshots existed (`unavailable`) falls back
+    to the live lookup, because for those there is nothing better to consult —
+    and a stale track is still closer to the truth than no track at all. A
+    snapshot of `none` is not missing information: it says the learner had no
+    piece assigned when the lesson was staged, so nothing is sent.
+    """
+    snapshot = PieceSnapshot.from_record(published)
+    if snapshot.status == "captured":
+        return snapshot.piece.practice_track if snapshot.piece else ""
+    if snapshot.status == "none":
+        return ""
+
+    if learner is not None and learner.current_piece_id:
+        piece = store.get_piece(learner.current_piece_id)
+        return piece.practice_track if piece else ""
+    return ""
+
+
 def gather_context(
     store: LearnerStore,
     learner_id: str,
@@ -118,12 +150,12 @@ def gather_context(
     live on the document itself and can change afterwards (a recording lands
     later; a date gets corrected) — so all three are supplied by the caller,
     which reads them from the document.
+
+    The practice track goes the other way: it belongs to the lesson that was
+    taught, so it comes from the snapshot taken when that lesson was staged.
     """
     learner = store.get_learner(learner_id)
-    practice_track = ""
-    if learner is not None and learner.current_piece_id:
-        piece = store.get_piece(learner.current_piece_id)
-        practice_track = piece.practice_track if piece else ""
+    practice_track = _practice_track(store, learner, published)
 
     return SendContext(
         learner_name=str(published.get("learner_name", learner.name if learner else "")),
