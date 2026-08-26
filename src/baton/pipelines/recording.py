@@ -70,16 +70,12 @@ def compose_recording(work: Work, *, learner_name: str = "", instrument: str = "
             is fail-closed like every other send gate.
     """
     present = [
-        (label, getattr(work, name))
-        for name, label in _LINK_LABELS
-        if getattr(work, name).strip()
+        (label, getattr(work, name)) for name, label in _LINK_LABELS if getattr(work, name).strip()
     ]
     if not present:
         raise GateError(
             f"The work “{work.title}” has no recording link to send.",
-            missing=[
-                {"field": name, "reason": f"`{name}` is empty"} for name, _ in _LINK_LABELS
-            ],
+            missing=[{"field": name, "reason": f"`{name}` is empty"} for name, _ in _LINK_LABELS],
             remedy="Record the links on the work — `baton learner add-work "
             "--video-link/--drive-link` writes a new one; the existing row can "
             "be edited where it lives.",
