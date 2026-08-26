@@ -327,6 +327,7 @@ class PublishedRecord:
                 "learner_id": draft.learner_id,
                 "learner_name": draft.learner_name,
                 "session_number": draft.session_number,
+                "piece_snapshot": draft.piece_snapshot.to_dict(),
                 "doc_id": draft.doc_id,
                 "doc_url": doc_url,
                 "titles": draft.titles,
