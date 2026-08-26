@@ -537,5 +537,3 @@ def test_the_fake_store_round_trips_drive_like_sqlite_does():
     assert stored.drive_link == DRIVE
     listed = store.list_works("1")[0]
     assert (listed.video_link, listed.drive_link) == (YT, DRIVE)
-
-
