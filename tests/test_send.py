@@ -24,6 +24,7 @@ from baton.domain.models import Learner, Piece
 from baton.errors import GateError, NeedsHumanError, UpstreamError
 from baton.exits import Exit
 from baton.pipelines.send import compose_message, gate_check, gather_context, send_lesson
+from baton.pipelines.staging import PieceSnapshot
 
 MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 
@@ -717,3 +718,56 @@ def test_a_connection_error_never_prints_a_bot_token():
     assert redact("https://x.invalid/bot1:abc?token=zzz&api_key=qqq") == (
         "https://x.invalid/bot***?token=***&api_key=***"
     )
+
+
+# -- the practice track belongs to the lesson, not to today (#29) ----------------
+
+MOVED_ON = FakeLearnerStore(
+    learners=[Learner(id="1", name="Ada Whitfield", instrument="guitar", current_piece_id="9")],
+    pieces=[
+        Piece(id="2", title="Blackbird", practice_track="https://example.invalid/track.mp3"),
+        Piece(id="9", title="Michelle", practice_track="https://example.invalid/newer.mp3"),
+    ],
+)
+
+TAUGHT = Piece(id="2", title="Blackbird", practice_track="https://example.invalid/track.mp3")
+
+
+def _published_with(snapshot: PieceSnapshot) -> dict:
+    return {**PUBLISHED, "piece_snapshot": snapshot.to_dict()}
+
+
+def test_the_snapshot_wins_over_the_learners_newer_piece():
+    """The drift this exists to stop: published Monday, sent Friday, after the
+    learner moved to another song."""
+    gathered = gather_context(MOVED_ON, "1", _published_with(PieceSnapshot.capture(TAUGHT)))
+
+    assert gathered.practice_track == "https://example.invalid/track.mp3"
+
+
+def test_a_snapshot_of_no_piece_sends_no_track_even_when_one_exists_now():
+    """`none` is information, not a gap: the lesson was taught without a piece
+    assigned, so there is no track that belongs to it."""
+    gathered = gather_context(MOVED_ON, "1", _published_with(PieceSnapshot.capture(None)))
+
+    assert gathered.practice_track == ""
+
+
+def test_a_record_written_before_snapshots_still_falls_back_to_the_live_piece():
+    """Records published by an older Baton carry no snapshot at all. A stale
+    track is closer to the truth than dropping the line entirely."""
+    assert "piece_snapshot" not in PUBLISHED
+
+    gathered = gather_context(MOVED_ON, "1", PUBLISHED)
+
+    assert gathered.practice_track == "https://example.invalid/newer.mp3"
+
+
+def test_a_snapshot_whose_piece_lost_its_track_is_not_backfilled_from_today():
+    """A captured piece with an empty track means the piece had none then —
+    reaching for the current one would reintroduce the drift by the back door."""
+    trackless = Piece(id="2", title="Blackbird", practice_track="")
+
+    gathered = gather_context(MOVED_ON, "1", _published_with(PieceSnapshot.capture(trackless)))
+
+    assert gathered.practice_track == ""
