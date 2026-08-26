@@ -246,6 +246,28 @@ def handle_wait(ctx: Context) -> Exit | int:
     return _mirror_exit(info.exit_code)
 
 
+def _stop_line(info: JobInfo) -> str:
+    """The human line for a stop outcome, escalation included.
+
+    ``job stop`` keeps exit 0 on purpose (M27): the exit code reports whether
+    the stop command ran, not how the job took the stop — callers that need
+    the outcome read it from the payload's ``status``. The line is where the
+    difference is said out loud, because a kill that escalated past SIGTERM
+    is not the same fact as a clean stop.
+    """
+    if info.status == "orphaned":
+        return (
+            f"⏹ job {info.id} ignored SIGTERM and was killed hard — "
+            f"it recorded no outcome (orphaned)."
+        )
+    if info.status == "running":
+        return (
+            f"⏹ job {info.id} was signalled but is still running — "
+            f"no outcome recorded yet; re-check with `job show`."
+        )
+    return f"⏹ job {info.id} {info.status}  (exit {info.exit_code})"
+
+
 def handle_stop(ctx: Context) -> Exit:
     runner = _runner(ctx)
     before = _lookup(ctx, ctx.args.id)
@@ -260,7 +282,7 @@ def handle_stop(ctx: Context) -> Exit:
     info = runner.stop(ctx.args.id, grace=ctx.args.grace)
     ctx.report.result(
         info.to_dict(),
-        human=f"⏹ job {info.id} {info.status}  (exit {info.exit_code})",
+        human=_stop_line(info),
     )
     return Exit.OK
 
