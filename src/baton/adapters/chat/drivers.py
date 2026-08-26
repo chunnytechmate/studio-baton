@@ -280,11 +280,21 @@ class WebhookMessenger(_HttpMessenger):
         return None if response_status < 400 else f"HTTP {response_status}: {body[:200]}"
 
     def health(self) -> None:
-        """Webhooks have no introspection endpoint; connectivity is the check."""
+        """Connectivity check that refuses to call a 4xx answer healthy.
+
+        A webhook receiver's real contract is ``POST`` + 2xx, and there is no
+        introspection endpoint to ask, so the probe is a GET. A GET answered
+        with 4xx proves only that something is listening — nothing about
+        whether it accepts deliveries — and a receiver that answers 405 to
+        every GET used to pass here, making the check worthless (M20).
+        Anything from 400 up now fails, and the message states exactly what
+        was and was not verified.
+        """
         response = http_request("GET", self.api_root, service="webhook", timeout=self.timeout)
-        if response.status_code >= 500:
+        if response.status_code >= 400:
             raise UpstreamError(
-                f"The webhook endpoint returned {response.status_code}.",
+                f"The webhook endpoint answered {response.status_code} to the health "
+                f"GET — whether it accepts POST deliveries is unverified.",
                 service="webhook",
                 status=response.status_code,
             )
