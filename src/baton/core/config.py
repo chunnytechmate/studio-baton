@@ -65,22 +65,50 @@ def _coerce(raw: str) -> Any:
 
 
 def _env_overrides() -> dict[str, Any]:
-    """Collect ``BATON__A__B=value`` variables into a nested dict."""
-    overrides: dict[str, Any] = {}
-    for name, raw in os.environ.items():
+    """Collect ``BATON__A__B=value`` variables into a nested dict.
+
+    Two variables that fold onto the same setting — one scalar, one nested
+    under it — are rejected instead of resolved: the winner used to depend on
+    ``os.environ``'s iteration order, which a user can neither see nor rely
+    on, and the loser was silently converted (a scalar became a dict, or a
+    whole section was replaced by a scalar) on the way. Naming both variables
+    in an error is the only outcome that cannot surprise anyone (M5).
+    """
+    sources: dict[tuple[str, ...], str] = {}
+    for name in os.environ:
         if not name.startswith(ENV_PREFIX):
             continue
-        trail = [part.lower() for part in name[len(ENV_PREFIX) :].split("__") if part]
+        trail = tuple(part.lower() for part in name[len(ENV_PREFIX) :].split("__") if part)
         if not trail:
             continue
+        duplicate = sources.get(trail)
+        if duplicate is not None:
+            # Case does not distinguish settings: BATON__DOCS__DRIVER and
+            # baton__docs__driver are the same setting to two variables.
+            raise ConfigError(
+                f"`{duplicate}` and `{name}` both set the same override "
+                f"(`{ENV_PREFIX}{'__'.join(trail).upper()}`).",
+                remedy="Remove one of the two — which one would win is not deterministic.",
+            )
+        sources[trail] = name
+
+    for trail, name in sources.items():
+        for deeper, deeper_name in sources.items():
+            if len(deeper) > len(trail) and deeper[: len(trail)] == trail:
+                raise ConfigError(
+                    f"`{name}` sets `{ENV_PREFIX}{'__'.join(trail).upper()}` to a single "
+                    f"value while `{deeper_name}` sets a key inside it "
+                    f"(`{ENV_PREFIX}{'__'.join(deeper).upper()}`).",
+                    remedy="A setting cannot be both a value and a section. "
+                    "Set the individual keys, or remove one of the two variables.",
+                )
+
+    overrides: dict[str, Any] = {}
+    for trail, name in sources.items():
         cursor = overrides
         for part in trail[:-1]:
-            nxt = cursor.setdefault(part, {})
-            if not isinstance(nxt, dict):
-                nxt = {}
-                cursor[part] = nxt
-            cursor = nxt
-        cursor[trail[-1]] = _coerce(raw)
+            cursor = cursor.setdefault(part, {})
+        cursor[trail[-1]] = _coerce(os.environ[name])
     return overrides
 
 

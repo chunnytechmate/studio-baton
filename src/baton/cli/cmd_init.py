@@ -230,6 +230,12 @@ def _create_database(path: Path, *, sample_data: bool) -> int:
         if sample_data:
             connection.executescript((MIGRATIONS / "seed_example.sql").read_text(encoding="utf-8"))
         connection.commit()
+        # The table name is a literal on purpose (M30): this schema was just
+        # created by sqlite.sql, which always uses the canonical names. The
+        # db.tables mapping exists for pointing baton at an *external*
+        # database whose tables are named differently — something `init`
+        # never does, so routing this one count through the mapper would be
+        # machinery with no caller it serves.
         return int(connection.execute("SELECT count(*) FROM learners").fetchone()[0])
     finally:
         connection.close()
@@ -246,6 +252,10 @@ def handle(ctx: Context) -> Exit:
             remedy="Pass --force to overwrite it, or choose another directory.",
         )
 
+    # `docs.driver` is deliberately not a prompt (M30): the registry has
+    # exactly one real implementation (`notion`), so the question would have
+    # one answer and a user who pressed enter would learn nothing. When a
+    # second document driver lands, it joins db/chat here.
     answers = {
         "locale": ctx.args.locale or _ask(ctx, "Language", "en", tuple(i18n.available_locales())),
         "timezone": ctx.args.timezone or _ask(ctx, "Timezone", "UTC"),

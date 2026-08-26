@@ -305,6 +305,20 @@ def handle_cancel(ctx: Context) -> Exit:
     return Exit.OK
 
 
+def _clock_of(start: str) -> str:
+    """The HH:MM a calendar start renders as — or the raw string if it has none.
+
+    All-day events arrive date-only (``YYYY-MM-DD``), and slicing at a fixed
+    offset mangled those (M15). The clock is taken only when the character at
+    the date/time boundary is the separator a datetime actually has — ``T``
+    for RFC 3339, a space for the lenient form — so a date-only start passes
+    through whole instead of being cut at a position that means nothing.
+    """
+    if len(start) >= 16 and start[10] in "T ":
+        return start[11:16]
+    return start
+
+
 def handle_list(ctx: Context) -> Exit:
     day = _date(ctx, ctx.args.date)
     calendar = open_calendar(ctx.config)
@@ -319,8 +333,7 @@ def handle_list(ctx: Context) -> Exit:
 
     lines = [day.isoformat()]
     for event in events:
-        when = event.start[11:16] if len(event.start) >= 16 else event.start
-        lines.append(f"  {when}  {event.title}")
+        lines.append(f"  {_clock_of(event.start)}  {event.title}")
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
 
