@@ -36,9 +36,7 @@ def _running_job(state_dir: Path) -> Path:
     return job_dir
 
 
-def test_get_tolerates_heartbeat_vanishing_between_exists_and_stat(
-    tmp_path, monkeypatch
-):
+def test_get_tolerates_heartbeat_vanishing_between_exists_and_stat(tmp_path, monkeypatch):
     state_dir = tmp_path / "state"
     job_dir = _running_job(state_dir)
     runner = JobRunner(state_dir=state_dir, config_file=tmp_path / "baton.yaml")
