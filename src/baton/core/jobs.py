@@ -291,13 +291,6 @@ class JobRunner:
         status = "failed"
         exit_code = 1
         try:
-            child = subprocess.Popen(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                env={k: v for k, v in os.environ.items() if k != "BATON_JOB_ID"},
-            )
 
             def _on_signal(signum: int, _frame: Any) -> None:
                 stop_requested.set()
@@ -305,9 +298,21 @@ class JobRunner:
                     with suppress(OSError):
                         child.terminate()
 
+            # Installed before Popen, not after: a SIGTERM landing in that
+            # window would otherwise have no handler to catch it and no
+            # child reference yet to terminate, leaving meta stuck at
+            # "running" until orphan detection found it on a later pass.
             for sig in (signal.SIGTERM, signal.SIGINT):
                 with suppress(ValueError, OSError):
                     signal.signal(sig, _on_signal)
+
+            child = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                env={k: v for k, v in os.environ.items() if k != "BATON_JOB_ID"},
+            )
 
             exit_code = child.wait()
             status = (
