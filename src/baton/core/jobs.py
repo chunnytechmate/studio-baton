@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ..errors import BusyError
+from ..errors import BusyError, UsageError
 from . import jsonio
 
 JOBS_DIRNAME = "jobs"
@@ -270,6 +270,15 @@ class JobRunner:
         """Run ``argv`` as the supervisor, recording its lifecycle. Exit code
         of this method is the child's exit code, so the supervisor's own exit
         matches the work it supervised."""
+        # _write_meta -> write_json mkdir()s its parent unconditionally, so an
+        # id nobody spawned would otherwise mint a fresh job dir instead of
+        # failing. spawn() always pre-creates the dir before invoking this, so
+        # its absence here means the caller passed an id that was never ours.
+        if not self._job_dir(job_id).exists():
+            raise UsageError(
+                f"No job matches id `{job_id}`.",
+                remedy="`job supervise` is internal; jobs are created with `job spawn`.",
+            )
         self._write_meta(job_id, pid=os.getpid(), status="running")
         heartbeat = self._heartbeat_path(job_id)
         heartbeat.touch()
@@ -291,13 +300,6 @@ class JobRunner:
         status = "failed"
         exit_code = 1
         try:
-            child = subprocess.Popen(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                env={k: v for k, v in os.environ.items() if k != "BATON_JOB_ID"},
-            )
 
             def _on_signal(signum: int, _frame: Any) -> None:
                 stop_requested.set()
@@ -305,9 +307,21 @@ class JobRunner:
                     with suppress(OSError):
                         child.terminate()
 
+            # Installed before Popen, not after: a SIGTERM landing in that
+            # window would otherwise have no handler to catch it and no
+            # child reference yet to terminate, leaving meta stuck at
+            # "running" until orphan detection found it on a later pass.
             for sig in (signal.SIGTERM, signal.SIGINT):
                 with suppress(ValueError, OSError):
                     signal.signal(sig, _on_signal)
+
+            child = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                env={k: v for k, v in os.environ.items() if k != "BATON_JOB_ID"},
+            )
 
             exit_code = child.wait()
             status = (

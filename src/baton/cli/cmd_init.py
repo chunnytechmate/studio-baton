@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from ..core import i18n
+from ..core.config import packaged_defaults
 from ..errors import UsageError
 from ..exits import Exit
 
@@ -249,7 +250,8 @@ def handle(ctx: Context) -> Exit:
         "locale": ctx.args.locale or _ask(ctx, "Language", "en", tuple(i18n.available_locales())),
         "timezone": ctx.args.timezone or _ask(ctx, "Timezone", "UTC"),
         "db": ctx.args.db or _ask(ctx, "Where do learner records live", "sqlite", DB_DRIVERS),
-        "chat": ctx.args.chat or _ask(ctx, "How are messages sent", "telegram", CHAT_DRIVERS),
+        "chat": ctx.args.chat
+        or _ask(ctx, "How are messages sent", packaged_defaults()["chat"]["driver"], CHAT_DRIVERS),
         "learner_label": ctx.args.learner_label or _ask(ctx, "You call them a", "student"),
         "session_label": ctx.args.session_label or _ask(ctx, "You call one session a", "week"),
     }

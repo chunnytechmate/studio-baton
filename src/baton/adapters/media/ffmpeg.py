@@ -22,8 +22,16 @@ from pathlib import Path
 from ...errors import ConfigError, UpstreamError
 from .base import EncodeProfile
 
-#: Filter chain for the "1080p" profile: fix rotation, tone-map HDR down to
-#: SDR, and fit inside 1920x1080 without distorting the frame.
+#: Filter chain for the "1080p" profile: fit inside 1920x1080 without
+#: distorting the frame, in 8-bit SDR-compatible yuv420p.
+#:
+#: The name promises more than this chain does: it has no zscale/tone-map
+#: step, so an HDR source is not actually tone-mapped down to SDR here —
+#: only scaled, padded, and pixel-format-converted. An HDR clip through this
+#: profile keeps its HDR transfer characteristics and can look wrong on an
+#: SDR display. Fixing that for real (M19) is a separate, owner-scoped
+#: decision: it changes the video learners and parents actually receive,
+#: not just this comment.
 _SDR_1080P = (
     "scale=1920:1080:force_original_aspect_ratio=decrease,"
     "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
@@ -31,7 +39,9 @@ _SDR_1080P = (
 )
 
 #: Encoder args per `EncodeProfile.codec`. Deliberately CPU-decode,
-#: CPU-filter (rotation/tone-map/concat), GPU-encode-only when a codec asks
+#: CPU-filter (scale/pad/concat — see _SDR_1080P above; no tone-map step
+#: actually runs here despite the profile's name), GPU-encode-only when a
+#: codec asks
 #: for NVENC — offloading decode and the concat filter too would need a
 #: hwaccel/hwupload pipeline (format-mismatch prone, and a real VRAM cost for
 #: every concurrent decode surface); the encode itself is the expensive step
