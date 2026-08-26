@@ -34,9 +34,7 @@ def test_piece_blocks_have_the_exact_legacy_order_and_shape():
             "object": "block",
             "type": "heading_2",
             "heading_2": {
-                "rich_text": [
-                    {"type": "text", "text": {"content": "🎵 Fictional Study"}}
-                ]
+                "rich_text": [{"type": "text", "text": {"content": "🎵 Fictional Study"}}]
             },
         },
         {
