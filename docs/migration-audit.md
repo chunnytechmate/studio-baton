@@ -69,7 +69,7 @@ deliberately-deferred decision that is written down as deferred.
 | 6 | Send recording / YouTube link | `send-recording-line/`, `send-youtube-line/` | `baton send recording`; **no `send youtube` yet** | ⬜ unclaimed | — |
 | 7 | Course archive + clear | `notion-clear-student/` | `cli/cmd_course.py`, `domain/archive.py` | ✅ spot-checked — no gap | Claude 2026-08-27 |
 | 8 | Student records | `student-management/`, `student-lookup/` | `cli/cmd_learner.py`, `adapters/db/` | ⬜ unclaimed | — |
-| 9 | Prep report / notes | `student-management/scripts/prep_report.py`, `song_manager.py` | `cli/cmd_prep.py`, `cmd_notes.py`, `domain/prep.py` | 🟡 in progress | Codex 2026-08-27 |
+| 9 | Prep report / notes | `student-management/scripts/prep_report.py`, `song_manager.py` | `cli/cmd_prep.py`, `cmd_notes.py`, `domain/prep.py` | ✅ done — 2 findings, open | Codex 2026-08-27 |
 | 10 | Retired skills | `archived-skills/{get-latest-lesson,list-completed-lessons,list-inprogress-lessons,student-works}` | `baton learner`, `calendar in-progress` | 🟡 auditing | Codex 2026-08-27 |
 
 Legend: ✅ done · 🟡 partial (notes say what is left) · ⬜ unclaimed
@@ -234,9 +234,72 @@ Suggested fix: resolve the full batch before the first send, reject duplicate
 learner ids, then reuse those resolved learners during delivery so the check
 and the action cannot diverge.
 
+### F8 — the piece catalogue became read-only 🔴 open
+
+**Lane 9.** `song_manager.py` was a full catalogue editor: it added songs,
+updated the title and all three links, cleared links deliberately, and deleted
+unused songs. Delete first queried the learners using that song and refused
+with their names until they were reassigned. These were advertised triggers
+in the old skill (`เพิ่มเพลง`, `ลบเพลง`, `แก้ชื่อเพลง`, practice track, and
+sheet link), not incidental helper functions.
+
+Baton models pieces and their links, but the store protocol exposes only
+`list_pieces` and `get_piece`; the CLI exposes only `learner pieces` and
+`learner assign`. There is no create, update, or delete path in either DB
+adapter. Since the old skill is retired, a teacher can still assign an
+existing catalogue row but cannot add the next song, correct its title, attach
+or clear a practice/sheet/original link, or safely remove an obsolete row
+through Baton.
+
+Suggested shape: add store methods and `baton learner piece add|update|delete`
+(or a top-level `piece` group). Carry over partial-update semantics — an
+explicit empty link clears it — and the pre-delete assignment gate, including
+the learner names that block deletion.
+
+### F9 — catalogue relationship reports were dropped 🔴 open
+
+**Lane 9.** The old `--info SONG_ID` returned the song's links and the learners
+assigned to it; `--assignments` joined every learner to the current song and
+listed both assigned and unassigned learners in one call. `--search` also
+looked up titles without requiring the numeric id. The skill had explicit
+triggers for “น้องXเล่นเพลงอะไรอยู่” and “song assignments”.
+
+`baton learner pieces` returns only catalogue rows. `learner show` can answer
+one learner at a time, but no Baton command performs the reverse lookup (“who
+is using this song?”), emits the whole assignment matrix, or searches the
+catalogue by title. Rebuilding those joins by hand is a regression from the
+single script that made them consistent, especially before changing or
+deleting a catalogue row.
+
+Suggested shape: add `piece show/search/assignments` queries (or enrich a
+single catalogue command) and test both sides of the relationship, including
+learners whose `current_piece_id` points at a missing row.
+
 ---
 
 ## Notes on partially-audited lanes
+
+### Lane 9 — prep report / notes, checked and otherwise equivalent or better
+
+- `baton prep` preserves the old hard gate exactly: week, date, titles, page
+  link, overview, content, and homework are required; next goal is a warning.
+- Calendar-based discovery and repeatable explicit learners are preserved.
+  Baton's configured title parsing also reports unmatched calendar events
+  instead of silently losing them.
+- Heading-based section parsing, paginated block reads, checklist-to-homework,
+  practice-goals fallback, footer stripping, and the 400-character cap are
+  carried over. Document read failures now name the unreadable page rather
+  than looking like empty sections.
+- The report remains the source of truth and is carried verbatim in JSON as
+  `report`; a partially-ready day returns the ready entries plus every blocked
+  learner, while an all-blocked day exits through the gate.
+- The old `original_link` column is not lost: this studio maps it to Baton's
+  `Piece.source_link`. Practice-track and sheet links are also modelled and
+  shown in the JSON catalogue; F8 is the missing mutation surface, not missing
+  storage.
+- `baton notes` is independent of the song catalogue. Its deterministic
+  Markdown conversion, preview, chunking, title derivation, and document-store
+  error mapping are additive; no prep-report behaviour was found missing there.
 
 ### Lane 5 — send to LINE, checked and otherwise equivalent or better
 
