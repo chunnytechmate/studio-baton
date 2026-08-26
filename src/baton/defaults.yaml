@@ -284,6 +284,12 @@ media:
     refresh_token_env: YOUTUBE_REFRESH_TOKEN
     client_id_env: GOOGLE_CLIENT_ID
     client_secret_env: GOOGLE_CLIENT_SECRET
+    # Tries for the best-effort description update on a lesson's video,
+    # including the first. Publishing does not fail when the update cannot be
+    # made; a re-run of `lesson publish` retries what is owed while attempts
+    # remain, then leaves it to the operator. Capped so a video Baton will
+    # never own (the ownership refusal is permanent) is not retried forever.
+    description_attempts: 3
     privacy: unlisted
     category_id: "22"
     max_parallel_uploads: 3

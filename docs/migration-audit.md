@@ -13,7 +13,7 @@ This document is the standing audit that looks for the rest of them. It is a
 working file: claim a lane before auditing it, record what you checked, and
 leave the verdict where the next person can find it.
 
-**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70), 0.3.2 (F6, F7, F10, F15)
+**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70), 0.3.2 (F6, F7, F10, F15), 0.3.3 (F5)
 
 ---
 
@@ -168,7 +168,7 @@ Re-publishing with `--force` would append the whole summary a second time, so
 these want either a small one-off script that appends the three footer blocks,
 or a deliberate decision to leave them. Owner's call.
 
-### F5 — a failed YouTube description update has no retry path 🔴 open
+### F5 — a failed YouTube description update has no retry path ✅ fixed in 0.3.3
 
 **Lane 4.** `lesson publish` updates the video description as a best-effort
 step after the document is written. If it fails, the failure is recorded on
@@ -181,9 +181,19 @@ when it was already `ok` and retried YouTube up to three times. Baton's
 per-target `record_target` holds the same information but nothing acts on it
 for the YouTube target.
 
-Suggested shape: let `publish` resume a `youtube: failed` target the way it
-already resumes an unfinished `docs` target (`_finish_session(resumed=True)`),
-without re-appending blocks.
+Fixed, in the wide shape: the resume branch of `lesson publish` retries the
+description update in both cases it can be owed — a previous attempt that
+failed with attempts left, and a recording that landed on the document *after*
+the summary was published, which nothing had ever recorded as pending. The
+blocks already on the page are never touched, so there is no second copy and
+no need for `--force`.
+
+Two places remember the outcome, mirroring the docs-completion check the
+module already had: the draft (wiped by every re-stage) and the published
+record (`note_youtube`), so re-staging to correct a title does not re-update
+the video. Attempts are capped by `media.youtube.description_attempts`
+(default 3) and counted across both memories, so a video Baton will never own
+is not retried forever.
 
 ### F6 — the default send gate no longer requires the YouTube link ✅ fixed in 0.3.2
 
