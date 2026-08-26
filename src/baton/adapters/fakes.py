@@ -115,6 +115,7 @@ class FakeLearnerStore:
             title=work.title,
             type=work.type,
             video_link=work.video_link,
+            drive_link=work.drive_link,
             performed_date=work.performed_date,
         )
         self.works.append(created)

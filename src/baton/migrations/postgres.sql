@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS works (
     title          text NOT NULL,
     type           text NOT NULL DEFAULT 'performance',
     video_link     text NOT NULL DEFAULT '',
+    -- Optional second home of the recording; see sqlite.sql on why it exists.
+    drive_link     text NOT NULL DEFAULT '',
     performed_date date,
     created_at     timestamptz NOT NULL DEFAULT now()
 );

@@ -66,6 +66,7 @@ def test_there_is_a_skill_for_each_pipeline():
         "prep-report",
         "quick-notes",
         "send-lesson",
+        "send-recording",
         "student-lookup",
         "studio-calendar",
         "video-pipeline",
@@ -131,12 +132,16 @@ def test_every_skill_documents_what_to_do_about_exit_codes(path):
 
 @pytest.mark.parametrize(
     "path",
-    [p for p in SKILL_FILES if p.parent.name in {"send-lesson", "studio-calendar"}],
+    [
+        p
+        for p in SKILL_FILES
+        if p.parent.name in {"send-lesson", "send-recording", "studio-calendar"}
+    ],
     ids=lambda p: p.parent.name,
 )
 def test_gated_skills_say_the_block_cannot_be_overridden(path):
-    """These two can refuse. Both must tell the agent not to look for a way
-    around it, because looking is exactly what an agent does next."""
+    """These can refuse a send outright. Each must tell the agent not to look
+    for a way around it, because looking is exactly what an agent does next."""
     text = path.read_text(encoding="utf-8")
 
     assert "`5`" in text
