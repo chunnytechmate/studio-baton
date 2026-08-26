@@ -13,7 +13,7 @@ This document is the standing audit that looks for the rest of them. It is a
 working file: claim a lane before auditing it, record what you checked, and
 leave the verdict where the next person can find it.
 
-**Started:** 2026-08-27 · **Baton version at start:** 0.2.8
+**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.2.8 (F1, F2), 0.2.9 (F3, F4)
 
 ---
 
@@ -104,7 +104,7 @@ as before. `tone_map_hdr` and `fps` are new config keys.
 which names neither a cause nor a clip. Fixed, with the real stderr now
 carried in the error's `details`.
 
-### F3 — Google Calendar had no retry and leaked vendor exceptions ✅ fixed
+### F3 — Google Calendar had no retry and leaked vendor exceptions ✅ fixed in 0.2.9
 
 **Lane 3.** `create`, `list_between`, and `health` called `.execute()` raw.
 Two consequences:
@@ -126,7 +126,7 @@ Fixed: all calls go through `_calendar_call`, which retries transient faults
 with the shared backoff and maps everything else to `UpstreamError`. Attempts
 configurable via `calendar.google.attempts`.
 
-### F4 — published summaries lost their AI disclosure ✅ fixed
+### F4 — published summaries lost their AI disclosure ✅ fixed in 0.2.9
 
 **Lane 4.** Every summary the old pipeline published carried a dated
 disclosure built by `music-class-summarizer/scripts/ai_footer.py` — who wrote
@@ -147,6 +147,26 @@ Fixed: `summary.footer` config (lines, date format, era, month names), a new
 default so no other studio gets a disclaimer it did not ask for. Month names
 are configured rather than left to `%B`, which renders English wherever the
 studio's locale is not installed.
+
+`prep` now strips the footer using a pattern **derived from the configured
+lines** rather than a second hand-written regex, so editing the disclosure can
+never leave a stale pattern that silently stops stripping it. The legacy
+`docs.summary_footer` regex is kept alongside it, for pages the old pipeline
+wrote.
+
+**Backfill still owed.** Four summaries were published through Baton before the
+fix and their Notion pages carry no disclosure:
+
+| Learner | Session | Published |
+|---|---|---|
+| น้องพร้อม | 12 | 2026-08-23 |
+| น้องนะโมกีตาร์ | 1 | 2026-08-23 |
+| น้องพอล | 7 | 2026-08-23 |
+| น้องปุณณะ | 3 | 2026-08-23 |
+
+Re-publishing with `--force` would append the whole summary a second time, so
+these want either a small one-off script that appends the three footer blocks,
+or a deliberate decision to leave them. Owner's call.
 
 ### F5 — a failed YouTube description update has no retry path 🔴 open
 
@@ -335,3 +355,18 @@ docker exec openclaw-gateway baton --version   # expect the new version
 > ⚠️ `docker-compose.yml` pins `studio-baton[google]==0.2.7` from PyPI. Any
 > image rebuild reverts every hand-installed wheel. Publish to PyPI or repoint
 > that build arg before rebuilding.
+
+---
+
+## Observed in passing, outside this audit's scope
+
+`baton doctor` reports 21 checks with one failing, and it is not a migration
+gap — the Supabase schema has drifted from what the profile expects:
+
+```
+Database is reachable and every table resolves — supabase rejected the query:
+column student_works.drive_link does not exist
+```
+
+Same shape as the drift already recorded against the students fallback. Worth
+its own look; it is not something the rewrite dropped.
