@@ -4,14 +4,16 @@ Snapshot written by triage. **The live queue is GitHub issue labels plus the lat
 `factory-handoff:v1` comment.** This file is for humans and audit; an unmerged snapshot
 must never block or override a live label.
 
-- snapshot taken: 2026-08-24 (run `2026-08-23T182012Z-triage-queue`, UTC `2026-08-23T18:20Z`)
-- base commit: `23b2a06` (release: prepare Studio Baton 0.2.7)
-- coverage this run: 20 of 21 untriaged issues (cap 20, most recently updated first)
-  — **#4 (M1) was skipped by the cap and remains untriaged**
-- not covered by this run: #1 (M6) is `factory:awaiting-review` on an open PR — owned by
-  a human decision, not re-triaged
-- updated: 2026-08-24 (run `2026-08-24T000806Z-triage-4`, UTC `2026-08-24T00:08Z`) —
-  picked up the cap-skipped #4. Every open issue now carries exactly one disposition.
+- snapshot taken: 2026-08-26 (run `2026-08-26T001142Z-triage-queue`, UTC `2026-08-26T00:11Z`)
+- base commit: `8409b5e` (origin/main — merge of PR #53, the FQ-52 evidence-boundary correction)
+- coverage this run: **0 untriaged issues** — every open issue carries exactly one state
+  label. 14 open issues were updated since the last triage run
+  (`2026-08-24T000806Z-triage-4`): 11 re-triaged — all `wait-to-implement` with their
+  named blockers reconfirmed live and unchanged — and 3 excluded as claimed or
+  human-owned (#41, #10, #32; see "Not covered")
+- cap 20 not reached — **0 issues skipped by the cap**
+- entries FQ-4 through FQ-24 below were last triaged 2026-08-24 and have not been
+  updated since; their labels were read live this run and are unchanged
 
 ## FQ-6: M3: TOCTOU ใน JobRunner.get — heartbeat stat race กับ prune → FileNotFoundError
 - disposition: ready-to-implement
@@ -267,10 +269,26 @@ must never block or override a live label.
 
 ## Not covered
 
-- **FQ-1 (M6)** — `factory:awaiting-review`, PR open. Human owns the next decision.
+Items with a live label that is not a triage disposition — read live 2026-08-26,
+not re-triaged because the contract hands the next decision to a human or a live
+claiming run:
+
+- **FQ-41 (P0/F2)** — `factory:in-progress`, claimed via branch `claude/fq-41`; draft
+  PR #54 open (CI green) with no verify run recorded yet. If the owning run has ended,
+  a human should decide whether it moves to `factory:awaiting-review` or back to the
+  queue — triage does not disturb a live claim.
+- **FQ-10 (M12)** — `factory:awaiting-review`, PR #37 open. Its entry above still shows
+  the pre-review disposition `ready-to-implement`; that was correct when triaged and is
+  what produced the now-open PR.
+- **FQ-32 (P0/S1)** — `factory:awaiting-review`, PR #35 open and `factory:verified`.
+  Human owns the merge decision; FQ-29 and FQ-33 unblock when it merges.
 
 FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z-triage-4`
-(needs-info — already fixed at HEAD; see its entry above).
+(needs-info — already fixed at HEAD; see its entry above). FQ-1 (M6) has since closed and
+needs no further triage.
+
+Review queue: 3 items (#41→PR #54, #10→PR #37, #32→PR #35) against the charter stop
+limit of "more than 3 awaiting human review" — at the limit, not over it.
 
 ## FQ-31: P0/S0 freeze staged Song DB context for lesson contracts
 - disposition: ready-to-implement
@@ -299,23 +317,140 @@ FQ-4 (M1), skipped by the 2026-08-23 cap, was triaged by run `2026-08-24T000806Z
 ## FQ-33: P0/S2 send published practice track and document operations
 - disposition: wait-to-implement
 - source: https://github.com/chunnytechmate/studio-baton/issues/33
-- last_triaged: 2026-08-24
-- repro: confirmed (send currently reads learner.current_piece_id live)
+- last_triaged: 2026-08-26
+- repro: not-attempted (blocked-on-predecessor slice; predecessor merge state read live on GitHub)
 - files_expected: src/baton/pipelines/send.py, tests/test_send.py, tests/test_lesson_piece_flow.py, README.md, docs/notion-setup.md
 - load_bearing: true
 - gate_level: deep
-- done_when: published A wins over live B through document and message; legacy never falls back; operational behavior is documented
+- done_when: after publishing song A and assigning live song B, contract, document, published record, and message still use A; legacy-unavailable never falls back and the configured gate warns or blocks; current instrument remains live; README and Notion setup document snapshot timing, block shapes, preservation, and forced-republish remedy
 - confidence: medium
-- notes: blocked by merge of FQ-32; existing-test approval is narrow; Draft plus human read required
+- notes: blocked by merge of FQ-32 (PR #35 open, unmerged); owner approved only the snapshot-fixture and obsolete live-song assertion replacement in tests/test_send.py — Draft plus human read required; reconfirmed 2026-08-26
 
-## FQ-48/FQ-52: wait-only corrected recovery (2026-08-25)
-- #52 awaits correction review; #41 stays needs-info until its merge and fresh exact approvals.
-- #40 waits on #41 — tracked authority.
-- #42 waits on #40 — executable deep gates.
-- #49 waits on #42 — verifier/proof tooling.
-- #50 waits on #49 — approved load-bearing workflow.
-- #39 waits on #50 — synthetic enforcement tracer.
-- #43 waits on #39 — immutable audit primitive.
-- #44 waits on #43 — exact-head readiness flow.
-- #45 waits on #44 — audit-only routines.
-- #46 waits on #45 — enforced activation.
+## FQ-29: P0 lesson summaries can drift to a learner's newer song
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/29
+- last_triaged: 2026-08-26
+- repro: not-attempted (spec-parent umbrella — no file-level work tracked on this issue; slice blockers read live on GitHub)
+- files_expected: none directly — file scope lives on the slice handoffs (#32, #33)
+- load_bearing: false (this issue edits nothing; slice #33 declares load_bearing: true, deep gates, Draft + human read)
+- gate_level: full
+- done_when: slices #32 and #33 are merged and closed; a human then closes umbrella #29 — no file-level work is tracked on this issue
+- confidence: high
+- notes: owner approved Gates 1-4 on 2026-08-25 (spec PR #30 merged); blocked by slice #32 (PR #35 open, factory:verified — human owns merge) then #33
+
+## FQ-48/FQ-52 corrected recovery chain (re-triaged 2026-08-26)
+
+Entries below were re-triaged by run `2026-08-26T001142Z-triage-queue`. Order and scope
+come from the owner-approved corrected spec (FQ-48, then the FQ-52 evidence-boundary
+correction merged as PR #53); the whole chain roots at #41 and unblocks in the order
+listed. `done_when` and `files_expected` are quoted from each issue's live
+`factory-handoff:v1` comment, which was written by the approved spec — those comments
+remain the operational handoff.
+
+## FQ-40: P0/F1 track the factory authority in origin/main
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/40
+- last_triaged: 2026-08-26
+- repro: not-attempted (tracked-authority bootstrap slice; nothing runnable until its blocker merges — blocker state read live on GitHub)
+- files_expected: AGENTS.md, CLAUDE.md, docs/factory/CONTRACT.md, docs/factory/CHARTER.md, docs/factory/runs/README.md, docs/factory/runs/<UTC>-bootstrap-40.md
+- load_bearing: true
+- gate_level: bootstrap (per approved spec — not one of the charter §6 levels; see run record)
+- done_when: a clean origin/main contains complete concise AGENTS/Claude authority, contract, charter, and run schema authored from merged FQ-48; the exact bootstrap allowlist and expiry agree; app-bound CI and FACTORY_BOOTSTRAP are green; and a cold critic accepts
+- confidence: medium
+- notes: blocked by #41 (factory:in-progress, draft PR #54 open, CI green, no verify run recorded); next to unblock when #41 merges
+
+## FQ-42: P0/F3 make local factory gates catch CI formatting drift
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/42
+- last_triaged: 2026-08-26
+- repro: not-attempted (bootstrap slice blocked two levels up the chain — blocker state read live on GitHub)
+- files_expected: .factory/gates.conf, .claude/scripts/gates.sh, .factory/scripts/bootstrap-tools.sh, tests/test_factory_gate_parity.py, docs/factory/runs/<UTC>-bootstrap-42.md
+- load_bearing: true
+- gate_level: bootstrap (per approved spec — not one of the charter §6 levels; see run record)
+- done_when: tracked gate config/runner and isolated pinned pip-audit provisioning work from a clean checkout; candidate deep gates are GREEN; unformatted Python/Markdown and missing tooling fail closed; and project dependency files remain unchanged
+- confidence: medium
+- notes: blocked by #40; every file it touches is LOAD_BEARING — deep-gate fail-closed posture applies until #42 itself lands
+
+## FQ-49: P0/B3 track independent factory proof and verifier tooling
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/49
+- last_triaged: 2026-08-26
+- repro: not-attempted (bootstrap slice blocked up the chain — blocker state read live on GitHub)
+- files_expected: .factory/scripts/prove-test.sh, .claude/skills/factory-verify/SKILL.md, .agents/skills/factory-verify/SKILL.md, tests/test_factory_verifier_protocol.py, docs/factory/runs/<UTC>-bootstrap-49.md
+- load_bearing: true
+- gate_level: bootstrap (per approved spec — not one of the charter §6 levels; see run record)
+- done_when: tracked prove-test and Claude/Codex verifier adapters accept exact negative proof and reject base/head drift, dirty checkout, proof failure, or evidence mismatch under merged deep gates
+- confidence: medium
+- notes: blocked by #42; corrected FQ-48 Gate 4 Slice 4 (supersedes the FQ-38 ordering still cited in the issue body)
+
+## FQ-50: P0/B4 make approved load-bearing handoffs executable
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/50
+- last_triaged: 2026-08-26
+- repro: not-attempted (bootstrap slice blocked up the chain — blocker state read live on GitHub)
+- files_expected: .claude/skills/factory-implement/SKILL.md, .agents/skills/factory-implement/SKILL.md, docs/factory/CONTRACT.md, tests/test_factory_implement_protocol.py, docs/factory/runs/<UTC>-bootstrap-50.md
+- load_bearing: true
+- gate_level: bootstrap (per approved spec — not one of the charter §6 levels; see run record)
+- done_when: tracked Claude/Codex implement adapters execute only explicitly approved load-bearing handoffs under deep gates and fresh verification; generic workers cannot claim bootstrap items; old handoffs remain valid; and merge irreversibly expires FQ-48 recovery
+- confidence: medium
+- notes: blocked by #49; merging it expires the FQ-48 recovery protocol — irreversible step, human merge required
+
+## FQ-39: P0/F0 prove factory enforcement topology with synthetic payloads
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/39
+- last_triaged: 2026-08-26
+- repro: not-attempted (tracer-bullet proof against synthetic GitHub payloads — no product behavior to reproduce; blocker state read live on GitHub)
+- files_expected: .factory/scripts/github_enforcement.py, tests/test_factory_github_enforcement.py, docs/factory/GITHUB.md
+- load_bearing: true
+- gate_level: deep
+- done_when: synthetic GitHub payload tests prove exact green check/app inventory, zero-check bootstrap and strict rule previews with PR-only/no-force/no-delete and auto-merge off, explicit apply, and denied merge/auto-merge/push/ruleset/force/delete probes without live mutation
+- confidence: medium
+- notes: blocked by #50; issue body still cites "FQ-38 Gate 4 Slice 0" — the corrected FQ-48 order in the live handoff comment governs
+
+## FQ-43: P0/F4 append immutable factory evidence without audit PRs
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/43
+- last_triaged: 2026-08-26
+- repro: not-attempted (factory-infrastructure slice blocked up the chain — blocker state read live on GitHub)
+- files_expected: .factory/scripts/audit_record.py, tests/test_factory_audit.py, docs/factory/runs/README.md
+- load_bearing: true
+- gate_level: deep
+- done_when: run/readiness records append as unique first-introduction blobs on the audit branch with bounded non-fast-forward retry; mutation/deletion is detected as MISCONFIGURED and audit-only writes open no PR
+- confidence: medium
+- notes: blocked by #39; changes how this run-record directory itself is written — read its handoff before executing
+
+## FQ-44: P0/F5 keep work agent-owned until exact CI and verification agree
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/44
+- last_triaged: 2026-08-26
+- repro: not-attempted (factory-infrastructure slice blocked up the chain — blocker state read live on GitHub)
+- files_expected: .claude/skills/factory-implement/SKILL.md, .claude/skills/factory-spec/SKILL.md, .agents/skills/factory-implement/SKILL.md, .agents/skills/factory-spec/SKILL.md, tests/test_factory_readiness.py, docs/factory/CONTRACT.md
+- load_bearing: true
+- gate_level: deep
+- done_when: old handoffs remain valid; canonical progress/resume rejects author/branch/SHA/counter drift; PRs remain Draft/in-progress through CI and exact-head verification; append-before-label readiness is required; and standard specs need one packet approval while high-risk specs retain four
+- confidence: medium
+- notes: blocked by #43; edits the factory contract and both harnesses' skills — pure LOAD_BEARING
+
+## FQ-45: P0/F6 move triage monitor and tune evidence off the merge queue
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/45
+- last_triaged: 2026-08-26
+- repro: not-attempted (factory-infrastructure slice blocked up the chain — blocker state read live on GitHub)
+- files_expected: .claude/skills/factory-triage/SKILL.md, .claude/skills/factory-monitor/SKILL.md, .claude/commands/factory-tune.md, .agents/skills/factory-triage/SKILL.md, .agents/skills/factory-monitor/SKILL.md, .agents/skills/factory-tune.md, tests/test_factory_audit_routines.py
+- load_bearing: true
+- gate_level: deep
+- done_when: triage monitor and tune preserve live issue handoffs but write full audit-branch records without PRs and fail closed on audit-integrity or credential failure
+- confidence: medium
+- notes: blocked by #44; this triage skill itself is in its files_expected — the run that executes it edits the rules this run followed
+
+## FQ-46: P0/F7 activate enforced factory flow and truthful control-room counts
+- disposition: wait-to-implement
+- source: https://github.com/chunnytechmate/studio-baton/issues/46
+- last_triaged: 2026-08-26
+- repro: not-attempted (activation slice blocked up the chain — blocker state read live on GitHub)
+- files_expected: .claude/commands/factory.md, .agents/skills/factory-status/SKILL.md, .factory/scripts/github_enforcement.py, .factory/scripts/doctor.sh, tests/test_factory_activation.py, docs/factory/GITHUB.md
+- load_bearing: true
+- gate_level: deep
+- done_when: fork/coordinator permission probes deny merge auto-merge upstream push ruleset mutation and protected force/delete; exact green app-bound contexts are strict required checks; current open PRs are reconciled; control room counts current-SHA accepted/rejected PRs plus named needs-info and reports enforcement active only after all probes pass
+- confidence: medium
+- notes: blocked by #45; last link of the chain — flips the factory to enforced mode, so nothing may skip ahead of it
