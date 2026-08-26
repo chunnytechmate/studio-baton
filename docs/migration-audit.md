@@ -65,7 +65,7 @@ deliberately-deferred decision that is written down as deferred.
 | 2 | Video: Drive + YouTube + orchestration | `video_pipeline/core/{drive_manager,drive_cleanup,youtube_uploader,pipeline_orchestrator}.py` | `adapters/media/google.py`, `pipelines/video.py` | 🟡 partial — spot-checked, see notes | Claude 2026-08-27 |
 | 3 | Calendar | `google-calendar/scripts/{scal,gcal}.py` | `pipelines/schedule.py`, `adapters/cal/google.py`, `cli/cmd_calendar.py` | ✅ done — 1 finding, fixed | Claude 2026-08-27 |
 | 4 | Lesson summary | `music-class-summarizer/` | `pipelines/{staging,publish}.py`, `cli/cmd_lesson.py`, `render/` | 🟡 partial — 2 findings (1 fixed, 1 open), see notes | Claude 2026-08-27 |
-| 5 | Send to LINE | `send-lesson-line/` | `pipelines/send.py`, `cli/cmd_send.py`, `adapters/chat/` | 🟡 in progress | Codex 2026-08-27 |
+| 5 | Send to LINE | `send-lesson-line/` | `pipelines/send.py`, `cli/cmd_send.py`, `adapters/chat/` | ✅ done — 2 findings, open | Codex 2026-08-27 |
 | 6 | Send recording / YouTube link | `send-recording-line/`, `send-youtube-line/` | `baton send recording`; **no `send youtube` yet** | ⬜ unclaimed | — |
 | 7 | Course archive + clear | `notion-clear-student/` | `cli/cmd_course.py`, `domain/archive.py` | ✅ spot-checked — no gap | Claude 2026-08-27 |
 | 8 | Student records | `student-management/`, `student-lookup/` | `cli/cmd_learner.py`, `adapters/db/` | ⬜ unclaimed | — |
@@ -165,9 +165,82 @@ Suggested shape: let `publish` resume a `youtube: failed` target the way it
 already resumes an unfinished `docs` target (`_finish_session(resumed=True)`),
 without re-appending blocks.
 
+### F6 — the default send gate no longer requires the YouTube link 🔴 open
+
+**Lane 5.** The old gate refused to send unless the Notion page, exact-week
+`line_summary`, week number, **and YouTube link** were all present. It checked
+that twice: `_gate_check` in `send.py`, then the direct-call guard in
+`services/line/push.py`. `DATA-003` records why this became fatal: a summary
+without the recording had already reached the studio.
+
+Baton has the same `video_link` field and gate mechanism, but its packaged
+profile puts `video_link` in `send_lesson_optional`. A Notion outage or a page
+whose recording has not landed therefore produces a warning and still sends.
+That is the exact incomplete-message path the old hardening closed. The code
+comments say the legacy fail-closed behaviour is preserved exactly, so the
+optional default is also a silent degradation, not an intentional removal.
+
+Proved in the gateway: legacy `_gate_check` returns `youtube_link` as missing
+for an otherwise-complete lesson. Baton's
+`test_a_complete_context_passes_and_warns_about_the_optional_gaps` proves the
+same context passes. The studio profile inherits the packaged gate lists; it
+does not override them.
+
+Suggested fix: move `video_link` from `send_lesson_optional` to
+`send_lesson_required` in this studio's profile (immediate protection), and
+decide whether the packaged default should match the legacy studio or remain
+generic. Add an end-to-end test that no `Messenger.send` call occurs when the
+document has no video block.
+
+### F7 — a batch can send the same learner twice through an alias 🔴 open
+
+**Lane 5.** The old batch resolved every requested name first, compared the
+canonical learner names, and refused the whole batch when two inputs resolved
+to one learner. Its test pins the real case: `เจ` plus `น้องเจ` must not
+produce two LINE messages.
+
+Baton checks `len(set(requested))` before resolution, then resolves and sends
+each entry independently. Two distinct strings that map through `db.aliases`
+to the same learner pass the check. A focused reproduction returned exit 0,
+`sent: 2`, with both results naming the same canonical learner; the legacy
+alias-duplicate unit test refused the same shape before any send.
+
+The LINE retry key does not save this case. Each call composes a message again
+and chooses random opening/closing phrases, so the message text (and therefore
+the idempotency key) may differ. These are two requested sends, not an HTTP
+retry.
+
+Suggested fix: resolve the full batch before the first send, reject duplicate
+learner ids, then reuse those resolved learners during delivery so the check
+and the action cannot diverge.
+
 ---
 
 ## Notes on partially-audited lanes
+
+### Lane 5 — send to LINE, checked and otherwise equivalent or better
+
+- The message shape, Thai date, instrument icons, random openings/closings,
+  published short summary, Notion link, practice track, and direct video line
+  match the old `push.py` format.
+- LINE transient retries are preserved through `core.retry.http_request`; the
+  deterministic `X-Line-Retry-Key` is also preserved, so a lost response does
+  not duplicate a delivery.
+- Contact and learner resolution are stricter: exact name or explicit alias,
+  never the old shortest partial match.
+- One failed learner does not abandon the rest of a batch; the aggregate names
+  every blocked result and returns the gate exit code. Raw duplicate names are
+  refused; F7 is the canonical-name hole that remains.
+- `--dry-run` runs the real gate and composes the exact message without
+  delivery. The current agent skill also keeps the no-bypass rule.
+- The studio-specific ops ledger is preserved outside the package by
+  `workspace/scripts/baton_send_lesson.py`; `AGENTS.md` requires that wrapper,
+  and the 21:05 reconcile reads Baton's published records. A ledger write
+  failure remains fail-open for delivery and visible as `ledger_status`.
+- `daily_send_to_prao.py` was deliberately retired rather than silently
+  omitted. The standing workflow uses an explicit Baton batch plus the nightly
+  published-vs-delivered reconcile, and the deprecated skill forbids running
+  the old auto-send script.
 
 ### Lane 2 — video: Drive, YouTube, orchestration
 
