@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ..errors import BusyError
+from ..errors import BusyError, UsageError
 from . import jsonio
 
 JOBS_DIRNAME = "jobs"
@@ -270,6 +270,15 @@ class JobRunner:
         """Run ``argv`` as the supervisor, recording its lifecycle. Exit code
         of this method is the child's exit code, so the supervisor's own exit
         matches the work it supervised."""
+        # _write_meta -> write_json mkdir()s its parent unconditionally, so an
+        # id nobody spawned would otherwise mint a fresh job dir instead of
+        # failing. spawn() always pre-creates the dir before invoking this, so
+        # its absence here means the caller passed an id that was never ours.
+        if not self._job_dir(job_id).exists():
+            raise UsageError(
+                f"No job matches id `{job_id}`.",
+                remedy="`job supervise` is internal; jobs are created with `job spawn`.",
+            )
         self._write_meta(job_id, pid=os.getpid(), status="running")
         heartbeat = self._heartbeat_path(job_id)
         heartbeat.touch()
