@@ -13,7 +13,7 @@ This document is the standing audit that looks for the rest of them. It is a
 working file: claim a lane before auditing it, record what you checked, and
 leave the verdict where the next person can find it.
 
-**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.2.8 (F1, F2), 0.2.9 (F3, F4)
+**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70)
 
 ---
 
@@ -65,12 +65,12 @@ deliberately-deferred decision that is written down as deferred.
 | 2 | Video: Drive + YouTube + orchestration | `video_pipeline/core/{drive_manager,drive_cleanup,youtube_uploader,pipeline_orchestrator}.py` | `adapters/media/google.py`, `pipelines/video.py` | 🟡 partial — spot-checked, see notes | Claude 2026-08-27 |
 | 3 | Calendar | `google-calendar/scripts/{scal,gcal}.py` | `pipelines/schedule.py`, `adapters/cal/google.py`, `cli/cmd_calendar.py` | ✅ done — 1 finding, fixed | Claude 2026-08-27 |
 | 4 | Lesson summary | `music-class-summarizer/` | `pipelines/{staging,publish}.py`, `cli/cmd_lesson.py`, `render/` | 🟡 partial — 2 findings (1 fixed, 1 open), see notes | Claude 2026-08-27 |
-| 5 | Send to LINE | `send-lesson-line/` | `pipelines/send.py`, `cli/cmd_send.py`, `adapters/chat/` | ✅ done — 2 findings, open | Codex 2026-08-27 |
+| 5 | Send to LINE | `send-lesson-line/` | `pipelines/send.py`, `cli/cmd_send.py`, `adapters/chat/` | ✅ done — 3 findings, open | Codex 2026-08-27 |
 | 6 | Send recording / YouTube link | `send-recording-line/`, `send-youtube-line/` | `baton send recording`; **no `send youtube` yet** | ⬜ unclaimed | — |
 | 7 | Course archive + clear | `notion-clear-student/` | `cli/cmd_course.py`, `domain/archive.py` | ✅ spot-checked — no gap | Claude 2026-08-27 |
 | 8 | Student records | `student-management/`, `student-lookup/` | `cli/cmd_learner.py`, `adapters/db/` | ⬜ unclaimed | — |
 | 9 | Prep report / notes | `student-management/scripts/prep_report.py`, `song_manager.py` | `cli/cmd_prep.py`, `cmd_notes.py`, `domain/prep.py` | ✅ done — 2 findings, open | Codex 2026-08-27 |
-| 10 | Retired skills | `archived-skills/{get-latest-lesson,list-completed-lessons,list-inprogress-lessons,student-works}` | `baton learner`, `calendar in-progress` | 🟡 auditing | Codex 2026-08-27 |
+| 10 | Retired skills | `archived-skills/{get-latest-lesson,list-completed-lessons,list-inprogress-lessons,student-works}` | `baton learner`, `calendar in-progress` | ✅ done — 4 findings, open | Codex 2026-08-27 |
 
 Legend: ✅ done · 🟡 partial (notes say what is left) · ⬜ unclaimed
 
@@ -275,6 +275,156 @@ Suggested shape: add `piece show/search/assignments` queries (or enrich a
 single catalogue command) and test both sides of the relationship, including
 learners whose `current_piece_id` points at a missing row.
 
+### F10 — lesson messages lost the studio's Thai date format 🔴 open
+
+**Lane 5.** The old sender converted an ISO lesson date to a Thai family-facing
+date with abbreviated Thai month and Buddhist Era year. In the gateway,
+`format_date_thai("2026-08-23")` returns `23 ส.ค. 2569`.
+
+Baton reads the document date fresh but passes it straight into
+`compose_message`; the same input appears in the LINE header as `2026-08-23`.
+The rest of the message was deliberately matched byte-for-byte to the old
+`push.py`, so this visible date regression is a lost formatting detail rather
+than a generic-studio decision recorded in configuration.
+
+Suggested fix: format the document date before composition using configurable
+month names and era offset (the footer formatter already has both), while
+leaving unparseable free-form dates unchanged. Pin both ISO and free-form cases
+in the message-format tests.
+
+### F11 — `learner latest` drops unrecognised summary sections 🔴 open
+
+**Lane 10.** `get-latest-lesson` returned the page's whole readable summary:
+every paragraph, heading, list, and to-do, including nested blocks. Baton
+`learner latest` instead feeds the blocks through `SectionRules`, which keeps
+only content below a configured heading such as overview, content, focus, or
+homework.
+
+Baton's own summary contract and renderer support `extra_sections`, but those
+headings are not automatically added to `docs.sections`. Proved with an
+`Ensemble notes` heading and `Counted the band in` paragraph: the legacy
+extractor returned both lines; Baton's default section reader returned empty
+named sections. A published detail can therefore be visible on the document
+but absent from the command intended to answer "what happened last time".
+
+Suggested fix: have the latest-session payload carry both the configured prep
+sections and an ordered remainder/extra-section representation, or expose a
+separate full-page summary field. Keep prep's bounded named sections for its
+own gate.
+
+### F12 — there is no all-completed-lessons report 🔴 open
+
+**Lane 10.** `list-completed-lessons` answered the studio-wide questions
+"how many are done?" and "who is done?" in one call. It sorted every completed
+lesson by date, supported learner and date-range filters, and included the
+instrument, page link, and a ten-line summary preview. Its Notion fallback was
+fixed specifically to traverse every page per learner rather than one row.
+
+Baton can show one learner's sessions and can report who is still in progress,
+but the `learner` command has no completed/list-history counterpart across all
+learners. Reconstructing the report requires an external loop over every
+learner and every session document, losing the one-command filtering and
+partial-failure behaviour the retired skill supplied.
+
+Suggested shape: add a read-only `learner completed` or `lesson list` command
+with `--learner`, `--from`, and `--to`, backed by one bounded cross-learner
+query and carrying unreadable rows instead of dropping the whole report.
+
+### F13 — the in-progress report lost recording readiness 🔴 open
+
+**Lane 10.** The old in-progress report did more than name unfinished pages:
+it scanned every block page (with pagination and a 24-hour cache) and showed
+whether a YouTube recording was already present. It rendered the result as the
+PNG table the skill explicitly required the agent to send, so the teacher saw
+week, date, recording readiness, and title together.
+
+Baton's calendar-window algorithm is a better answer to "who still owes a
+summary" and avoids the old whole-world scan, but its payload contains only
+learner/session status data. It never lists blocks and has no `has_youtube`
+field or report asset, so the studio can no longer see which unfinished
+lessons already have their recording ready from this workflow.
+
+Suggested shape: preserve the bounded calendar candidate set, then optionally
+read those candidates' blocks for a `video_link`/`has_video` column. A
+machine-readable field is the required capability; an HTML/PNG renderer can be
+an opt-in presentation layer if the studio still wants the old image delivery.
+
+### F14 — recorded works became append-only and lost their metadata 🔴 open
+
+**Lane 10.** `student-works` supported add, per-learner/global list, title/type
+search, update, and confirmed delete. Its row carried an instrument override,
+Drive and YouTube links, notes, tags, and a difficulty/rating alongside the
+date and work type.
+
+Baton exposes only `learner works` and `learner add-work`. `Work` models the
+title, type, both links, and date, but not instrument, notes, tags, or rating;
+although an adapter retains the database row in `raw`, `to_dict` hides those
+fields and no write path accepts them. There is also no update, delete, or
+search method in the store protocol. Existing rich rows are therefore only
+partly visible, and a correction or tag change must bypass Baton.
+
+Suggested shape: first model and map the optional legacy fields so reads are
+lossless, then add `work search|update|delete` with partial-update semantics,
+link validation, dry-run, and a confirmation gate for delete. The old
+`google_drive_link` is already preserved by this studio's `drive_link`
+mapping; that part is not a gap.
+
+### F13 — every Baton-published page reads back with an empty `content` 🔴 open
+
+**Cross-lane (4 and 9).** Found while cross-checking the other lanes, which is
+why neither lane caught it: the writer and the reader are in different lanes
+and each looked correct on its own.
+
+Two config trees name the same sections and do not agree:
+
+| | key | heading / keywords |
+|---|---|---|
+| writer, `summary.sections` | `covered` | `What we covered` |
+| reader, `docs.sections` | `content` | `เนื้อหา`, `สิ่งที่เรียน`, `Core Lesson` |
+
+`SectionRules.read()` matches a heading by casefolded substring against that
+keyword list. Nothing in it matches `What we covered`, so the largest section
+of every summary Baton publishes — what was actually taught — reads back
+**empty**. `overview`, `focus`, and `homework` happen to match and hide it.
+
+`prep.required` includes `content`, and prep is fail-closed by design: a
+learner whose page is missing a required field is blocked rather than reported
+half-read. So the teacher gets **no pre-lesson briefing at all** for any
+learner whose last summary came from Baton.
+
+Proved in the gateway against real pages, and the correlation is total:
+
+```
+$ baton prep --learner ... --json
+ready  : ['น้องอิคคิว', 'น้องขิงขิง']          ← last summary written by the old skill
+blocked: น้องพร้อม       -> ['content']        ← published by Baton
+blocked: น้องพอล         -> ['content']
+blocked: น้องปุณณะ       -> ['content']
+blocked: น้องนะโมกีตาร์  -> ['content']
+```
+
+Every Baton-published learner is blocked; every legacy-published one passes.
+It also silently starves `lesson stage`'s previous-session context and
+`learner latest` of the same section, which is the sharp end of F11.
+
+This is F4's shape a second time: a writer and a reader that are supposed to
+describe the same document, wired through two independent config keys with no
+mechanism keeping them in step. Patching the keyword list alone fixes today's
+symptom and leaves the trap armed — renaming a heading in `summary.sections`
+breaks prep again, silently.
+
+Suggested fix: have `SectionRules` accept the configured `summary.sections`
+headings as keywords automatically, in addition to the configured ones, the
+way the footer's strip pattern is now derived from the footer's own lines.
+Keep the explicit keywords for pages the old pipeline wrote. Note the two trees
+do not even share a taxonomy (`covered` vs `content`, `goals` vs
+`practice_goals`), so the mapping has to be stated somewhere on purpose.
+
+Worth checking as part of the fix: `next_goal` is in `prep.warning` and is
+never written by Baton at all, and `practice_goals` reads empty because the
+goals render as `to_do` blocks that `homework_types` claims first. The second
+is by design; the first may be another gap.
+
 ---
 
 ## Notes on partially-audited lanes
@@ -301,11 +451,32 @@ learners whose `current_piece_id` points at a missing row.
   Markdown conversion, preview, chunking, title derivation, and document-store
   error mapping are additive; no prep-report behaviour was found missing there.
 
+### Lane 10 — retired skills, checked and otherwise equivalent or better
+
+- Latest means the newest **Done** document by its date, not the highest week;
+  Baton preserves that rule, adds a numeric tie-breaker, and never guesses a
+  partial learner name. The current payload still carries week, title, date,
+  status, document id, and URL.
+- Today's teaching-schedule mode moved to `baton prep`: calendar discovery,
+  latest lesson context, homework, partial failures, and a whole-day report are
+  preserved there with a fail-closed readiness gate.
+- Baton's in-progress discovery uses the recent calendar window and then
+  checks the exact booked document. This intentionally drops stale/future
+  pages and reports unmatched events and unreadable pages; it is more precise
+  than scanning the ten newest pages of every learner. F13 is only the missing
+  recording-readiness column/presentation.
+- Document and DB reads share the adapters' pagination, bounded concurrency,
+  retry, and error mapping instead of each retired script carrying a divergent
+  request loop.
+- Recorded-work listing remains newest-first and both YouTube and Drive links
+  survive this studio's schema mapping. F14 covers the mutation/search and
+  rich-metadata surface that did not survive.
+
 ### Lane 5 — send to LINE, checked and otherwise equivalent or better
 
-- The message shape, Thai date, instrument icons, random openings/closings,
-  published short summary, Notion link, practice track, and direct video line
-  match the old `push.py` format.
+- The message shape, instrument icons, random openings/closings, published
+  short summary, Notion link, practice track, and direct video line match the
+  old `push.py` format. F10 is the date-format exception.
 - LINE transient retries are preserved through `core.retry.http_request`; the
   deterministic `X-Line-Retry-Key` is also preserved, so a lost response does
   not duplicate a delivery.
@@ -316,6 +487,13 @@ learners whose `current_piece_id` points at a missing row.
   refused; F7 is the canonical-name hole that remains.
 - `--dry-run` runs the real gate and composes the exact message without
   delivery. The current agent skill also keeps the no-bypass rule.
+- The legacy skill always inserted a separate confirmation prompt between
+  preview and send; the Baton workflow treats an explicit send request as the
+  authorization and recommends `--dry-run` only for the first send that day.
+  Recorded as a visible workflow change, not a finding: no data capability is
+  lost and the strict learner/contact gates remain. If the studio still wants
+  a second confirmation for every explicit send, put it back in the agent
+  skill or wrapper rather than pretending the CLI enforces it.
 - The studio-specific ops ledger is preserved outside the package by
   `workspace/scripts/baton_send_lesson.py`; `AGENTS.md` requires that wrapper,
   and the 21:05 reconcile reads Baton's published records. A ledger write
