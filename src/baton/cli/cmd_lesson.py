@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from .. import contracts
 from ..adapters.db import open_store
 from ..adapters.db.base import LearnerStore
-from ..adapters.docs import find_video_link, open_docs
+from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..adapters.docs.base import PreservePolicy
 from ..adapters.media import open_publisher
 from ..adapters.media.google import extract_video_id
@@ -264,7 +264,13 @@ def _update_youtube_description(
     never raised: the document is already published, and this is a nice-to-
     have on top of it, not a reason to make the command exit non-zero.
     """
-    video_link = find_video_link(docs, doc_id)
+    video_link = find_video_link(
+        docs,
+        doc_id,
+        blocks=tuple(
+            str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+        ),
+    )
     video_id = extract_video_id(video_link) if video_link else None
     if not video_id:
         return None

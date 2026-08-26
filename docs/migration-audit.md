@@ -13,7 +13,7 @@ This document is the standing audit that looks for the rest of them. It is a
 working file: claim a lane before auditing it, record what you checked, and
 leave the verdict where the next person can find it.
 
-**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70), 0.3.2 (F6, F7, F10, F15), 0.3.3 (F5)
+**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70), 0.3.2 (F6, F7, F10, F15), 0.3.3 (F5, F16, F18)
 
 ---
 
@@ -448,7 +448,7 @@ never written by Baton at all, and `practice_goals` reads empty because the
 goals render as `to_do` blocks that `homework_types` claims first. The second
 is by design; the first may be another gap.
 
-### F16 — recording messages lost the session-document link 🔴 open
+### F16 — recording messages lost the session-document link ✅ fixed in 0.3.3
 
 **Lane 6.** The old `send_recording.py` ended every recording message with
 "📝 รายละเอียด Notion: \<url\>" — the learner's latest finished session page,
@@ -462,11 +462,10 @@ type and date, and the two link labels — nothing else. No code path fetches a
 document URL for a recording, so the message is a dead end where it used to
 lead somewhere.
 
-Suggested shape: gather `PublishedRecord.latest(learner.id)`'s `doc_url` in
-`handle_recording` (the record already exists, and after a publish it *is*
-"the latest lesson page") and append it as an optional, fail-open line —
-kept out of the gate, since the old behaviour sent without it when the fetch
-failed and links that exist must not be blocked by one that cannot.
+Fixed exactly as suggested: `handle_recording` reads
+`PublishedRecord.latest(learner.id)`'s `doc_url` under `contextlib.suppress`
+and `compose_recording` appends the `📝 รายละเอียด Notion:` line — last line
+of the message, never a gate, absent when nothing is published.
 
 ### F17 — there is no way to send the latest lesson's video by itself 🔴 open
 
@@ -492,7 +491,7 @@ and optional `--session N`, fail-closed on "no video link on that session"
 The summary snippet can come from the same section reader `learner latest`
 already uses.
 
-### F18 — `find_video_link` recognises only `video` blocks 🔴 open
+### F18 — `find_video_link` recognises only `video` blocks ✅ fixed in 0.3.3
 
 **Lane 6; sharpens lane 5's gate.** The old readers accepted a YouTube URL in
 three block shapes: `get_youtube_url_from_page` matched `video.external`,
@@ -508,10 +507,16 @@ YouTube description step sees nothing — and since F6 moved `video_link` into
 the required gate, such a page now **blocks the send entirely** while looking,
 to a person reading the Notion page, like it has its video.
 
-Verified against both code paths, not yet reproduced in the gateway — worth
-one run against a real legacy page known to carry a bookmarked link before
-fixing. Suggested shape: accept `bookmark`/`embed` blocks (configurable block
-types under `docs`), keeping the newest-last ordering.
+Fixed: `find_video_link` accepts `video`, `bookmark`, and `embed` shapes
+(`docs.video_link_blocks` overrides), with the legacy reader's exact
+tolerance kept — outside `video` blocks only video-host URLs (youtube /
+youtu.be) count, so a bookmarked sheet or article is still just a link, and a
+`video` block keeps accepting any host (a Drive-hosted file is a recording
+too). Newest-last ordering preserved across shapes.
+
+Checked against the live pages before fixing: all four currently carry a
+pipeline-written `video` block, so no send was blocked yet — the trap was
+armed for the first hand-added link.
 
 ### F19 — there is no way to onboard a learner 🔴 open
 

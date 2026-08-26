@@ -54,13 +54,33 @@ class Block:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
-def find_video_link(docs: DocStore, doc_id: str) -> str:
-    """The newest video block on a session document, or "" when there is none.
+#: Block shapes that may hold a session's recording link. Notion's UI turns a
+#: pasted URL into a bookmark, so a recording added by hand rather than by the
+#: pipeline is a bookmark — reading `video` blocks alone made such a page look
+#: to Baton like it had no recording at all.
+VIDEO_LINK_BLOCKS: tuple[str, ...] = ("video", "bookmark", "embed")
+
+#: URL markers that make a bookmark or embed a recording rather than a link to
+#: something else (a sheet, an article). A `video` block is exempt: its URL was
+#: chosen as a recording, whatever host it is on. The studio this came from
+#: filtered exactly these hosts in exactly these shapes.
+_VIDEO_HOSTS: tuple[str, ...] = ("youtube", "youtu.be")
+
+
+def find_video_link(
+    docs: DocStore, doc_id: str, *, blocks: tuple[str, ...] = VIDEO_LINK_BLOCKS
+) -> str:
+    """The newest recording link on a session document, or "" when there is none.
 
     Shared by every caller that needs "the recording, if any" — `baton send`
     and the YouTube description step both read the same document the same
     way, rather than each growing its own copy that quietly drifts from the
     other (the original system had this duplicated across skills).
+
+    Args:
+        blocks: Block types that may hold the link. The default matches the
+            shapes the previous system accepted; ``docs.video_link_blocks``
+            overrides it per studio.
 
     A document-store failure degrades to "no recording link" rather than
     raising: the field is optional everywhere it is read, so an outage here
@@ -72,8 +92,11 @@ def find_video_link(docs: DocStore, doc_id: str) -> str:
         return ""
     try:
         for block in reversed(docs.list_blocks(doc_id)):
-            if block.type == "video" and block.url:
-                return block.url
+            if block.type not in blocks or not block.url:
+                continue
+            if block.type != "video" and not any(host in block.url for host in _VIDEO_HOSTS):
+                continue
+            return block.url
     except BatonError:
         return ""
     return ""

@@ -8,11 +8,12 @@ opening a terminal per learner is how sends got lost.
 from __future__ import annotations
 
 import argparse
+import contextlib
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.chat import open_chat
 from ..adapters.db import open_store
-from ..adapters.docs import find_video_link, open_docs
+from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..domain.localdate import DateFormat
 from ..domain.models import Learner
 from ..domain.resolve import resolve_learner
@@ -182,7 +183,13 @@ def _send_one(
         recipient_id = messenger.resolve(ctx.args.to)
         docs = open_docs(ctx.config)
         doc_id = str(published.get("doc_id", ""))
-        video_link = find_video_link(docs, doc_id)
+        video_link = find_video_link(
+            docs,
+            doc_id,
+            blocks=tuple(
+                str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+            ),
+        )
         date, titles = _date_and_titles(docs, doc_id)
         date = _date_format(ctx).of_text(date)
 
@@ -281,6 +288,15 @@ def handle_recording(ctx: Context) -> Exit:
     finally:
         store.close()
 
+    # The lesson page the recording belongs to, when one is published: the
+    # record already exists, and after a publish it *is* "the latest lesson".
+    # Read fail-open — nothing has been published yet, or the record cannot be
+    # read, and the links still go out the way the old sender sent them.
+    doc_url = ""
+    with contextlib.suppress(BatonError):
+        latest = PublishedRecord(ctx.config.state_dir / "published").latest(learner.id)
+        doc_url = str((latest or {}).get("doc_url", ""))
+
     # The contact resolves here rather than before the gate: a wrong contact
     # name should not be the error that masks "there is nothing to send".
     messenger = open_chat(ctx.config)
@@ -293,6 +309,7 @@ def handle_recording(ctx: Context) -> Exit:
         learner_name=learner.name,
         instrument=learner.instrument,
         date=_date_format(ctx).of_text(work.performed_date),
+        doc_url=doc_url,
         dry_run=ctx.args.dry_run,
     )
 

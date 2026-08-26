@@ -57,7 +57,12 @@ _LINK_LABELS = (
 
 
 def compose_recording(
-    work: Work, *, learner_name: str = "", instrument: str = "", date: str | None = None
+    work: Work,
+    *,
+    learner_name: str = "",
+    instrument: str = "",
+    date: str | None = None,
+    doc_url: str = "",
 ) -> str:
     """The message families receive for one recording.
 
@@ -100,6 +105,13 @@ def compose_recording(
             *(f"\n\n{label}\n{value}" for label, value in present),
         ]
     )
+    if doc_url:
+        # Without this line the message is a dead end: links to the recording,
+        # nothing saying which lesson it came from. Fail-open by design — the
+        # old sender attached it when it could and sent without it when it
+        # could not, and a link that cannot be found must not block the links
+        # that exist.
+        body += f"\n\n📝 รายละเอียด Notion: {doc_url}"
     return header + body
 
 
@@ -111,6 +123,7 @@ def send_recording(
     learner_name: str,
     instrument: str = "",
     date: str | None = None,
+    doc_url: str = "",
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Compose the links message and (unless ``dry_run``) deliver it.
@@ -119,8 +132,12 @@ def send_recording(
         date: The performed date already written the studio's way. ``None``
             uses the work's own value, so a caller with no date configuration
             gets exactly what the record holds.
+        doc_url: The lesson page the recording belongs to, appended when given.
+            Empty omits the line — it is never a gate.
     """
-    message = compose_recording(work, learner_name=learner_name, instrument=instrument, date=date)
+    message = compose_recording(
+        work, learner_name=learner_name, instrument=instrument, date=date, doc_url=doc_url
+    )
     if dry_run:
         return {
             "dry_run": True,
