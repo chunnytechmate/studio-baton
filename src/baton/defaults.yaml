@@ -274,13 +274,29 @@ media:
   encode:
     driver: ffmpeg
     binary: ffmpeg
-    profile: auto           # auto | passthrough | 1080p
+    # auto        — every clip keeps its own frame size when the session is
+    #               already uniform, and is fitted into 1920x1080 only when
+    #               the clips disagree (landscape mixed with portrait, say).
+    # 1080p       — always fit into 1920x1080, uniform session or not.
+    # passthrough — a lone clip is copied without re-encoding. More than one
+    #               clip still has to be decoded and joined, so this behaves
+    #               as `auto` there.
+    profile: auto
     # libx264 (CPU) or h264_nvenc (NVIDIA GPU — needs the driver in the
     # container and an ffmpeg build with NVENC compiled in; check with
     # `ffmpeg -encoders | grep nvenc`). Only the final encode moves to the
     # GPU — decode and the concat filter stay on CPU either way — so this is
     # a small, predictable VRAM cost even on a card with little to spare.
     codec: libx264
+    # Tone-map HDR clips (iPhone HLG, and anything BT.2020 or 10-bit) down to
+    # BT.709 before encoding. Left on, an HDR source keeps its transfer
+    # characteristics and plays back washed out on the SDR screens most
+    # parents watch on. Only clips that probe as HDR are touched.
+    tone_map_hdr: true
+    # Force every segment to this frame rate. 0 keeps each clip's own rate.
+    # The pipeline this replaced hard-coded 30, which quietly halved the
+    # motion in 60fps phone footage; set it here only if you want that.
+    fps: 0
     # A wedged encode holds the whole run, so every invocation is killed after
     # this long rather than waiting for someone to notice in the morning.
     timeout_minutes: 30
@@ -293,6 +309,12 @@ calendar:
   driver: google
   google:
     calendar_id: primary
+    # Tries per request, including the first. Rate limiting and the 5xx family
+    # are retried with backoff; a refusal (bad credentials, no such event) is
+    # not. A booking creates its event only after the session document is
+    # already marked in progress, so a transient fault here is the one thing
+    # that can still leave the two records disagreeing.
+    attempts: 3
     refresh_token_env: GOOGLE_CALENDAR_REFRESH_TOKEN
     client_id_env: GOOGLE_CLIENT_ID
     client_secret_env: GOOGLE_CLIENT_SECRET
@@ -367,6 +389,25 @@ summary:
   # Emoji on theory callouts. Matching this to a docs.preserve rule is what
   # keeps them across a later rewrite.
   callout_icon: ""
+
+  # A disclosure appended to every published summary — who wrote it, when, and
+  # that it came from an assistant. Parents read these pages, so a studio that
+  # publishes AI-written summaries almost certainly wants one. Empty by
+  # default: no studio gets a disclaimer it did not ask for.
+  #
+  # `*emphasis*` renders italic. {date} and {time} are substituted from the
+  # studio's own timezone.
+  footer:
+    lines: []
+    # {month} is replaced from `months` below before strftime sees this, since
+    # %B renders English wherever the studio's locale is not installed — which
+    # in a container is nearly always.
+    date_format: "%-d %B %Y"
+    time_format: "%H:%M"
+    # gregorian | buddhist — applied to the year only, as in courses.archive.
+    era: gregorian
+    # Twelve names, January first, or none to leave %B to strftime.
+    months: []
 
   # Constraints enforced on the parent-facing message. These are validated in
   # code, not merely requested in a prompt — a prose instruction not to use

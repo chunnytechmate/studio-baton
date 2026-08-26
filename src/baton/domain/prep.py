@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.docs.base import Block
+from .footer import Footer
 
 if TYPE_CHECKING:
     from ..core.config import Config
@@ -61,15 +62,18 @@ class SectionRules:
             trailing "(Practice Goals)" on a heading changes nothing.
         homework_types: Block types that are homework regardless of the
             heading above them.
-        footer: A pattern stripped from every section — the summariser's
-            credit line, which is about the tool, not the lesson.
+        footer: Patterns stripped from every section — the summariser's
+            credit line, which is about the tool, not the lesson. Two of them:
+            the configured `docs.summary_footer`, which matches pages the
+            previous pipeline wrote, and one derived from `summary.footer`,
+            which matches the ones Baton writes now.
         max_chars: Per-section ceiling, so one runaway page cannot flood a
             report meant to be read before a lesson.
     """
 
     keywords: dict[str, tuple[str, ...]]
     homework_types: frozenset[str]
-    footer: re.Pattern[str] | None
+    footer: tuple[re.Pattern[str], ...]
     max_chars: int
 
     @classmethod
@@ -105,10 +109,14 @@ class SectionRules:
                 remedy="Quote the pattern in baton.yaml, or restore the default "
                 "by removing the key.",
             ) from exc
+        # Baton's own footer is recognised from the lines it publishes rather
+        # than from a second hand-written pattern, so editing the disclosure
+        # cannot leave a stale regex that silently stops stripping it.
+        own = Footer.from_config(config.section("summary.footer")).pattern()
         return cls(
             keywords=keywords,
             homework_types=frozenset(str(kind) for kind in types),
-            footer=footer,
+            footer=tuple(item for item in (footer, own) if item is not None),
             max_chars=int(config.get("prep.max_section_chars", 400)),
         )
 
@@ -143,7 +151,7 @@ class SectionRules:
         sections: dict[str, str] = {}
         for name, lines in collected.items():
             joined = "\n".join(lines).strip()
-            if self.footer is not None:
-                joined = self.footer.sub("", joined).strip()
+            for pattern in self.footer:
+                joined = pattern.sub("", joined).strip()
             sections[name] = joined[: self.max_chars]
         return sections

@@ -29,7 +29,7 @@ MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 RULES = SectionRules(
     keywords=dict(DEFAULT_SECTIONS),
     homework_types=frozenset({"to_do"}),
-    footer=re.compile(DEFAULT_FOOTER, re.DOTALL),
+    footer=(re.compile(DEFAULT_FOOTER, re.DOTALL),),
     max_chars=400,
 )
 

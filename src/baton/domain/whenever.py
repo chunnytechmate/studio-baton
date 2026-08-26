@@ -40,6 +40,16 @@ def today_in(timezone: str) -> date:
     return datetime.now(ZoneInfo(timezone)).date()
 
 
+def now_in(timezone: str) -> datetime:
+    """The current moment in the studio's timezone.
+
+    The date-and-time counterpart to :func:`today_in`, for the same reason: a
+    summary published at 01:00 in Bangkok is stamped 18:00 the previous day if
+    the server's clock is the one consulted.
+    """
+    return datetime.now(ZoneInfo(timezone))
+
+
 def parse_date(
     value: str,
     *,

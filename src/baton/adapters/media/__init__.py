@@ -68,6 +68,8 @@ def encode_profile(config: Config) -> EncodeProfile:
         timeout_seconds=int(config.get("media.encode.timeout_minutes", 30)) * 60,
         extra_args=[str(item) for item in config.get("media.encode.extra_args", [])],
         codec=str(config.get("media.encode.codec", "libx264")),
+        tone_map_hdr=bool(config.get("media.encode.tone_map_hdr", True)),
+        fps=int(config.get("media.encode.fps", 0)),
     )
 
 

@@ -60,6 +60,15 @@ class EncodeProfile:
     #: default) or "h264_nvenc" (NVIDIA GPU — much faster, needs the driver
     #: and a codec-capable ffmpeg build; see FfmpegEncoder._args).
     codec: str = "libx264"
+    #: Tone-map HDR clips down to BT.709 before encoding. On by default: an
+    #: untouched HDR source plays back washed out on the SDR screens most
+    #: viewers use. Only clips that probe as HDR are affected. Turn off to
+    #: keep HDR through to the deliverable.
+    tone_map_hdr: bool = True
+    #: Force every segment to this frame rate. 0 leaves each clip's own rate
+    #: alone, which is the default because forcing 30 on 60fps phone footage
+    #: throws away half the motion for no benefit the viewer asked for.
+    fps: int = 0
 
 
 @runtime_checkable
