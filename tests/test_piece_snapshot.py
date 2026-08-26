@@ -55,9 +55,9 @@ def test_snapshot_states_round_trip_without_conflating_legacy_state():
         PieceSnapshot(status="captured", captured_at="different", piece=piece)
     )
     assert deliberate_none.status == "none"
-    assert PieceSnapshot.from_record(
-        {"piece_snapshot": deliberate_none.to_dict()}
-    ) == deliberate_none
+    assert (
+        PieceSnapshot.from_record({"piece_snapshot": deliberate_none.to_dict()}) == deliberate_none
+    )
     assert legacy.status == "unavailable"
     assert not deliberate_none.same_content(legacy)
 
@@ -117,8 +117,6 @@ def test_no_song_is_explicit_but_a_dangling_song_id_saves_nothing(studio, capsys
 
 
 def test_a_legacy_draft_deserializes_as_snapshot_unavailable():
-    draft = LessonDraft.from_dict(
-        {"learner_id": "1", "learner_name": "Ada", "session_number": 3}
-    )
+    draft = LessonDraft.from_dict({"learner_id": "1", "learner_name": "Ada", "session_number": 3})
 
     assert draft.piece_snapshot.status == "unavailable"
