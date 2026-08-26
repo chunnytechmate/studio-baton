@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS works (
     title          TEXT    NOT NULL,
     type           TEXT    NOT NULL DEFAULT 'performance',
     video_link     TEXT    NOT NULL DEFAULT '',
+    -- Optional second home of the recording (a Drive file beside a YouTube
+    -- upload). Sending a work means sending whichever links exist.
+    drive_link     TEXT    NOT NULL DEFAULT '',
     performed_date TEXT    NOT NULL DEFAULT '',
     created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );

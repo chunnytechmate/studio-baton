@@ -93,6 +93,9 @@ class Work:
     title: str
     type: str = "performance"
     video_link: str = ""
+    #: A second home of the same recording — the Drive file beside the YouTube
+    #: upload. Studios that keep only one link leave it empty.
+    drive_link: str = ""
     performed_date: str = ""
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -103,5 +106,6 @@ class Work:
             "title": self.title,
             "type": self.type,
             "video_link": self.video_link,
+            "drive_link": self.drive_link,
             "performed_date": self.performed_date,
         }

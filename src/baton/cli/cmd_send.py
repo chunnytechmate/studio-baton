@@ -14,8 +14,9 @@ from ..adapters.chat import open_chat
 from ..adapters.db import open_store
 from ..adapters.docs import find_video_link, open_docs
 from ..domain.resolve import resolve_learner
-from ..errors import BatonError, UsageError
+from ..errors import BatonError, GateError, NeedsHumanError, UsageError
 from ..exits import Exit
+from ..pipelines.recording import list_candidates, send_recording
 from ..pipelines.send import send_lesson
 from ..pipelines.staging import PublishedRecord
 
@@ -44,6 +45,33 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     lesson.add_argument("--dry-run", action="store_true", help="Run the gate and stop.")
     lesson.set_defaults(handler=handle_lesson)
+
+    recording = group.add_parser(
+        "recording",
+        help="Send a recorded work's Drive/YouTube links to one learner's contact.",
+        description=(
+            "Lists the learner's recorded works and sends the chosen one's "
+            "links. Two invocations by design: without --pick the command ends "
+            "at exit 3 carrying the numbered list; --pick <n> then delivers "
+            "exactly that work. Whatever side of the recording is missing is "
+            "simply not sent."
+        ),
+    )
+    recording.add_argument("name", metavar="NAME")
+    # Not required at parse time: the listing half needs no recipient at all.
+    # Only a picked send goes anywhere.
+    recording.add_argument(
+        "--to", metavar="CONTACT", help="Configured contact name. Required once --pick is used."
+    )
+    recording.add_argument(
+        "--pick",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Send the Nth recording from the newest-first list (1 is the latest).",
+    )
+    recording.add_argument("--dry-run", action="store_true", help="Compose the message and stop.")
+    recording.set_defaults(handler=handle_recording)
 
     batch = group.add_parser("batch", help="Send several learners' messages in one invocation.")
     batch.add_argument("--to", metavar="CONTACT", required=True)
@@ -169,6 +197,85 @@ def handle_lesson(ctx: Context) -> Exit:
         # rejected without a hard error) without raising; this line is what
         # would surface that the moment one exists.
         + ("" if ctx.args.dry_run or result.get("sent") else "  ✗ NOT DELIVERED"),
+    )
+    return Exit.OK
+
+
+def handle_recording(ctx: Context) -> Exit:
+    """List a learner's recorded works, or deliver the picked one's links.
+
+    Two invocations and no prompt, because whatever runs Baton drives it with
+    commands — the studio's agent relays the list to the person choosing, then
+    answers with ``--pick``. Each call reads the store fresh: nothing is
+    remembered between them, so a pick always lands on the row the list the
+    person answered from was built from.
+    """
+    store = open_store(ctx.config)
+    try:
+        learner = _resolve(ctx, store, ctx.args.name)
+        works = store.list_works(learner.id)
+
+        pick = ctx.args.pick
+        if pick is None:
+            if not works:
+                raise GateError(
+                    f"{learner.name} has no recorded work to send.",
+                    remedy="Record one first with `baton learner add-work "
+                    f'"{ctx.args.name}" --title … (--video-link / --drive-link)`.',
+                )
+            # Which recording goes out is a person's call — the date ordering
+            # suggests, but cannot know, what the parent meant.
+            raise NeedsHumanError(
+                f"{learner.name} has {len(works)} recorded work(s) — which one goes out?",
+                candidates=list_candidates(works),
+                remedy="Re-run with --pick <number> from that list; 1 is the "
+                "most recent. Nothing has been sent.",
+            )
+
+        if ctx.args.to is None:
+            raise UsageError(
+                "A picked recording needs somewhere to go.",
+                remedy="Re-run with --to <contact> alongside --pick.",
+                details={"candidates": list_candidates(works)},
+            )
+
+        if not 1 <= pick <= len(works):
+            raise UsageError(
+                f"--pick {pick} does not match any of {learner.name}'s "
+                f"{len(works)} recorded work(s).",
+                remedy=(
+                    "--pick counts the newest-first list: 1 is the latest. "
+                    "Re-run without --pick to see it."
+                    if works
+                    else f"No recording exists yet — record one first with "
+                    f'`baton learner add-work "{ctx.args.name}" --title …`.'
+                ),
+                details={"candidates": list_candidates(works)} if works else None,
+            )
+        index = pick - 1
+    finally:
+        store.close()
+
+    # The contact resolves here rather than before the gate: a wrong contact
+    # name should not be the error that masks "there is nothing to send".
+    messenger = open_chat(ctx.config)
+    recipient_id = messenger.resolve(ctx.args.to)
+    work = works[index]
+    result = send_recording(
+        messenger,
+        recipient_id=recipient_id,
+        work=work,
+        learner_name=learner.name,
+        instrument=learner.instrument,
+        dry_run=ctx.args.dry_run,
+    )
+
+    verb = "would send" if ctx.args.dry_run else "sent"
+    delivered = "" if ctx.args.dry_run or result.get("sent") else "  ✗ NOT DELIVERED"
+    ctx.report.result(
+        result,
+        human=f"{verb.capitalize()} the recording “{work.title}” for {learner.name} "
+        f"to {ctx.args.to}{delivered}",
     )
     return Exit.OK
 

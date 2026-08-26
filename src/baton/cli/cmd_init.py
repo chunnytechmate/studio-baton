@@ -217,6 +217,21 @@ def _env_template(answers: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
+def _upgrade_database(connection: sqlite3.Connection) -> None:
+    """Bring a database the schema predates up to the current columns.
+
+    ``CREATE TABLE IF NOT EXISTS`` leaves an older `works` table exactly as it
+    was — which is correct for tables baton does not own, but means re-running
+    ``init`` on an existing profile would never add a column Baton now expects.
+    The added ones are therefore applied as explicit, idempotent ALTERs here,
+    so upgrading is "run init again" rather than hand-editing SQL. New columns
+    only: existing rows keep their values (defaults fill what they lack).
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(works)")}
+    if columns and "drive_link" not in columns:
+        connection.execute("ALTER TABLE works ADD COLUMN drive_link TEXT NOT NULL DEFAULT ''")
+
+
 def _create_database(path: Path, *, sample_data: bool) -> int:
     """Build the SQLite schema, optionally with the sample rows.
 
@@ -227,6 +242,7 @@ def _create_database(path: Path, *, sample_data: bool) -> int:
     connection = sqlite3.connect(path)
     try:
         connection.executescript((MIGRATIONS / "sqlite.sql").read_text(encoding="utf-8"))
+        _upgrade_database(connection)
         if sample_data:
             connection.executescript((MIGRATIONS / "seed_example.sql").read_text(encoding="utf-8"))
         connection.commit()

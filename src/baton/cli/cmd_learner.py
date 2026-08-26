@@ -101,6 +101,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     add_work.add_argument("--title", required=True)
     add_work.add_argument("--type", default="performance", help="performance, cover, exam, …")
     add_work.add_argument("--video-link", default="")
+    add_work.add_argument(
+        "--drive-link", default="", help="A second home of the recording (Drive file)."
+    )
     add_work.add_argument("--date", default="", metavar="YYYY-MM-DD")
     add_work.add_argument(
         "--dry-run", action="store_true", help="Show what would be recorded, and stop."
@@ -415,6 +418,7 @@ def handle_add_work(ctx: Context) -> Exit:
             title=ctx.args.title,
             type=ctx.args.type,
             video_link=ctx.args.video_link,
+            drive_link=ctx.args.drive_link,
             performed_date=ctx.args.date,
         )
         if ctx.args.dry_run:

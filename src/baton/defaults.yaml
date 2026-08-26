@@ -82,6 +82,7 @@ db:
       title: title
       type: type
       video_link: video_link
+      drive_link: drive_link
       performed_date: performed_date
 
 # ---------------------------------------------------------------------------

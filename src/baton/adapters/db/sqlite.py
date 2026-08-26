@@ -307,6 +307,7 @@ class SqliteStore:
             title=_text(row[fields.column("title")]),
             type=_text(self._get(row, fields, "type", "performance")) or "performance",
             video_link=_text(self._get(row, fields, "video_link")),
+            drive_link=_text(self._get(row, fields, "drive_link")),
             performed_date=_text(self._get(row, fields, "performed_date")),
             raw=dict(row),
         )
@@ -332,6 +333,7 @@ class SqliteStore:
         for name, value in (
             ("type", work.type),
             ("video_link", work.video_link),
+            ("drive_link", work.drive_link),
             ("performed_date", work.performed_date),
         ):
             if fields.has(name) and value:

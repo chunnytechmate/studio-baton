@@ -54,7 +54,7 @@ own speech layer, but the operational CLI is not coupled to one ASR model.
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
 | `baton learner` | Look up learners, sessions, pieces, and past work |
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
-| `baton send` | Send a lesson summary, refusing when required data is missing |
+| `baton send` | Send a lesson summary or a recorded work's links (Drive/YouTube), refusing to send anything incomplete |
 | `baton video` | Collect recordings → encode → publish → link back, resumable |
 | `baton calendar` | Book lessons, keeping documents and calendar in step |
 | `baton notes` | Push a note or a Markdown file to a documents page |
