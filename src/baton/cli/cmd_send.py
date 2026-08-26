@@ -160,6 +160,14 @@ def handle_lesson(ctx: Context) -> Exit:
         human=f"{verb.capitalize()} message for {result['learner']} "
         f"({ctx.config.label('session')} {result['session_number']}) "
         f"to {ctx.args.to}"
+        # `not result.get("sent")` has no reachable trigger today: every
+        # Messenger.send() either raises (the send failed, and _send_one lets
+        # that propagate before this point is ever reached) or returns
+        # SendOutcome(sent=True, ...) -- no shipped driver or test fake
+        # constructs sent=False. The field stays on SendOutcome for a future
+        # driver that reports a failed-but-not-exceptional send (e.g. queued,
+        # rejected without a hard error) without raising; this line is what
+        # would surface that the moment one exists.
         + ("" if ctx.args.dry_run or result.get("sent") else "  ✗ NOT DELIVERED"),
     )
     return Exit.OK
