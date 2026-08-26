@@ -21,6 +21,13 @@ state/
 data/
 *.db
 
+# Only the sample profile is public. Even with credentials externalized to
+# env vars, a real profile's yaml still carries real learner names (contact
+# aliases) and real page references — it belongs to the private overlay,
+# never to this public repo.
+profiles/*
+!profiles/example/
+
 # Editor / OS
 .DS_Store
 *.swp
