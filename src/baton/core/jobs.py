@@ -334,7 +334,13 @@ class JobRunner:
 
         status = str(meta.get("status", "running"))
         hb_path = self._heartbeat_path(job_id)
-        heartbeat_age = time.time() - hb_path.stat().st_mtime if hb_path.exists() else None
+        heartbeat_age: float | None = None
+        # exists() and stat() are two calls: a concurrent prune can remove the
+        # job dir between them, and a vanished heartbeat means "no heartbeat",
+        # not a crash.
+        with suppress(FileNotFoundError):
+            if hb_path.exists():
+                heartbeat_age = time.time() - hb_path.stat().st_mtime
 
         if status == "running":
             alive = pid_alive(meta.get("pid"))
