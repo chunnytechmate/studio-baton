@@ -31,10 +31,11 @@ from ..adapters.docs import find_video_link, open_docs
 from ..adapters.docs.base import PreservePolicy
 from ..adapters.media import open_publisher
 from ..adapters.media.google import extract_video_id
+from ..domain.footer import Footer
 from ..domain.models import Learner
 from ..domain.resolve import resolve_learner
 from ..domain.status import StatusVocabulary
-from ..domain.whenever import today_in
+from ..domain.whenever import now_in, today_in
 from ..errors import BatonError, ConfigError, UpstreamError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
@@ -209,6 +210,11 @@ def _short_summary_rules(ctx: Context) -> dict[str, Any]:
         "allow_emoji": bool(rules.get("allow_emoji", False)),
         "allow_links": bool(rules.get("allow_links", False)),
     }
+
+
+def _footer(ctx: Context) -> Footer:
+    """The disclosure appended to every published summary, from config."""
+    return Footer.from_config(ctx.config.section("summary.footer"))
 
 
 def _theory(ctx: Context) -> dict[str, str]:
@@ -594,7 +600,12 @@ def handle_render(ctx: Context) -> Exit:
         part
         for part in (
             render_piece.to_markdown(draft.piece_snapshot),
-            render.to_markdown(draft.summary, sections=sections, callout_texts=theory),
+            render.to_markdown(
+                draft.summary,
+                sections=sections,
+                callout_texts=theory,
+                footer_lines=_footer(ctx).render(now_in(ctx.config.timezone)),
+            ),
         )
         if part
     )
@@ -672,6 +683,8 @@ def handle_publish(ctx: Context) -> Exit:
         PreservePolicy.from_config(ctx.config.get("docs.preserve", [])),
         sections=ctx.config.get("summary.sections", {}),
         callout_icon=str(ctx.config.get("summary.callout_icon", "")),
+        footer=_footer(ctx),
+        timezone=ctx.config.timezone,
     )
     theory = _theory(ctx)
     label = ctx.config.label("session")

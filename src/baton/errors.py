@@ -141,15 +141,16 @@ class UpstreamError(BatonError):
         status: int | None = None,
         attempts: int | None = None,
         remedy: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
-        details: dict[str, Any] = {}
+        merged: dict[str, Any] = dict(details or {})
         if service:
-            details["service"] = service
+            merged["service"] = service
         if status is not None:
-            details["status"] = status
+            merged["status"] = status
         if attempts is not None:
-            details["attempts"] = attempts
-        super().__init__(message, remedy=remedy, details=details)
+            merged["attempts"] = attempts
+        super().__init__(message, remedy=remedy, details=merged)
 
 
 class StateError(BatonError):

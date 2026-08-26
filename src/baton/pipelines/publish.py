@@ -20,11 +20,15 @@ would be gone with no way to tell what had been there.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from ..adapters.docs.base import Block, DocStore, PreservePolicy
+from ..domain.footer import Footer
 from ..domain.status import DONE
+from ..domain.whenever import now_in
 from ..render import piece as render_piece
 from ..render import summary as render_summary
 from .staging import PieceSnapshot
@@ -75,11 +79,19 @@ class SummaryPublisher:
         *,
         sections: dict[str, Any] | None = None,
         callout_icon: str = "",
+        footer: Footer | None = None,
+        timezone: str = "UTC",
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.docs = docs
         self.preserve = preserve
         self.sections = sections
         self.callout_icon = callout_icon
+        self.footer = footer
+        self.timezone = timezone
+        # Injectable so a test can pin the stamp; nothing else reads a clock
+        # in this module, which is what keeps rendering deterministic.
+        self.clock = clock or (lambda: now_in(timezone))
 
     def _blocks(
         self,
@@ -94,6 +106,7 @@ class SummaryPublisher:
             sections=self.sections,
             callout_texts=callout_texts,
             callout_icon=self.callout_icon,
+            footer_lines=self.footer.render(self.clock()) if self.footer else None,
         )
         return _without_preserved_resource_duplicates(generated, preserved)
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..domain.footer import Segment, emphasis
+
 DEFAULT_SECTIONS = {
     "overview": "Overview",
     "covered": "What we covered",
@@ -31,6 +33,26 @@ def _heading(text: str) -> dict[str, Any]:
 
 def _paragraph(text: str) -> dict[str, Any]:
     return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": _rich_text(text)}}
+
+
+def _segmented(segments: list[Segment]) -> list[dict[str, Any]]:
+    """Rich text carrying the italic runs a footer line asked for."""
+    return [
+        {
+            "type": "text",
+            "text": {"content": segment.text},
+            "annotations": {"italic": segment.italic},
+        }
+        for segment in segments
+    ]
+
+
+def _footer_paragraph(line: str) -> dict[str, Any]:
+    return {
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {"rich_text": _segmented(emphasis(line))},
+    }
 
 
 def _bullet(text: str) -> dict[str, Any]:
@@ -77,6 +99,7 @@ def to_blocks(
     sections: dict[str, Any] | None = None,
     callout_texts: dict[str, str] | None = None,
     callout_icon: str = "",
+    footer_lines: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Render a validated summary as document blocks.
 
@@ -88,6 +111,9 @@ def to_blocks(
             than by the model, so callout content is always the studio's own.
         callout_icon: Emoji for theory callouts. Matching it to a
             ``docs.preserve`` rule is what keeps them across a later rewrite.
+        footer_lines: Already-rendered disclosure lines, appended last. The
+            clock reading they contain is resolved by the caller, so this
+            function stays deterministic.
 
     Returns:
         Blocks in document order.
@@ -128,6 +154,8 @@ def to_blocks(
         blocks.append(_heading(names["goals"]))
         blocks.extend(_todo(goal) for goal in goals)
 
+    blocks.extend(_footer_paragraph(line) for line in footer_lines or [])
+
     return blocks
 
 
@@ -136,6 +164,7 @@ def to_markdown(
     *,
     sections: dict[str, Any] | None = None,
     callout_texts: dict[str, str] | None = None,
+    footer_lines: list[str] | None = None,
 ) -> str:
     """Render the same summary as Markdown, for review before publishing."""
     names = _sections(sections)
@@ -187,6 +216,11 @@ def to_markdown(
         lines.append("")
         lines.extend(f"- [ ] {goal}" for goal in goals)
         lines.append("")
+
+    if footer_lines:
+        lines.append("---")
+        lines.append("")
+        lines.extend(footer_lines)
 
     return "\n".join(lines).rstrip() + "\n"
 
