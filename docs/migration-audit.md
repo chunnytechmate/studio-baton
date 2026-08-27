@@ -793,23 +793,36 @@ cd ~/studio-baton
 .venv/bin/python -m mypy src/baton
 ```
 
-Deploying to the running gateway — **both installs, or the fix silently does
-not apply**:
+Deploying to the running gateway. **Superseded 2026-08-28** — the procedure
+that used to live here built a wheel and hand-installed it into the container
+in two places, and it was wrong in both directions: the next image rebuild
+reverted it, and the second install target (`baton-venv`) was a path nothing
+ever ran from, which is how it sat at 0.4.0 — the release that broke every
+resumable upload — for a month after the system had moved on. That venv was
+retired on 2026-08-28.
+
+The gateway now installs Baton from PyPI as the last layer of its image, so
+changing the version is a build-arg edit and a recreate. Timed at 5-7 seconds
+warm:
 
 ```bash
-uv build --wheel
-docker cp dist/studio_baton-<version>-py3-none-any.whl openclaw-gateway:/tmp/
-docker exec -u root openclaw-gateway python3 -m pip install \
-  --no-deps --force-reinstall --break-system-packages /tmp/studio_baton-<version>-py3-none-any.whl
-docker exec openclaw-gateway /home/node/.openclaw/baton-venv/bin/python3 -m pip install \
-  --no-deps --force-reinstall /tmp/studio_baton-<version>-py3-none-any.whl
+# in the deployment's env file, e.g. OPENCLAW_IMAGE_PIP_PACKAGES=studio-baton[google]==0.4.2
+docker compose --env-file <env> build openclaw-gateway
+docker compose --env-file <env> up -d --no-deps --force-recreate openclaw-gateway
 docker exec openclaw-gateway baton --version   # expect the new version
 ```
 
-> ⚠️ `docker-compose.yml` pins `studio-baton[google]` to an exact version from
-> PyPI (`0.4.1` as of 2026-08-27). Any
-> image rebuild reverts every hand-installed wheel. Publish to PyPI or repoint
-> that build arg before rebuilding.
+Two things this depends on, both easy to get wrong:
+
+* **The version has to be on PyPI first.** That layer passes no `--index-url`,
+  so it resolves against the public index whatever else is configured. A
+  private index needs `--build-arg PIP_INDEX_URL=… --build-arg PIP_TRUSTED_HOST=…`.
+* **Compose needs its env file named on every invocation, `build` included.**
+  Without it the project name changes and the interpolated secrets come back
+  empty, which recreates the gateway with no tokens.
+
+The private overlay's own runbook holds this deployment's exact values; this
+entry records the shape, not the machine.
 
 ---
 
