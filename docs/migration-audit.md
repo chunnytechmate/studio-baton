@@ -794,7 +794,8 @@ docker exec openclaw-gateway /home/node/.openclaw/baton-venv/bin/python3 -m pip 
 docker exec openclaw-gateway baton --version   # expect the new version
 ```
 
-> ⚠️ `docker-compose.yml` pins `studio-baton[google]==0.2.7` from PyPI. Any
+> ⚠️ `docker-compose.yml` pins `studio-baton[google]` to an exact version from
+> PyPI (`0.4.0` as of 2026-08-27). Any
 > image rebuild reverts every hand-installed wheel. Publish to PyPI or repoint
 > that build arg before rebuilding.
 
