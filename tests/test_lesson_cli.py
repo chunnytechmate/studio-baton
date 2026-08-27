@@ -895,6 +895,47 @@ def test_publish_leaves_a_hand_pasted_recording_alone(studio, capsys):
     assert not [block for block in docs.list_blocks("doc-ada-03") if block.type == "video"]
 
 
+def test_publish_links_an_upload_whose_job_has_been_archived(studio, capsys):
+    """A folder holds one live job, so the week the next lesson is collected
+    the finished one is moved aside. The page it never linked is still worth
+    repairing — and the days between the upload and someone noticing are
+    exactly when the next lesson gets filmed.
+    """
+    from baton.pipelines.video import VideoJobStore
+
+    profile, docs = studio
+    _uploaded(profile)
+    store = VideoJobStore(profile / "state" / "video")
+    store.archive(store.get("Ada Whitfield"))
+    assert store.list() == [], "precondition: the live listing no longer shows it"
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["recording"] == {"status": "linked", "url": RECORDING}
+    assert RECORDING in {block.url for block in docs.list_blocks("doc-ada-03")}
+
+
+def test_publish_prefers_the_most_recent_record_of_one_session(studio, capsys):
+    """Archiving keeps the old record beside the new one. A week re-run after
+    a bad upload has two, and the one that stands is the later."""
+    from baton.pipelines.video import VideoJobStore
+
+    profile, docs = studio
+    _uploaded(profile, url="https://youtu.be/supersededXX")
+    store = VideoJobStore(profile / "state" / "video")
+    store.archive(store.get("Ada Whitfield"))
+    _uploaded(profile)  # the re-run, live and newer
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["recording"] == {"status": "linked", "url": RECORDING}
+
+
 def test_publish_does_not_link_another_sessions_upload(studio, capsys):
     """Job records outlive the session they were for. Linking week 2's
     recording under week 3 is worse than linking nothing."""

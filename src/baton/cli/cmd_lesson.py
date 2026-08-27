@@ -454,25 +454,39 @@ def _uploaded_recording(ctx: Context, draft: LessonDraft) -> str:
     for, and whether `uploaded` happened. A job that has uploaded holds the
     only durable note that the recording exists at all, and nothing else in
     Baton can answer "is there one?" once the run has ended.
-    """
-    from ..pipelines.video import VideoJobStore
 
-    for job in VideoJobStore(ctx.config.state_dir / "video").list():
+    Archived jobs are read too. A folder holds one live job, and the week a
+    learner's next lesson is collected the finished one is moved aside — so
+    without this, a page could only be repaired until the next lesson was
+    filmed, which is exactly the stretch of days a repair is wanted for.
+    """
+    from ..pipelines.video import VideoJob, VideoJobStore
+
+    def owns_this_session(job: VideoJob) -> bool:
         if int(job.session_number or 0) != int(draft.session_number):
-            continue
+            return False
         # Ids are the identity when both sides have one; a job recorded before
         # the learner was matched has only the folder name it came from.
         if job.learner_id and draft.learner_id:
-            if str(job.learner_id) != str(draft.learner_id):
-                continue
-        elif job.learner_name != draft.learner_name:
-            continue
-        if not job.done("uploaded"):
-            continue
-        url = str(job.steps.get("uploaded", {}).get("url", "")) or job.video_url
-        if url:
-            return url
-    return ""
+            return str(job.learner_id) == str(draft.learner_id)
+        return job.learner_name == draft.learner_name
+
+    jobs = VideoJobStore(ctx.config.state_dir / "video").list(include_archived=True)
+    candidates = [
+        job
+        for job in jobs
+        if owns_this_session(job)
+        and job.done("uploaded")
+        and (str(job.steps.get("uploaded", {}).get("url", "")) or job.video_url)
+    ]
+    if not candidates:
+        return ""
+    # One session can leave more than one record — a job archived, then a
+    # re-run of the same week. The most recent one is the upload that stands,
+    # and `list` yields live records before archived ones, so a tie on a
+    # timestamp written to the second still resolves to the live job.
+    newest = max(candidates, key=lambda job: job.updated_at)
+    return str(newest.steps.get("uploaded", {}).get("url", "")) or newest.video_url
 
 
 def _stitch_recording(

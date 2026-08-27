@@ -201,6 +201,10 @@ baton lesson render   "Ada Whitfield"              # deterministic preview
 baton lesson publish  "Ada Whitfield"
 ```
 
+Each of these takes the learner positionally or as `--learner "<name>"`.
+`publish --session N` does not choose a lesson — a learner has one draft at a
+time — it refuses if the staged draft is for a different one.
+
 Rules a JSON Schema cannot express are checked in code, because they are exactly
 the ones a small model ignores when they are written as prose — no emoji in the
 parent's message, no links, one line per field, and every theory callout
@@ -246,6 +250,13 @@ docs:
     - {type: embed}
     - {type: callout, icon: "🎧"}
 ```
+
+**A publish also puts back a recording the page is missing.** The video
+pipeline records an upload the moment YouTube returns the id, so a run that
+dies afterwards leaves the recording published and the page with no link to
+it — and the send gate then refuses a lesson whose video exists. `lesson
+publish` looks for such an upload and appends the block itself, reporting it
+as `recording`, so the repair is not a hand-written Notion block.
 
 **Booking happens in an order that cannot leave two records disagreeing.**
 A lesson is marked in progress on its document *first*; the calendar event is
@@ -348,6 +359,7 @@ command can be handed to a supervisor that outlives the shell that started it:
 ```bash
 baton job spawn --name nightly -- baton video run   # returns at once
 baton job list                                      # what is running
+baton job list --all                                # including old finished ones
 baton job wait <id> --timeout 90                    # exits 8 if still going
 baton job logs <id> --tail 50
 baton job stop <id>                                 # SIGTERM, then SIGKILL
