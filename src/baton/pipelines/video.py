@@ -109,6 +109,11 @@ class VideoJob:
     error: str = ""
     updated_at: str = field(default_factory=_now)
 
+    # `error` stays an empty string in memory so every `job.error or ...` reads
+    # naturally, but the JSON schema says "no error" with null — a stable
+    # schema is the contract `video status --json` is parsed against, and ""
+    # forced consumers to branch on a third state that means the same as null.
+
     def done(self, step: str) -> bool:
         return bool(self.steps.get(step, {}).get("done"))
 
@@ -128,7 +133,7 @@ class VideoJob:
             "video_url": self.video_url,
             "steps": self.steps,
             "status": self.status,
-            "error": self.error,
+            "error": self.error or None,
             "updated_at": self.updated_at,
         }
 
@@ -145,7 +150,7 @@ class VideoJob:
             video_url=str(data.get("video_url", "")),
             steps=dict(data.get("steps", {})),
             status=str(data.get("status", "in_progress")),
-            error=str(data.get("error", "")),
+            error=str(data.get("error") or ""),
             updated_at=str(data.get("updated_at", _now())),
         )
 
