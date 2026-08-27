@@ -76,4 +76,7 @@ page published before this release lacks the heading, and prep is fail-closed.
 
 ## 0.4.1 and earlier
 
-Not recorded here; see the git history and `docs/migration-audit.md`.
+Not recorded here; see the git history. The audit of what the move from the
+studio's previous scripts left behind lived in `docs/migration-audit.md` until
+0.4.2 — its fourteen fixed findings are explained in the code they changed, and
+its six open ones are issues #74-#79.
