@@ -28,6 +28,7 @@ Every command takes `--json` and prints one document. Read the exit code first.
 | Record a performance | `baton learner add-work "<name>" --title "..." --type cover --json` |
 | The piece catalogue | `baton learner pieces --json` |
 | Assign a piece | `baton learner assign "<name>" --piece <id> --json` |
+| Assign and repair published piece sections | `baton learner assign "<name>" --piece <id> --update-published --dry-run --json` |
 
 ## Rules
 
@@ -46,6 +47,12 @@ the only candidate, even when there is only one.
 
 **Writes take `--dry-run`.** Use it when the user's intent is ambiguous, show
 the result, and confirm before running it for real.
+
+When changing a piece after a lesson was published, include
+`--update-published`. First run it with `--dry-run` and report the exact pages
+in `published_updates.pages`; the real run replaces only Baton's rendered
+piece heading and resources from the old assignment. It does not rewrite the
+lesson summary, recording, or other preserved callouts.
 
 ## Exit codes
 

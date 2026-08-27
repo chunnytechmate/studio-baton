@@ -105,3 +105,54 @@ def stored_identity(block: Block) -> ResourceIdentity | None:
     if block.type == "callout" and block.icon == "🎧" and text.startswith("Practice track: "):
         return (block.type, text, block.icon)
     return None
+
+
+def stored_matches_payload(block: Block, payload: Mapping[str, Any]) -> bool:
+    """Whether a stored block is exactly one block this renderer emitted.
+
+    This deliberately recognises only Baton's narrow, deterministic shapes.
+    It is used when a piece assignment is changed retroactively: a matching
+    heading/resource may be replaced, while a teacher-written paragraph or a
+    lesson recording that happens to sit beside it must remain untouched.
+    """
+    kind = payload.get("type")
+    if not isinstance(kind, str) or block.type != kind:
+        return False
+    if kind == "heading_2":
+        body = payload.get(kind)
+        return isinstance(body, Mapping) and block.text.strip() == _payload_text(body)
+    identity = payload_identity(payload)
+    return identity is not None and stored_identity(block) == identity
+
+
+def stored_section_ids(blocks: list[Block], snapshot: PieceSnapshot) -> list[str]:
+    """Find the one rendered piece section and return only its block ids.
+
+    The heading anchors ownership and the next heading bounds the section.
+    Within those bounds, only exact payloads from ``snapshot`` qualify. An
+    absent or duplicate anchor returns no ids: guessing in either case could
+    delete a teacher's content or the wrong copy.
+    """
+    payloads = to_blocks(snapshot)
+    if not payloads:
+        return []
+    heading = payloads[0]
+    anchors = [
+        index for index, block in enumerate(blocks) if stored_matches_payload(block, heading)
+    ]
+    if len(anchors) != 1:
+        return []
+
+    start = anchors[0]
+    stop = next(
+        (index for index in range(start + 1, len(blocks)) if blocks[index].type == "heading_2"),
+        len(blocks),
+    )
+    resources = payloads[1:]
+    matched = [blocks[start].id]
+    matched.extend(
+        block.id
+        for block in blocks[start + 1 : stop]
+        if any(stored_matches_payload(block, payload) for payload in resources)
+    )
+    return matched

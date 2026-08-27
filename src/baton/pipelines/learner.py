@@ -31,10 +31,12 @@ from datetime import date, timedelta
 from typing import Any
 
 from ..adapters.db.base import LearnerStore
-from ..adapters.docs.base import DocStatus, DocStore
-from ..domain.models import Learner, Session
+from ..adapters.docs.base import DocStatus, DocStore, PreservePolicy
+from ..domain.models import Learner, Piece, Session
 from ..domain.status import DONE, IN_PROGRESS, NOT_STARTED, UNKNOWN, StatusVocabulary
-from ..errors import BatonError, UpstreamError
+from ..errors import BatonError, GateError, UpstreamError
+from ..render import piece as render_piece
+from .staging import PieceSnapshot, PublishedRecord
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,174 @@ class SessionView:
         if self.unreadable:
             payload["unreadable"] = self.unreadable
         return payload
+
+
+@dataclass(frozen=True)
+class PublishedPiecePlan:
+    """One published page whose rendered piece section needs replacing."""
+
+    session_number: int
+    doc_id: str
+    doc_url: str
+    from_piece_id: str
+    to_piece_id: str | None
+    delete_ids: tuple[str, ...]
+    append_blocks: tuple[dict[str, Any], ...]
+    status: str = "planned"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "session_number": self.session_number,
+            "doc_id": self.doc_id,
+            "doc_url": self.doc_url,
+            "from_piece_id": self.from_piece_id,
+            "to_piece_id": self.to_piece_id,
+            "status": self.status,
+            "would_append": len(self.append_blocks),
+            "would_delete": len(self.delete_ids),
+            "delete_ids": list(self.delete_ids),
+        }
+
+
+class PublishedPieceUpdater:
+    """Replace only Baton's piece section on already-published session pages.
+
+    Published snapshots supply the old piece id and exact old rendering. The
+    learner's current assignment supplies which snapshot id is being replaced;
+    this prevents a new assignment from rewriting unrelated older repertoire.
+
+    ``docs.preserve`` normally protects bookmarks, embeds, callouts, and video.
+    This operation is the narrow exception for exact piece-section blocks. All
+    other blocks survive regardless of whether the configured policy protects
+    them, which is stricter than a summary republish.
+    """
+
+    def __init__(
+        self, docs: DocStore, records: PublishedRecord, preserve: PreservePolicy
+    ) -> None:
+        self.docs = docs
+        self.records = records
+        self.preserve = preserve
+
+    @staticmethod
+    def _piece_id(snapshot: PieceSnapshot) -> str | None:
+        return snapshot.piece.id if snapshot.status == "captured" and snapshot.piece else None
+
+    def plan(
+        self,
+        sessions: list[Session],
+        *,
+        from_piece_id: str | None,
+        to_piece: Piece | None,
+    ) -> dict[str, Any]:
+        """Return an auditable plan without writing documents."""
+        to_piece_id = to_piece.id if to_piece is not None else None
+        if from_piece_id is None or from_piece_id == to_piece_id:
+            return {
+                "from_piece_id": from_piece_id,
+                "to_piece_id": to_piece_id,
+                "candidates": 0,
+                "would_update": 0,
+                "pages": [],
+            }
+
+        new_snapshot = PieceSnapshot.capture(to_piece)
+        new_blocks = tuple(render_piece.to_blocks(new_snapshot))
+        pages: list[PublishedPiecePlan] = []
+        candidates = 0
+        ambiguous: list[int] = []
+
+        for session in sorted(sessions, key=lambda item: item.number):
+            record = self.records.get(session.learner_id, session.number)
+            if record is None:
+                continue
+            old_snapshot = PieceSnapshot.from_record(record)
+            if self._piece_id(old_snapshot) != from_piece_id:
+                continue
+            candidates += 1
+
+            doc_id = str(record.get("doc_id", "") or session.doc_id)
+            if not doc_id:
+                continue
+            blocks = self.docs.list_blocks(doc_id)
+            old_payloads = render_piece.to_blocks(old_snapshot)
+            if not old_payloads:
+                continue
+            anchors = [
+                block
+                for block in blocks
+                if render_piece.stored_matches_payload(block, old_payloads[0])
+            ]
+            if len(anchors) > 1:
+                ambiguous.append(session.number)
+                continue
+
+            delete_ids = tuple(render_piece.stored_section_ids(blocks, old_snapshot))
+            if not delete_ids:
+                # No old heading means the page was already repaired manually,
+                # or never received a renderer-owned piece section. Either way,
+                # there is nothing Baton can safely claim and replace.
+                continue
+
+            # Evaluate the policy even though non-piece blocks are always kept.
+            # It documents how many protected blocks sit outside the exact
+            # exception and ensures malformed preserve config fails at planning.
+            self.preserve.partition(blocks)
+            pages.append(
+                PublishedPiecePlan(
+                    session_number=session.number,
+                    doc_id=doc_id,
+                    doc_url=str(record.get("doc_url", "")),
+                    from_piece_id=from_piece_id,
+                    to_piece_id=to_piece_id,
+                    delete_ids=delete_ids,
+                    append_blocks=new_blocks,
+                )
+            )
+
+        if ambiguous:
+            numbers = ", ".join(str(number) for number in ambiguous)
+            raise GateError(
+                f"More than one rendered piece heading exists on session(s) {numbers}.",
+                remedy="Remove the duplicate piece section manually, then re-run the assignment.",
+                missing=[{"field": "piece_section", "sessions": ambiguous}],
+            )
+
+        return {
+            "from_piece_id": from_piece_id,
+            "to_piece_id": to_piece_id,
+            "candidates": candidates,
+            "would_update": len(pages),
+            "pages": [page.to_dict() for page in pages],
+            "_plans": pages,
+        }
+
+    def apply(self, plan: dict[str, Any]) -> dict[str, Any]:
+        """Append new sections first, then remove only the matched old blocks."""
+        pages = plan.get("_plans", [])
+        updated: list[dict[str, Any]] = []
+        for page in pages:
+            if not isinstance(page, PublishedPiecePlan):
+                continue
+            if page.append_blocks:
+                self.docs.append_blocks(page.doc_id, list(page.append_blocks))
+            deleted = self.docs.delete_blocks(list(page.delete_ids))
+            payload = page.to_dict()
+            payload.update(
+                {
+                    "status": "updated",
+                    "appended": len(page.append_blocks),
+                    "deleted": deleted,
+                }
+            )
+            updated.append(payload)
+        return {
+            "from_piece_id": plan.get("from_piece_id"),
+            "to_piece_id": plan.get("to_piece_id"),
+            "candidates": plan.get("candidates", 0),
+            "updated": len(updated),
+            "pages": updated,
+        }
 
 
 class LearnerHistory:

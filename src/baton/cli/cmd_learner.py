@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..adapters.db import open_store
 from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
+from ..adapters.docs.base import PreservePolicy
 from ..domain.models import Work
 from ..domain.prep import SectionRules
 from ..domain.resolve import resolve_learner
@@ -18,8 +19,9 @@ from ..domain.status import StatusVocabulary
 from ..domain.whenever import today_in
 from ..errors import BatonError, GateError, NeedsHumanError, UsageError
 from ..exits import Exit
-from ..pipelines.learner import LearnerHistory, SessionView
+from ..pipelines.learner import LearnerHistory, PublishedPieceUpdater, SessionView
 from ..pipelines.recording import attach_work, list_candidates, recording_blocks
+from ..pipelines.staging import PublishedRecord
 from .cmd_calendar import _scheduler
 
 if TYPE_CHECKING:
@@ -124,6 +126,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     assign.add_argument("name", metavar="NAME")
     assign.add_argument(
         "--piece", default="", metavar="PIECE_ID", help="Piece id. Omit to clear the assignment."
+    )
+    assign.add_argument(
+        "--update-published",
+        action="store_true",
+        help="Replace this assignment's rendered piece section on already-published sessions.",
     )
     assign.add_argument("--dry-run", action="store_true")
     assign.set_defaults(handler=handle_assign)
@@ -636,19 +643,55 @@ def handle_assign(ctx: Context) -> Exit:
                 )
 
         target = piece.title if piece else "nothing"
+        published_plan: dict[str, Any] | None = None
+        updater: PublishedPieceUpdater | None = None
+        if ctx.args.update_published:
+            updater = PublishedPieceUpdater(
+                open_docs(ctx.config),
+                PublishedRecord(ctx.config.state_dir / "published"),
+                PreservePolicy.from_config(ctx.config.get("docs.preserve", [])),
+            )
+            published_plan = updater.plan(
+                store.list_sessions(learner.id),
+                from_piece_id=learner.current_piece_id,
+                to_piece=piece,
+            )
+
         if ctx.args.dry_run:
+            visible_plan = (
+                {key: value for key, value in published_plan.items() if key != "_plans"}
+                if published_plan is not None
+                else None
+            )
+            page_count = int((visible_plan or {}).get("would_update", 0))
             ctx.report.result(
-                {"learner": learner.to_dict(), "would_assign": piece_id, "dry_run": True},
-                human=f"Would set {learner.name} to {target}.",
+                {
+                    "learner": learner.to_dict(),
+                    "would_assign": piece_id,
+                    "published_updates": visible_plan,
+                    "dry_run": True,
+                },
+                human=f"Would set {learner.name} to {target}"
+                + (f" and update {page_count} published page(s)." if visible_plan else "."),
             )
             return Exit.OK
 
+        published_updates = updater.apply(published_plan) if updater and published_plan else None
         store.set_current_piece(learner.id, piece_id)
     finally:
         store.close()
 
     ctx.report.result(
-        {"learner": learner.to_dict(), "assigned": piece_id},
-        human=f"{learner.name} is now working on {target}.",
+        {
+            "learner": learner.to_dict(),
+            "assigned": piece_id,
+            "published_updates": published_updates,
+        },
+        human=f"{learner.name} is now working on {target}."
+        + (
+            f" Updated {published_updates['updated']} published page(s)."
+            if published_updates is not None
+            else ""
+        ),
     )
     return Exit.OK

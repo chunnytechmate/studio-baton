@@ -18,7 +18,9 @@ import baton
 from baton.adapters.docs.base import Block, DocStatus
 from baton.adapters.fakes import FakeDocStore
 from baton.cli.app import run
+from baton.domain.models import Piece
 from baton.exits import Exit
+from baton.pipelines.staging import LessonDraft, PieceSnapshot, PublishedRecord
 
 MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 
@@ -263,6 +265,76 @@ def test_assign_dry_run_changes_nothing(studio, capsys):
 
     call(studio, "show", "Devon Marsh")
     assert json.loads(capsys.readouterr().out)["current_piece"] is None
+
+
+def test_assign_can_plan_and_update_old_published_piece_sections(studio, capsys):
+    profile, docs = studio
+    old_piece = Piece(
+        id="2",
+        title="Blackbird",
+        source_link="https://example.invalid/blackbird",
+        sheet_link="https://example.invalid/sheets/blackbird.pdf",
+    )
+    records = PublishedRecord(profile / "state" / "published")
+    for number in (1, 2):
+        doc_id = f"doc-ada-0{number}"
+        records.save(
+            LessonDraft(
+                "1",
+                "Ada Whitfield",
+                number,
+                piece_snapshot=PieceSnapshot.capture(old_piece),
+                doc_id=doc_id,
+            ),
+            short_message="summary",
+        )
+        docs.blocks[doc_id] = [
+            Block(id=f"old-heading-{number}", type="heading_2", text="🎵 Blackbird"),
+            Block(id=f"old-source-{number}", type="bookmark", url=old_piece.source_link),
+            Block(id=f"old-sheet-{number}", type="embed", url=old_piece.sheet_link),
+            Block(id=f"summary-{number}", type="paragraph", text="Keep the lesson summary"),
+            Block(id=f"video-{number}", type="video", url=f"https://youtu.be/lesson-{number}"),
+        ]
+
+    assert (
+        call(
+            studio,
+            "assign",
+            "Ada Whitfield",
+            "--piece",
+            "1",
+            "--update-published",
+            "--dry-run",
+        )
+        == Exit.OK
+    )
+    dry_run = json.loads(capsys.readouterr().out)
+    assert dry_run["published_updates"]["would_update"] == 2
+    assert all(
+        any(block.text == "🎵 Blackbird" for block in docs.list_blocks(doc))
+        for doc in ("doc-ada-01", "doc-ada-02")
+    )
+
+    assert (
+        call(
+            studio,
+            "assign",
+            "Ada Whitfield",
+            "--piece",
+            "1",
+            "--update-published",
+        )
+        == Exit.OK
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["assigned"] == "1"
+    assert result["published_updates"]["updated"] == 2
+    for number in (1, 2):
+        blocks = docs.list_blocks(f"doc-ada-0{number}")
+        assert any(block.text == "🎵 Autumn Leaves" for block in blocks)
+        assert any(block.id == f"summary-{number}" for block in blocks)
+        assert any(block.id == f"video-{number}" for block in blocks)
 
 
 def test_pieces_lists_the_catalogue(studio, capsys):
