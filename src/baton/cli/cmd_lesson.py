@@ -295,8 +295,31 @@ def _body_rules(ctx: Context) -> dict[str, Any]:
     return {
         "max_repeats": int(rules.get("max_repeats", 2)),
         "vague_phrases": [str(item) for item in rules.get("vague_phrases", [])],
+        "trait_language": [str(item) for item in rules.get("trait_language", [])],
         "goals_not_practicable": [str(item) for item in rules.get("goals_not_practicable", [])],
     }
+
+
+def _voice(ctx: Context, learner: Learner) -> list[str]:
+    """How to write for this learner in particular, from their own record.
+
+    The learners table has carried a `tone` and whether there is an instrument
+    at home since the first migration, and both reached the model as bare words
+    with nothing saying what to do about them — so a six-year-old and an exam
+    candidate got the same voice. An unrecognised tone contributes nothing
+    rather than guessing: the column is free text, and a studio that invented
+    a word for it has not yet said what the word means.
+    """
+    lines = []
+    tone = str(learner.tone or "").strip()
+    guidance = str(ctx.config.section("summary.tones").get(tone, "")).strip()
+    if guidance:
+        lines.append(guidance)
+    if not learner.has_instrument:
+        without = str(ctx.config.get("summary.no_instrument_at_home", "")).strip()
+        if without:
+            lines.append(without)
+    return lines
 
 
 def _footer(ctx: Context) -> Footer:
@@ -795,6 +818,7 @@ def handle_contract(ctx: Context) -> Exit:
             "managed, how much help it took, what changed.",
             "Only use callout ids from `available_callout_ids`; never write theory text.",
             f"Write in the language of this profile ({ctx.config.locale}).",
+            *_voice(ctx, learner),
         ],
     }
 

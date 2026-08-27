@@ -12,11 +12,15 @@ CREATE TABLE IF NOT EXISTS learners (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     name             TEXT    NOT NULL UNIQUE,
     instrument       TEXT    NOT NULL DEFAULT '',
-    -- Free text, read by the summary templates: 'standard', 'child',
-    -- 'exam', 'casual', or anything your own templates understand.
+    -- Free text: 'standard', 'child', 'exam', 'casual', or a word of your
+    -- own. `lesson contract` hands the model the wording guidance filed
+    -- under this word in `summary.tones`; a word with no entry there
+    -- changes nothing, so name it in both places or in neither.
     tone             TEXT    NOT NULL DEFAULT 'standard',
-    -- Whether they can practise at home. Summaries drop practice goals
-    -- when they cannot.
+    -- Whether they have an instrument at home. False adds
+    -- `summary.no_instrument_at_home` to the summariser's instructions, so
+    -- the practice goals come back as listening, counting, and reading —
+    -- goals are never dropped, since a lesson always leaves something to do.
     has_instrument   INTEGER NOT NULL DEFAULT 0,
     current_piece_id INTEGER REFERENCES pieces(id) ON DELETE SET NULL,
     created_at       TEXT    NOT NULL DEFAULT (datetime('now'))

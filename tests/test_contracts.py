@@ -419,3 +419,46 @@ def test_the_rule_only_reads_goals():
     )
 
     validate_lesson_summary(payload, goals_not_practicable=NOT_PRACTICABLE)
+
+
+# -- about the playing, not about the child ----------------------------------
+
+TRAIT = ["weakness", "lazy", "short attention span"]
+
+
+def test_a_word_about_the_child_is_rejected():
+    """These pages are kept. A word that sounds diagnostic is the one a family
+    remembers, and nobody in the room assessed the child — the lesson observed
+    the playing."""
+    payload = valid(focus=[{"issue": "Reading is a weakness", "fix": "Larger charts"}])
+
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(payload, trait_language=TRAIT)
+
+    violation = excinfo.value.violations[0]
+    assert violation["path"] == "/focus/0/issue"
+    assert "rather than the playing" in violation["reason"]
+
+
+def test_the_same_observation_about_the_playing_passes():
+    payload = valid(
+        focus=[{"issue": "Reading from the page is still slow", "fix": "Larger charts"}]
+    )
+
+    validate_lesson_summary(payload, trait_language=TRAIT)
+
+
+def test_the_two_wording_rules_give_different_corrections():
+    """A studio reading a violation has to know which way to rewrite: be
+    specific, or say it about the playing."""
+    payload = valid(
+        overview=["She did well"],
+        focus=[{"issue": "Counting is a weakness", "fix": "Clap it first"}],
+    )
+
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(payload, vague_phrases=["did well"], trait_language=TRAIT)
+
+    hints = {v["path"]: v["hint"] for v in excinfo.value.violations}
+    assert "what was observed" in hints["/overview/0"]
+    assert "not what they are like" in hints["/focus/0/issue"]

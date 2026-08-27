@@ -449,6 +449,39 @@ summary:
     # Twelve names, January first, or none to leave %B to strftime.
     months: []
 
+  # How to write for one learner rather than for all of them. The learners
+  # table carries a `tone` per person and whether they have an instrument at
+  # home; until this existed both reached the model as bare words with nothing
+  # saying what to do about them, so every summary came out in one voice.
+  #
+  # `lesson contract` hands the model the line matching that learner's tone.
+  # The column is free text: these are the four the schema names, and a studio
+  # adds its own. Written in English here because the rest of the instructions
+  # are; write yours in the language you publish in if that reads better.
+  tones:
+    standard: >-
+      Write for a parent who follows the lessons but does not teach: name what
+      was worked on and what changed, in plain words.
+    child: >-
+      The learner is young. Describe what they did, never what they are — a
+      skill still being built, not a trait they have. Short sentences, warm
+      without praising for its own sake.
+    exam: >-
+      The learner is preparing for an examination. Be exact about which
+      requirement was met and how far off the rest still is, naming the
+      criterion wherever the notes give one.
+    casual: >-
+      The learner plays for enjoyment. Keep it light, use no vocabulary the
+      notes have not already used, and make a practice goal sound like
+      something worth doing rather than homework.
+
+  # Added to the instructions when the learner has no instrument at home. A
+  # practice goal they cannot possibly do is the fastest way to teach a family
+  # that the goals are not meant seriously.
+  no_instrument_at_home: >-
+    This learner has no instrument at home. Every practice goal must work
+    without one — listening, counting, clapping, reading, singing a line back.
+
   # Constraints on the document body, validated in code for the same reason
   # `short_summary` below is: a small model agrees with a prose rule and then
   # writes past it. These are what keep each section carrying a different kind
@@ -469,10 +502,29 @@ summary:
       - เก่งมาก
       - ดีขึ้นมาก
       - ตั้งใจดีมาก
+      - เยี่ยมมาก
+      - น่ารักมาก
       - very good
       - did well
       - great job
       - excellent progress
+
+    # Words that describe the child instead of the skill. "A weak point" is a
+    # thing someone *is*; "still being built" is a thing a lesson *changes* —
+    # and a family reads the first as a verdict on their child. Separate from
+    # the list above because the correction is different: not "be specific"
+    # but "say it about the playing".
+    trait_language:
+      - จุดอ่อน
+      - จุดด้อย
+      - ไม่มีพรสวรรค์
+      - ขี้เกียจ
+      - สมาธิสั้น
+      - เด็กเงียบ
+      - weakness
+      - lazy
+      - not musical
+      - short attention span
 
     # Phrases that make a practice goal impossible to practise. `goals` renders
     # as the checklist a family works through between lessons: anything that

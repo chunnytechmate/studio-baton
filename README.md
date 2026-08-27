@@ -211,12 +211,19 @@ parent's message, no links, one line per field, and every theory callout
 referenced by an id that exists. A rejection is total: nothing is stored, and
 every violation comes back at once with a pointer to it.
 
+One studio voice still has to meet a six-year-old and an exam candidate
+differently, so the `tone` on a learner's record and whether they own an
+instrument are turned into wording guidance and handed to the model for that
+learner alone — both columns had existed since the first migration with nothing
+reading them.
+
 The same layer keeps the sections from collapsing into each other. Each answers
 a different question — how the session went, what changed since last time, what
 was worked on, what is still hard, what to practise — so a fact stated in more
 than two of them is rejected, a rating where an observation belongs ("did very
-well") is rejected by name, and a practice goal nobody can practise at home is
-sent back. `progress` is required once a learner has a previous session to
+well") is rejected by name, a word about the child rather than the playing ("a
+weak point") is sent back with a different correction, and so is a practice goal
+nobody can practise at home. `progress` is required once a learner has a previous session to
 compare with, and is written as a change rather than a verdict:
 
 ```

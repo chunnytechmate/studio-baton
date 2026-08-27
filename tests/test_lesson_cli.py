@@ -709,6 +709,62 @@ def test_re_staging_does_not_reopen_the_description_gate(studio, capsys, monkeyp
     assert fake_publisher.descriptions == described
 
 
+# -- one studio voice, met to the learner in front of it -------------------------
+
+
+def _instructions(studio, capsys, name: str, session: str) -> list[str]:
+    call(studio, "stage", name, "--session", session, "--context", "notes")
+    capsys.readouterr()
+    assert call(studio, "contract", name) == Exit.OK
+    return out(capsys)["instructions"]
+
+
+def test_the_contract_carries_the_wording_for_this_learners_tone(studio, capsys):
+    """The learners table has carried a `tone` since the first migration and
+    it reached the model as a bare word — so a six-year-old and an exam
+    candidate were written about in one voice."""
+    lines = _instructions(studio, capsys, "Clara Nguyen", "1")  # exam
+
+    assert any("examination" in line for line in lines)
+
+
+def test_a_different_tone_gets_different_wording(studio, capsys):
+    lines = _instructions(studio, capsys, "Bruno Castell", "1")  # casual
+
+    assert any("for enjoyment" in line for line in lines)
+    assert not any("examination" in line for line in lines)
+
+
+def test_a_learner_with_no_instrument_at_home_changes_the_goals(studio, capsys):
+    """The schema has promised this since the first migration and nothing
+    delivered it. A goal they cannot possibly do is the fastest way to teach a
+    family that the goals are not meant seriously."""
+    lines = _instructions(studio, capsys, "Bruno Castell", "1")  # has_instrument = 0
+
+    assert any("no instrument at home" in line for line in lines)
+
+
+def test_a_learner_who_practises_at_home_is_not_told_otherwise(studio, capsys):
+    lines = _instructions(studio, capsys, "Clara Nguyen", "1")
+
+    assert not any("no instrument at home" in line for line in lines)
+
+
+def test_an_unrecognised_tone_says_nothing_rather_than_guessing(studio, capsys):
+    """The column is free text. A studio that invented a word for it has not
+    yet said what the word means, and a guess would be this tool inventing a
+    teaching voice for someone else's studio."""
+    connection = sqlite3.connect(studio[0] / "data" / "studio.db")
+    connection.execute("UPDATE learners SET tone = 'jazz-ish' WHERE id = 3")
+    connection.commit()
+    connection.close()
+
+    lines = _instructions(studio, capsys, "Clara Nguyen", "1")
+
+    assert not any("examination" in line for line in lines)
+    assert any("language of this profile" in line for line in lines)  # the rest survives
+
+
 # -- progress is asked for once there is something to compare with ---------------
 
 PROGRESS = [{"before": "Needed the count called out", "after": "Counts through unaided"}]

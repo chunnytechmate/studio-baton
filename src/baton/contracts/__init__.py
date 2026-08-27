@@ -309,6 +309,39 @@ def validate_specific_language(
     return violations
 
 
+def validate_about_the_playing(
+    payload: dict[str, Any], trait_language: Iterable[str]
+) -> list[dict[str, str]]:
+    """Refuse a description of the child where one of the playing belongs.
+
+    "A weak point" names something a learner *is*; "still coming" names
+    something a lesson *changes*. The families reading these pages keep them,
+    and a word that sounds diagnostic is the one they remember — so the rule is
+    not politeness, it is accuracy: a lesson observes playing, and nobody in
+    the room assessed the child.
+
+    Separate from :func:`validate_specific_language` because the correction is
+    a different one. That rule says be specific; this one says say it about
+    the playing.
+    """
+    phrases = [str(phrase) for phrase in trait_language if str(phrase).strip()]
+    if not phrases:
+        return []
+    violations = []
+    for pointer, text in _body_strings(payload):
+        hit = _phrase_hits(text, phrases)
+        if hit:
+            violations.append(
+                _violation(
+                    pointer,
+                    f"describes the learner (`{hit}`) rather than the playing",
+                    "Name the skill and where it has got to — what they can do "
+                    "unaided, what still needs help — not what they are like.",
+                )
+            )
+    return violations
+
+
 def validate_practice_goals(
     payload: dict[str, Any], not_practicable: Iterable[str]
 ) -> list[dict[str, str]]:
@@ -368,6 +401,7 @@ def validate_lesson_summary(
     expect_progress: bool = False,
     max_repeats: int = 2,
     vague_phrases: Iterable[str] = (),
+    trait_language: Iterable[str] = (),
     goals_not_practicable: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Validate a complete lesson summary, or raise with every violation.
@@ -383,6 +417,8 @@ def validate_lesson_summary(
             against, which is what makes `progress` required.
         max_repeats: How many places one fact may appear in.
         vague_phrases: Phrases that rate a lesson instead of describing it.
+        trait_language: Phrases that describe the learner rather than the
+            playing.
         goals_not_practicable: Phrases that make a practice goal impossible to
             do at home.
 
@@ -416,6 +452,7 @@ def validate_lesson_summary(
         violations.extend(validate_progress(payload, expected=expect_progress))
         violations.extend(validate_no_repetition(payload, max_repeats=max_repeats))
         violations.extend(validate_specific_language(payload, vague_phrases))
+        violations.extend(validate_about_the_playing(payload, trait_language))
         violations.extend(validate_practice_goals(payload, goals_not_practicable))
         violations.sort(key=lambda item: item["path"])
 
@@ -432,6 +469,7 @@ __all__ = [
     "LESSON_SUMMARY",
     "has_emoji",
     "load_schema",
+    "validate_about_the_playing",
     "validate_callouts",
     "validate_lesson_summary",
     "validate_no_repetition",
