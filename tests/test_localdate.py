@@ -88,7 +88,7 @@ def test_the_gregorian_default_does_not_offset_the_year():
 def test_the_lesson_message_carries_the_studio_date():
     """The line families actually read: opening, name, then the date."""
     context = SendContext(
-        learner_name="น้องพร้อม",
+        learner_name="น้องปิติ",
         session_number=12,
         short_message="• ซ้อมได้ครบทั้งเพลง",
         doc_url="https://example.invalid/doc",
@@ -111,7 +111,7 @@ def test_the_recording_message_carries_the_studio_date():
         video_link="https://example.invalid/watch",
     )
 
-    message = compose_recording(work, learner_name="น้องพอล", date=THAI.of_text(work.performed_date))
+    message = compose_recording(work, learner_name="น้องชูใจ", date=THAI.of_text(work.performed_date))
 
     assert "23 ส.ค. 2569" in message
     assert "2026-08-23" not in message

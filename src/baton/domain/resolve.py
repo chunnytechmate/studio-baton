@@ -7,8 +7,9 @@ so every command shares it. The rule is narrow on purpose:
 * a configured alias that points at exactly one name resolves
 * **everything else stops and asks**
 
-A partial match does not resolve, even when there is only one of them. "นะโม"
-matching a single learner today will match two the moment a second นะโม joins,
+A partial match does not resolve, even when there is only one of them. A
+nickname matching a single learner today will match two the moment a second
+child with that nickname joins,
 and a booking silently made against the wrong person is far more expensive than
 one extra question. Substring matches are returned as *candidates* so the
 caller can present real options instead of inventing one.

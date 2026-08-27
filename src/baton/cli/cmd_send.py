@@ -456,7 +456,8 @@ def handle_batch(ctx: Context) -> Exit:
     requested = list(ctx.args.learners)
 
     # Resolve the whole batch before anything is sent. Two different strings
-    # can name one learner through `db.aliases` — "เจ" and "น้องเจ" — and a
+    # can name one learner through `db.aliases` — a nickname and the same
+    # nickname with `น้อง` in front of it — and a
     # comparison of the raw names lets that pair through, after which each
     # entry sends its own message. The duplicate that matters is the person,
     # not the spelling.

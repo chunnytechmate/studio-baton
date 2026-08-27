@@ -18,8 +18,8 @@ PEOPLE = [
     Learner(id="1", name="Ada Whitfield", instrument="guitar"),
     Learner(id="2", name="Bruno Castell", instrument="drums"),
     Learner(id="3", name="Clara Nguyen", instrument="piano"),
-    Learner(id="4", name="น้องนะโม กีตาร์", instrument="guitar"),
-    Learner(id="5", name="น้องนะโม กลอง", instrument="drums"),
+    Learner(id="4", name="น้องมานะ กีตาร์", instrument="guitar"),
+    Learner(id="5", name="น้องมานะ กลอง", instrument="drums"),
 ]
 
 
@@ -42,10 +42,10 @@ def test_partial_match_never_resolves_even_when_unique():
 
 def test_ambiguous_partial_returns_every_candidate():
     with pytest.raises(NeedsHumanError) as excinfo:
-        resolve_learner("นะโม", PEOPLE)
+        resolve_learner("มานะ", PEOPLE)
 
     names = [c["name"] for c in excinfo.value.candidates]
-    assert names == ["น้องนะโม กลอง", "น้องนะโม กีตาร์"]
+    assert names == ["น้องมานะ กลอง", "น้องมานะ กีตาร์"]
 
 
 def test_alias_resolves_to_an_exact_name():

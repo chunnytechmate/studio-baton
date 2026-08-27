@@ -20,7 +20,7 @@ whole job is to hand that briefing over **unchanged**.
 ```bash
 baton prep                 # the report itself (date defaults to today)
 baton prep --date 2026-08-22
-baton prep --learner "น้องจี" --learner "น้องณตุล"
+baton prep --learner "น้องสมพร" --learner "น้องวีระ"
 baton prep --json          # machine output; the verbatim report is under "report"
 ```
 

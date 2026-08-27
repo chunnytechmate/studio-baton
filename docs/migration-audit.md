@@ -157,12 +157,11 @@ wrote.
 **Backfill still owed.** Four summaries were published through Baton before the
 fix and their Notion pages carry no disclosure:
 
-| Learner | Session | Published |
-|---|---|---|
-| น้องพร้อม | 12 | 2026-08-23 |
-| น้องนะโมกีตาร์ | 1 | 2026-08-23 |
-| น้องพอล | 7 | 2026-08-23 |
-| น้องปุณณะ | 3 | 2026-08-23 |
+Four of them, all published on 2026-08-23. They are not named here: this
+repository is public, and a short roster of children at a named studio with
+the exact session each had reached is the kind of thing that is obvious in
+hindsight. The list is in the deployment's own published records
+(`<state>/published/*.json`, filtered to that date).
 
 Re-publishing with `--force` would append the whole summary a second time, so
 these want either a small one-off script that appends the three footer blocks,
@@ -226,8 +225,8 @@ cannot be read.
 
 **Lane 5.** The old batch resolved every requested name first, compared the
 canonical learner names, and refused the whole batch when two inputs resolved
-to one learner. Its test pins the real case: `เจ` plus `น้องเจ` must not
-produce two LINE messages.
+to one learner. Its test pins the real case: a nickname plus the same
+nickname with `น้อง` in front of it must not produce two LINE messages.
 
 Baton checks `len(set(requested))` before resolution, then resolves and sends
 each entry independently. Two distinct strings that map through `db.aliases`
@@ -306,7 +305,7 @@ decision cannot come to differ between the page and the message. Unparseable
 free-form dates pass through unchanged. Verified in the gateway:
 
 ```
-🥁 สรุปการเรียนของน้องพร้อม (กลอง) - 23 ส.ค. 2569
+🥁 สรุปการเรียนของน้องปิติ (กลอง) - 23 ส.ค. 2569
 ```
 
 The studio's profile sets `chat.date` to abbreviated Thai months with the
@@ -419,11 +418,11 @@ Proved in the gateway against real pages, and the correlation is total:
 
 ```
 $ baton prep --learner ... --json
-ready  : ['น้องอิคคิว', 'น้องขิงขิง']          ← last summary written by the old skill
-blocked: น้องพร้อม       -> ['content']        ← published by Baton
-blocked: น้องพอล         -> ['content']
-blocked: น้องปุณณะ       -> ['content']
-blocked: น้องนะโมกีตาร์  -> ['content']
+ready  : ['น้องอิคคิว', 'น้องขิงขิง']   ← last summary written by the old skill
+blocked: น้องปิติ  -> ['content']       ← published by Baton
+blocked: น้องชูใจ  -> ['content']
+blocked: น้องวีระ  -> ['content']
+blocked: น้องมานะ  -> ['content']
 ```
 
 Every Baton-published learner is blocked; every legacy-published one passes.

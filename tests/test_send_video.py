@@ -133,7 +133,7 @@ def out(capsys):
 
 def test_the_video_leads_and_the_summary_rides_along():
     message = compose_video_message(
-        learner_name="น้องพร้อม",
+        learner_name="น้องปิติ",
         instrument="กลอง",
         session_number=12,
         date="23 ส.ค. 2569",
@@ -143,7 +143,7 @@ def test_the_video_leads_and_the_summary_rides_along():
     )
 
     lines = message.splitlines()
-    assert lines[0] == "🥁 วีดีโอบทเรียนของน้องพร้อม (กลอง)"
+    assert lines[0] == "🥁 วีดีโอบทเรียนของน้องปิติ (กลอง)"
     assert lines[1] == "week 12 — 23 ส.ค. 2569"
     assert "🎵 ขุนแผนมนต์พระกาฬ" in message
     assert SECTIONS["overview"] in message
@@ -161,7 +161,7 @@ def test_no_video_is_refused_not_sent_empty():
 
     with pytest.raises(GateError, match="has no video on it yet"):
         compose_video_message(
-            learner_name="น้องพร้อม",
+            learner_name="น้องปิติ",
             instrument="กลอง",
             session_number=12,
             date="",
