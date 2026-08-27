@@ -16,9 +16,11 @@ from ..adapters.db import open_store
 from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..domain.localdate import DateFormat
 from ..domain.models import Learner
+from ..domain.prep import SectionRules
 from ..domain.resolve import resolve_learner
 from ..errors import BatonError, GateError, NeedsHumanError, UsageError
 from ..exits import Exit
+from ..pipelines.lesson_video import send_video
 from ..pipelines.recording import list_candidates, send_recording
 from ..pipelines.send import send_lesson
 from ..pipelines.staging import PublishedRecord
@@ -88,6 +90,24 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     batch.add_argument("--dry-run", action="store_true")
     batch.set_defaults(handler=handle_batch)
+
+    video = group.add_parser(
+        "video",
+        help="Send a lesson's video by itself — not the whole summary again.",
+        description=(
+            "The message for a parent who asked for the video: instrument "
+            "header, week and date, the titles, a taste of the summary, the "
+            "link. Refuses (exit 5) when the session has no video on it — "
+            "that is the whole point of the message."
+        ),
+    )
+    video.add_argument("name", metavar="NAME")
+    video.add_argument("--to", metavar="CONTACT", required=True, help="Configured contact name.")
+    video.add_argument(
+        "--session", type=int, default=None, help="Defaults to the latest published session."
+    )
+    video.add_argument("--dry-run", action="store_true", help="Compose the message and stop.")
+    video.set_defaults(handler=handle_video)
 
     contacts = group.add_parser("contacts", help="List configured contacts.")
     contacts.set_defaults(handler=handle_contacts)
@@ -388,6 +408,86 @@ def handle_batch(ctx: Context) -> Exit:
     # A partial batch is not a failure of the ones that went out, but the exit
     # code must still say that not everything was sent.
     return Exit.OK if not blocked else Exit.GATE
+
+
+def handle_video(ctx: Context) -> Exit:
+    """The latest published session's video, sent on its own.
+
+    Everything it needs already exists by the time a lesson is published: the
+    record names the session, the document holds the recording, and the
+    sections reader knows the lesson. Nothing here re-derives the published
+    summary — a taste of it rides along, the whole thing stays one tap away.
+    """
+    label = ctx.config.label("session")
+    store = open_store(ctx.config)
+    try:
+        learner = _resolve(ctx, store, ctx.args.name)
+    finally:
+        store.close()
+
+    records = PublishedRecord(ctx.config.state_dir / "published")
+    if ctx.args.session is not None:
+        published = records.get(learner.id, ctx.args.session)
+        if published is None:
+            raise UsageError(
+                f"No published {label} {ctx.args.session} for {learner.name}.",
+                remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
+            )
+    else:
+        published = records.latest(learner.id)
+        if published is None:
+            raise UsageError(
+                f"Nothing has been published for {learner.name} yet.",
+                remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
+            )
+
+    session_number = int(published.get("session_number", 0) or 0)
+    doc_id = str(published.get("doc_id", ""))
+
+    docs = open_docs(ctx.config)
+    video_link = find_video_link(
+        docs,
+        doc_id,
+        blocks=tuple(
+            str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+        ),
+    )
+    date, titles = _date_and_titles(docs, doc_id)
+    date = _date_format(ctx).of_text(date)
+    if not titles:
+        titles = str(published.get("titles", ""))
+
+    # The same sections reader prep uses, so the taste matches what the
+    # teacher reads before the lesson. Unreadable blocks taste of nothing —
+    # the video still goes.
+    sections: dict[str, str] = {}
+    with contextlib.suppress(BatonError):
+        sections = SectionRules.from_config(ctx.config).read(docs.list_blocks(doc_id))
+
+    messenger = open_chat(ctx.config)
+    recipient_id = messenger.resolve(ctx.args.to)
+    result = send_video(
+        messenger,
+        recipient_id=recipient_id,
+        learner_name=learner.name,
+        instrument=learner.instrument,
+        session_number=session_number,
+        date=date,
+        titles=titles,
+        video_link=video_link,
+        summary_sections=sections,
+        session_label=label,
+        dry_run=ctx.args.dry_run,
+    )
+
+    verb = "would send" if ctx.args.dry_run else "sent"
+    delivered = "" if ctx.args.dry_run or result.get("sent") else "  ✗ NOT DELIVERED"
+    ctx.report.result(
+        result,
+        human=f"{verb.capitalize()} the video for {learner.name} "
+        f"({label} {session_number}) to {ctx.args.to}{delivered}",
+    )
+    return Exit.OK
 
 
 def handle_contacts(ctx: Context) -> Exit:

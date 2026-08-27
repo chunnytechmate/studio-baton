@@ -10,15 +10,16 @@ import argparse
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.db import open_store
-from ..adapters.docs import open_docs
+from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..domain.models import Work
 from ..domain.prep import SectionRules
 from ..domain.resolve import resolve_learner
 from ..domain.status import StatusVocabulary
 from ..domain.whenever import today_in
-from ..errors import BatonError, UsageError
+from ..errors import BatonError, GateError, NeedsHumanError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory, SessionView
+from ..pipelines.recording import attach_work, list_candidates, recording_blocks
 from .cmd_calendar import _scheduler
 
 if TYPE_CHECKING:
@@ -90,6 +91,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "answers who is coming."
         ),
     )
+    active.add_argument(
+        "--videos",
+        action="store_true",
+        help="Also read the candidates' pages for their recording, so the "
+        "teacher sees which unfinished lessons already have one.",
+    )
     active.set_defaults(handler=handle_in_progress)
 
     works = group.add_parser("works", help="Recorded performances and recordings.")
@@ -120,6 +127,33 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     assign.add_argument("--dry-run", action="store_true")
     assign.set_defaults(handler=handle_assign)
+
+    attach = group.add_parser(
+        "attach-work",
+        help="Put a recorded work onto its session page.",
+        description=(
+            "A recording that did not go through the video pipeline — a "
+            "teacher's own edit, a clip shared directly — has links in the "
+            "database and nothing on the page. This writes the same section "
+            "the old push wrote, under the same heading, onto the session "
+            "In progress by default or --session N. Links already on the page "
+            "are not written twice, and nothing else on the page is removed."
+        ),
+    )
+    attach.add_argument("name", metavar="NAME")
+    attach.add_argument(
+        "--pick",
+        type=int,
+        default=None,
+        metavar="N",
+        help="The Nth work from the newest-first list (1 is the latest). "
+        "Without it the command lists and asks.",
+    )
+    attach.add_argument(
+        "--session", type=int, default=None, help="Defaults to the session in progress."
+    )
+    attach.add_argument("--dry-run", action="store_true", help="Report what would be written.")
+    attach.set_defaults(handler=handle_attach_work)
 
 
 def _require_subcommand(ctx: Context) -> Exit:
@@ -353,9 +387,30 @@ def handle_in_progress(ctx: Context) -> Exit:
         store.close()
 
     label = ctx.config.label("session")
+
+    # The candidates' recordings, when asked for: one extra block read per
+    # in-progress session, still bounded by the calendar window. The old
+    # report answered this by scanning every page of every learner; the same
+    # column without the whole-world scan. A page that cannot be read here
+    # reads as no recording, matching how the send path degrades.
+    recordings: dict[str, str] = {}
+    if ctx.args.videos:
+        docs = open_docs(ctx.config)
+        shapes = tuple(
+            str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+        )
+        for _learner, view in report.found:
+            recordings[view.session.doc_id] = find_video_link(
+                docs, view.session.doc_id, blocks=shapes
+            )
+
     payload = {
         "in_progress": [
-            {"learner": learner.to_dict(), **view.to_dict(scheduler.vocabulary)}
+            {
+                "learner": learner.to_dict(),
+                **view.to_dict(scheduler.vocabulary),
+                **({"video_link": recordings[view.session.doc_id]} if ctx.args.videos else {}),
+            }
             for learner, view in report.found
         ],
         "unreadable": report.unreadable,
@@ -364,12 +419,17 @@ def handle_in_progress(ctx: Context) -> Exit:
         "count": len(report.found),
     }
 
+    def _mark(view) -> str:
+        if not ctx.args.videos:
+            return ""
+        return "  🎬" if recordings.get(view.session.doc_id) else "  —"
+
     lines: list[str] = []
     if report.found:
         width = max(len(learner.name) for learner, _ in report.found)
         lines += [
             f"  {learner.name:<{width}}  {label} {view.number}"
-            f"{f'  {view.doc.titles}' if view.doc.titles else ''}"
+            f"{f'  {view.doc.titles}' if view.doc.titles else ''}{_mark(view)}"
             for learner, view in report.found
         ]
     lines += [
@@ -435,6 +495,102 @@ def handle_add_work(ctx: Context) -> Exit:
     ctx.report.result(
         {"learner": learner.to_dict(), "work": created.to_dict()},
         human=f"Recorded for {learner.name}: {created.title} ({created.type})",
+    )
+    return Exit.OK
+
+
+def handle_attach_work(ctx: Context) -> Exit:
+    """One recorded work, written onto the session page it belongs to.
+
+    Which recording goes on is a person's call, so the command is two steps
+    like `send recording`: without --pick it ends at exit 3 carrying the
+    numbered list; --pick N then writes exactly that one.
+    """
+    label = ctx.config.label("session")
+    store = _store(ctx)
+    try:
+        learner = _resolve(ctx, store, ctx.args.name)
+        works = store.list_works(learner.id)
+
+        pick = ctx.args.pick
+        if pick is None:
+            if not works:
+                raise GateError(
+                    f"{learner.name} has no recorded work to attach.",
+                    remedy="Record one first with `baton learner add-work "
+                    f'"{ctx.args.name}" --title … (--video-link / --drive-link)`.',
+                )
+            raise NeedsHumanError(
+                f"{learner.name} has {len(works)} recorded work(s) — which one goes on the page?",
+                candidates=list_candidates(works),
+                remedy="Re-run with --pick <number> from that list; 1 is the "
+                "most recent. Nothing was written.",
+            )
+        if not 1 <= pick <= len(works):
+            raise UsageError(
+                f"--pick {pick} does not match any of {learner.name}'s "
+                f"{len(works)} recorded work(s).",
+                remedy="Re-run without --pick to see the newest-first list.",
+                details={"candidates": list_candidates(works)} if works else None,
+            )
+
+        # Which page: the session in progress by default — the recording
+        # belongs to the lesson it came from — or the one named.
+        history = _history(ctx, store)
+        views = history.sessions(learner)
+        if ctx.args.session is not None:
+            view = next((v for v in views if v.session.number == ctx.args.session), None)
+            if view is None or not view.session.doc_id:
+                raise UsageError(
+                    f"{learner.name} has no {label} {ctx.args.session} to attach to.",
+                    remedy=f'Run `baton learner sessions "{ctx.args.name}"` to see what exists.',
+                )
+        else:
+            active = [v for v in views if v.state == "in_progress" and v.session.doc_id]
+            if len(active) != 1:
+                numbers = ", ".join(str(v.session.number) for v in active)
+                which = (
+                    "none is in progress"
+                    if not active
+                    else f"{len(active)} are in progress ({numbers})"
+                )
+                raise UsageError(
+                    f"Cannot tell which {label} {learner.name}'s recording belongs to: {which}.",
+                    remedy="Re-run with --session N. Nothing was written.",
+                )
+            view = active[0]
+        doc_id = view.session.doc_id
+        work = works[pick - 1]
+    finally:
+        store.close()
+
+    if ctx.args.dry_run:
+        would = recording_blocks(work)
+        ctx.report.result(
+            {
+                "learner": learner.to_dict(),
+                "work": work.to_dict(),
+                "doc_id": doc_id,
+                "would_append": len(would),
+                "dry_run": True,
+            },
+            human=f"Would write {len(would)} blocks for “{work.title}” onto "
+            f"{learner.name}'s {label} {view.session.number}.",
+        )
+        return Exit.OK
+
+    result = attach_work(open_docs(ctx.config), doc_id, work)
+    ctx.report.result(
+        {"learner": learner.to_dict(), "work": work.to_dict(), **result},
+        human=(
+            f"Attached “{work.title}” to {learner.name}'s {label} "
+            f"{view.session.number}: {result['appended']} blocks written"
+            + (
+                f", {len(result['already_on_page'])} already there"
+                if result["already_on_page"]
+                else ""
+            )
+        ),
     )
     return Exit.OK
 

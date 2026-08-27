@@ -13,7 +13,7 @@ This document is the standing audit that looks for the rest of them. It is a
 working file: claim a lane before auditing it, record what you checked, and
 leave the verdict where the next person can find it.
 
-**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70), 0.3.2 (F6, F7, F10, F15), 0.3.3 (F5, F16, F18)
+**Started:** 2026-08-27 · **Baton version at start:** 0.2.7 · **Fixes shipped in:** 0.3.1 (F1–F4, via #70), 0.3.2 (F6, F7, F10, F15), 0.3.3 (F5, F16, F18), 0.3.5 (F13, F17, F20)
 
 ---
 
@@ -350,7 +350,7 @@ Suggested shape: add a read-only `learner completed` or `lesson list` command
 with `--learner`, `--from`, and `--to`, backed by one bounded cross-learner
 query and carrying unreadable rows instead of dropping the whole report.
 
-### F13 — the in-progress report lost recording readiness 🔴 open
+### F13 — the in-progress report lost recording readiness ✅ fixed in 0.3.5
 
 **Lane 10.** The old in-progress report did more than name unfinished pages:
 it scanned every block page (with pagination and a 24-hour cache) and showed
@@ -364,10 +364,13 @@ learner/session status data. It never lists blocks and has no `has_youtube`
 field or report asset, so the studio can no longer see which unfinished
 lessons already have their recording ready from this workflow.
 
-Suggested shape: preserve the bounded calendar candidate set, then optionally
-read those candidates' blocks for a `video_link`/`has_video` column. A
-machine-readable field is the required capability; an HTML/PNG renderer can be
-an opt-in presentation layer if the studio still wants the old image delivery.
+Fixed as suggested: `learner in-progress --videos` reads only the calendar
+window's candidates and adds a `video_link` field to each row (with a 🎬/—
+marker in the human report). Without the flag the report stays exactly as
+cheap as it was — no block reads. The link recognition is the F18 reader, so
+bookmarked recordings count. The old PNG table remains deliberately
+unported: the machine-readable field was the capability, and the agent that
+relays the report can render it however the teacher asks.
 
 ### F14 — recorded works became append-only and lost their metadata 🔴 open
 
@@ -467,7 +470,7 @@ Fixed exactly as suggested: `handle_recording` reads
 and `compose_recording` appends the `📝 รายละเอียด Notion:` line — last line
 of the message, never a gate, absent when nothing is published.
 
-### F17 — there is no way to send the latest lesson's video by itself 🔴 open
+### F17 — there is no way to send the latest lesson's video by itself ✅ fixed in 0.3.5
 
 **Lane 6.** `send-youtube-line/scripts/send_youtube.py` was a one-command
 workflow with its own trigger vocabulary ("ส่งวีดีโอ/ลิงก์ youtube ของน้องX",
@@ -485,11 +488,14 @@ only for the video. Every ingredient exists (`find_video_link`,
 `PublishedRecord.latest`, the F10 date format, `learner latest`'s section
 reader); no command composes them.
 
-Suggested shape: `baton send video "<name>" --to <contact>` with `--dry-run`
-and optional `--session N`, fail-closed on "no video link on that session"
-(distinct from a work with no links, which is `send recording`'s refusal).
-The summary snippet can come from the same section reader `learner latest`
-already uses.
+Fixed as suggested: `baton send video <name> --to <contact> [--session N]
+[--dry-run]` in a new `pipelines/lesson_video.py`. Instrument header, session
+label and Thai date (`chat.date`, same as the lesson message), titles, a
+~150-character taste of the summary from the same section reader (whole
+lines, ellipsis cut), and the link last. Deterministic — no varied phrasing —
+because a re-send of a lost link should read like the first one. Fail-closed
+with its own refusal ("has no video on it yet") when the session has no
+recording, distinct from `send recording`'s work refusal.
 
 ### F18 — `find_video_link` recognises only `video` blocks ✅ fixed in 0.3.3
 
@@ -547,7 +553,7 @@ Suggested shape: `baton learner add "<name>" --instrument … --tone …
 URL prefix, sequential fallback) and `--db-link`, `--dry-run` before the
 real write. The id-floor logic belongs in the fallback adapter, not the CLI.
 
-### F20 — a hand-recorded work never reaches the session page 🔴 open
+### F20 — a hand-recorded work never reaches the session page ✅ fixed in 0.3.5
 
 **Lane 8.** `push_recording_to_notion.py` put a recording onto the learner's
 page: a "🎬 ผลงาน Record" heading, one bold title paragraph per work, a
@@ -564,10 +570,15 @@ shared directly) has no command that links it to the session, and the Drive
 side of a recording never lands on a page at all. Closing the session is
 deliberately publish-only now; the page-presentation gap is the durable part.
 
-Suggested shape: an optional `--link-to-page` on `learner add-work` (or a
-`learner attach-work` command) appending the same block shape with the
-clear-first idempotency rule, defaulting to the session In progress. Leave
-session-closing to publish unless the studio asks for the old behaviour.
+Fixed as `baton learner attach-work <name> [--pick N] [--session N]
+[--dry-run]`, two-step like `send recording` (without --pick it lists the
+works and asks). It writes the old section shape — the 🎬 heading, bold
+title, YouTube side as a video block, Drive side as a bookmark — onto the
+session In progress by default. The idempotency rule is the URL, not the old
+clear-everything: the video pipeline now writes the lesson's own recording
+onto the same page, and clearing all video/bookmark blocks would take it
+off. A link already on the page is never written twice, and nothing else on
+the page is removed. Session-closing stays with publish.
 
 ---
 

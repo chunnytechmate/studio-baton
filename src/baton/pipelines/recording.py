@@ -154,3 +154,97 @@ def send_recording(
         "message": message,
         **outcome.to_dict(),
     }
+
+
+#: The heading a work's recording is filed under on a session page, the same
+#: words the studio's old push wrote — a family looking for the clip finds it
+#: under the same heading it has always been under.
+_RECORDS_HEADING = "🎬 ผลงาน Record"
+
+
+def recording_blocks(work: Work) -> list[dict[str, Any]]:
+    """The section one work's recording becomes on a session page.
+
+    The same shape the old push wrote: the heading, a bold title, the YouTube
+    side as a video block and the Drive side as a bookmark. Only the sides the
+    row actually has appear.
+    """
+    blocks: list[dict[str, Any]] = [
+        {
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {"rich_text": [{"type": "text", "text": {"content": _RECORDS_HEADING}}]},
+        },
+        {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [
+                    {"type": "text", "text": {"content": "📌 "}},
+                    {
+                        "type": "text",
+                        "text": {"content": work.title},
+                        "annotations": {"bold": True},
+                    },
+                ]
+            },
+        },
+    ]
+    if work.video_link:
+        blocks.append(
+            {
+                "object": "block",
+                "type": "video",
+                "video": {"type": "external", "external": {"url": work.video_link}},
+            }
+        )
+    if work.drive_link:
+        blocks.append({"object": "block", "type": "bookmark", "bookmark": {"url": work.drive_link}})
+    return blocks
+
+
+def _url_of(block: dict[str, Any]) -> str:
+    """The URL a link block carries, whatever shape it was built in."""
+    body = block.get(block.get("type", ""), {})
+    if isinstance(body, dict) and "external" in body:
+        return str(body["external"].get("url", ""))
+    return str(body.get("url", "")) if isinstance(body, dict) else ""
+
+
+def attach_work(docs: Any, doc_id: str, work: Work) -> dict[str, Any]:
+    """Put a recorded work onto a session page, without duplicating it.
+
+    The old script cleared every video and bookmark on the page before
+    writing. That rule dates from when it was the only writer; today the
+    video pipeline puts the lesson's own recording on the same page, and
+    clearing all video blocks would take that off with it. The guard is the
+    URL instead: a link already on the page is not written twice, and
+    anything else on the page is not Baton's to remove.
+
+    Returns what was appended, and the sides that were already there.
+    """
+    if not work.video_link and not work.drive_link:
+        raise GateError(
+            f"The work “{work.title}” has no link to put on the page.",
+            missing=[{"field": name, "reason": f"`{name}` is empty"} for name, _ in _LINK_LABELS],
+            remedy="Record the link on the work first — `baton learner add-work` "
+            "writes a new one; the existing row can be edited where it lives.",
+        )
+
+    on_page = {block.url for block in docs.list_blocks(doc_id) if block.url}
+
+    # The link blocks carry the URLs; the heading and the title do not, so
+    # they are added as a pair only when at least one link is going on. A
+    # section heading with no link under it would be a label pointing at
+    # nothing, and re-adding the pair when both links are already there is
+    # the duplication this exists to prevent.
+    wanted = recording_blocks(work)
+    heading, title, *links = wanted
+    fresh_links = [block for block in links if _url_of(block) not in on_page]
+    already = [_url_of(block) for block in links if _url_of(block) in on_page]
+    if not fresh_links:
+        return {"doc_id": doc_id, "appended": 0, "already_on_page": already}
+
+    blocks = [heading, title, *fresh_links]
+    docs.append_blocks(doc_id, blocks)
+    return {"doc_id": doc_id, "appended": len(blocks), "already_on_page": already}
