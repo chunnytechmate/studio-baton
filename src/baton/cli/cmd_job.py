@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from ..core.jobs import JobInfo, JobRunner
+from ..core.jobs import DEFAULT_LIST_STALE_DAYS, JobInfo, JobRunner
 from ..errors import StateError, UsageError
 from ..exits import Exit
 
@@ -63,6 +63,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--all",
         action="store_true",
         help="Include finished jobs older than the stale threshold.",
+    )
+    listing.add_argument(
+        "--stale-days",
+        type=float,
+        default=DEFAULT_LIST_STALE_DAYS,
+        metavar="DAYS",
+        help=f"How old a finished job must be to be hidden (default: {DEFAULT_LIST_STALE_DAYS:g}).",
     )
     listing.set_defaults(handler=handle_list)
 
@@ -146,7 +153,12 @@ def _mirror_exit(code: int | None) -> Exit | int:
 
 def _runner(ctx: Context) -> JobRunner:
     config = ctx.config
-    return JobRunner(config.state_dir, config.config_file)
+    return JobRunner(
+        config.state_dir,
+        config.config_file,
+        # Only `job list` offers the flag; every other caller takes the default.
+        list_stale_days=float(getattr(ctx.args, "stale_days", DEFAULT_LIST_STALE_DAYS)),
+    )
 
 
 def _lookup(ctx: Context, job_id: str) -> JobInfo:
@@ -185,8 +197,10 @@ def handle_list(ctx: Context) -> Exit:
 
     if not jobs:
         hidden = _runner(ctx).list(include_stale=True)
-        human = "No live jobs. Older finished ones are hidden; try --all." if hidden else (
-            "No jobs recorded."
+        human = (
+            "No live jobs. Older finished ones are hidden; try --all."
+            if hidden
+            else "No jobs recorded."
         )
         ctx.report.result(payload, human=human)
         return Exit.OK

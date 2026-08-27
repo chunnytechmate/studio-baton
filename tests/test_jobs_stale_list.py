@@ -105,3 +105,28 @@ def test_a_stale_job_is_still_readable_by_id(profile, capsys):
     assert code == Exit.OK
     payload = json.loads(capsys.readouterr().out)
     assert payload["id"] == old
+
+
+def test_the_threshold_can_be_widened_for_one_listing(profile, capsys):
+    """`prune` already takes its cutoff as `--older-than DAYS`, so the hiding
+    threshold takes one the same way rather than becoming profile config: a
+    studio asking "what ran this week?" says so on the command."""
+    old = _finished_job(profile, capsys, "old")
+    _age_beyond_threshold(profile, old, days=5)
+
+    code = run(["--profile", str(profile), "--json", "job", "list", "--stale-days", "7"])
+
+    assert code == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert old in [job["id"] for job in payload["jobs"]]
+
+
+def test_the_threshold_can_be_narrowed_too(profile, capsys):
+    recent = _finished_job(profile, capsys, "recent")
+    _age_beyond_threshold(profile, recent, days=1)
+
+    code = run(["--profile", str(profile), "--json", "job", "list", "--stale-days", "0.5"])
+
+    assert code == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert recent not in [job["id"] for job in payload["jobs"]]

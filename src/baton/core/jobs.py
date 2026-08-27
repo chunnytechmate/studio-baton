@@ -414,6 +414,7 @@ class JobRunner:
                 continue
             jobs.append(info)
         return jobs
+
     def _settled_at(self, info: JobInfo) -> datetime | None:
         """When a terminal job ended, or ``None`` when it never said."""
         ended = info.ended_at or info.started_at

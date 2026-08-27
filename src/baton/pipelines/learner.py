@@ -118,9 +118,7 @@ class PublishedPieceUpdater:
     them, which is stricter than a summary republish.
     """
 
-    def __init__(
-        self, docs: DocStore, records: PublishedRecord, preserve: PreservePolicy
-    ) -> None:
+    def __init__(self, docs: DocStore, records: PublishedRecord, preserve: PreservePolicy) -> None:
         self.docs = docs
         self.records = records
         self.preserve = preserve
@@ -185,10 +183,6 @@ class PublishedPieceUpdater:
                 # there is nothing Baton can safely claim and replace.
                 continue
 
-            # Evaluate the policy even though non-piece blocks are always kept.
-            # It documents how many protected blocks sit outside the exact
-            # exception and ensures malformed preserve config fails at planning.
-            self.preserve.partition(blocks)
             pages.append(
                 PublishedPiecePlan(
                     session_number=session.number,
