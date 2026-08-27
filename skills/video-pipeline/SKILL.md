@@ -55,6 +55,11 @@ unfinished jobs and re-trashes source clips a done job's record claims were
 already moved. When clips are waiting that only `video run` may collect, the
 result says so (`waiting_clips`) — report that and suggest `video run`.
 
+**A finished job survives a document-store outage.** The link step is
+re-checked against the live page on every pass, but when the step is already
+recorded and the page cannot be reached, the record stands — so a `done` job
+does not read as `failed` because Notion was briefly down.
+
 **Never use `baton video forget`** unless the user explicitly asks and
 understands it: if the upload already happened, starting over publishes a
 second copy.

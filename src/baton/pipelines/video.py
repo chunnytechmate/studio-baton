@@ -20,6 +20,7 @@ nobody's recording goes out that night.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -171,11 +172,25 @@ class VideoJobStore:
     def save(self, job: VideoJob) -> None:
         jsonio.write_json(self._path(job.learner_folder), job.to_dict())
 
-    def list(self) -> list[VideoJob]:
+    def list(self, *, include_archived: bool = False) -> list[VideoJob]:
+        """Every recorded job, live ones first.
+
+        Args:
+            include_archived: Also read jobs :meth:`archive` moved aside. Off
+                by default because `run`, `resume`, and `status` all mean "what
+                is happening now", and a folder accumulates one archived job
+                per week. A caller asking about one past session — `lesson
+                publish` repairing a page whose recording was uploaded but
+                never linked — needs them, and without this could only see a
+                past week's upload until the next week's clips arrived.
+        """
         if not self.root.is_dir():
             return []
+        paths = sorted(self.root.glob("*.json"))
+        if include_archived:
+            paths += sorted((self.root / "archive").glob("*.json"))
         jobs = []
-        for path in sorted(self.root.glob("*.json")):
+        for path in paths:
             data = jsonio.read_json(path, None)
             if isinstance(data, dict):
                 jobs.append(VideoJob.from_dict(data))
@@ -196,7 +211,8 @@ class VideoJobStore:
         path forever and `run`, finding every step done, swallowed the new
         week's clips in silence; the only way through was `video forget` by
         hand. Archiving keeps the record (a publish may still read its upload)
-        while giving the new job a clean path.
+        while giving the new job a clean path — :meth:`list` reaches it again
+        with ``include_archived``.
 
         Returns:
             Where the job file landed, under ``<root>/archive/``.
@@ -439,12 +455,23 @@ class VideoPipeline:
                 self.jobs.save(job)
 
             # Verified against the live page, never against the step record
-            # alone: a later rebuild of the document can drop the block after
-            # the step was recorded (observed 2026-08-27, when a forced
-            # publish rewrote a page between the link and the send and the
-            # gate refused the missing video). `_link` appends only what the
-            # page is missing, so this stays idempotent.
-            self._link(job)
+            # alone. On 2026-08-27 a job recorded `doc_linked` done at 13:56
+            # against the right document with the right URL, and the block was
+            # never on that page: the forced publish an hour later reported
+            # `preserved: 0`, and `video` is in the packaged preserve rules, so
+            # it was already absent before anything rewrote the page. What
+            # broke the append is still unexplained — which is the reason to
+            # ask the page rather than the record. `_link` appends only what
+            # the page is missing, so asking twice is free.
+            if job.done("doc_linked"):
+                # Best effort once the step is recorded: an unreachable
+                # document store is not evidence that the link is gone, and
+                # failing here would turn a job that finished every step into
+                # a `failed` one that had, in fact, done everything.
+                with contextlib.suppress(BatonError):
+                    self._link(job)
+            else:
+                self._link(job)
             self.jobs.save(job)
 
             if not job.done("cleaned"):
@@ -460,8 +487,9 @@ class VideoPipeline:
                 # The step says the source was trashed, yet the source still
                 # lists clips this job already owns. The recorded success and
                 # the source disagreed exactly this way in production
-                # (2026-08-27): both jobs recorded `moved` counts and eight
-                # clips stayed in Drive until a person trashed them by hand.
+                # (2026-08-27): the two jobs of that evening recorded `moved`
+                # counts of 4 and 3, and the clips stayed in Drive until a
+                # person trashed them by hand.
                 # Re-issuing the trash is idempotent on clips already gone.
                 moved = self.source.trash(leftover)
                 job.record("source_trashed", moved=moved, reclaimed=len(leftover))
@@ -559,9 +587,7 @@ class VideoPipeline:
             job.learner_folder for job in recorded if job.status not in ("done", "skipped")
         }
         owned: dict[str, set[str]] = {
-            job.learner_folder: set(job.clip_ids)
-            for job in recorded
-            if job.status == "done"
+            job.learner_folder: set(job.clip_ids) for job in recorded if job.status == "done"
         }
         return sum(
             1

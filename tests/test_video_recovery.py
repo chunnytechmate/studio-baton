@@ -138,9 +138,7 @@ def _open_week(pipeline, number):
     """Create week `number`'s session so a new job can resolve into it."""
     session = Session(id=f"s{number}", learner_id="1", number=number, doc_id=f"doc-ada-0{number}")
     pipeline.store.sessions.append(session)
-    pipeline.docs.statuses[session.doc_id] = DocStatus(
-        doc_id=session.doc_id, status="In progress"
-    )
+    pipeline.docs.statuses[session.doc_id] = DocStatus(doc_id=session.doc_id, status="In progress")
 
 
 def _publish(pipeline, number):
@@ -279,9 +277,11 @@ def test_a_failed_reclaim_fails_the_job_loudly(studio):
 
 
 def test_a_page_rebuilt_without_the_video_block_gets_it_back(studio):
-    """The 21:46 case: `doc_linked` recorded done, a later forced publish
-    rewrote the page without the block, and the send gate refused. When the
-    pipeline passes that way again the block must return."""
+    """The 21:46 case: `doc_linked` recorded done at 13:56 against the right
+    document with the right URL, and the block was never on that page — the
+    forced publish an hour later reported `preserved: 0`, and `video` is in
+    the packaged preserve rules, so nothing that ran afterwards removed it.
+    Whatever swallowed the append, the next pass must put the block back."""
     source = ReusableSource(W3_CLIPS)
     pipeline = studio(source)
     job = pipeline.run()[0]
@@ -301,6 +301,80 @@ def test_a_page_rebuilt_without_the_video_block_gets_it_back(studio):
     assert again.status == "done"
     restored = [block for block in pipeline.docs.blocks["doc-ada-03"] if block.type == "video"]
     assert [block.url for block in restored] == [job.video_url]
+
+
+def test_the_link_is_re_checked_even_though_the_step_says_done(studio):
+    """Guards the change itself. The earlier reader skipped `_link` whenever
+    the step record said done, which is precisely how a page could sit without
+    its block while the job insisted the block was there. Nothing about the
+    job record is disturbed here — only the page."""
+    source = ReusableSource(W3_CLIPS)
+    pipeline = studio(source)
+    job = pipeline.run()[0]
+    assert job.done("doc_linked")
+
+    pipeline.docs.blocks["doc-ada-03"] = [
+        block for block in pipeline.docs.blocks["doc-ada-03"] if block.type != "video"
+    ]
+
+    again = pipeline.run_one("Ada Whitfield", [])
+
+    assert again.status == "done"
+    restored = [block for block in pipeline.docs.blocks["doc-ada-03"] if block.type == "video"]
+    assert [block.url for block in restored] == [job.video_url]
+
+
+def test_the_re_check_does_not_append_a_second_block(studio):
+    """The page already shows the recording, so passing again must be a read."""
+    source = ReusableSource(W3_CLIPS)
+    pipeline = studio(source)
+    job = pipeline.run()[0]
+
+    pipeline.run_one("Ada Whitfield", [])
+
+    videos = [block for block in pipeline.docs.blocks["doc-ada-03"] if block.type == "video"]
+    assert [block.url for block in videos] == [job.video_url]
+
+
+def test_an_unreachable_page_does_not_unmake_a_finished_job(studio):
+    """A job that completed every step must not be reported as failed because
+    the re-check could not be performed.
+
+    The document store being down is not evidence that the link is gone, and
+    the operator reading `video status` would see tonight's finished lesson as
+    a failure — with the upload, the linked page, and the trashed source all
+    sitting behind it, done.
+    """
+    source = ReusableSource(W3_CLIPS, sticky={"w3a", "w3b"})
+    pipeline = studio(source)
+    finished = pipeline.run()[0]
+    assert finished.status == "done"
+
+    source.sticky = set()
+    pipeline.docs.fail_with = UpstreamError("notion is down", service="notion")
+
+    job = pipeline.run()[0]
+
+    assert job.status == "done", "a finished job must survive a document outage"
+    assert job.error == ""
+    assert job.done("doc_linked"), "the recorded link stands; it was not disproved"
+    assert job.video_url == finished.video_url
+    # The rest of the recovery still happened: the outage was in the re-check.
+    assert source.clips == []
+
+
+def test_a_first_link_still_fails_the_job_when_the_page_is_unreachable(studio):
+    """The tolerance above is only for a link already recorded. A job that has
+    never put its recording on the page has not finished, and saying it did
+    would strand the recording where the send gate cannot see it."""
+    source = ReusableSource(W3_CLIPS)
+    pipeline = studio(source)
+    pipeline.docs.fail_with = UpstreamError("notion is down", service="notion")
+
+    job = pipeline.run()[0]
+
+    assert job.status == "failed"
+    assert not job.done("doc_linked")
 
 
 # -- task 4: resume and run must agree on what needs doing --------------------
