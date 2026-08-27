@@ -33,7 +33,7 @@ from ..adapters.media import open_publisher
 from ..adapters.media.google import extract_video_id
 from ..domain.footer import Footer
 from ..domain.models import Learner
-from ..domain.resolve import resolve_learner
+from ..domain.resolve import normalise, resolve_learner
 from ..domain.status import StatusVocabulary
 from ..domain.whenever import now_in, today_in
 from ..errors import BatonError, ConfigError, UpstreamError, UsageError
@@ -57,6 +57,24 @@ if TYPE_CHECKING:
     from .app import Context
 
 
+def _name_argument(parser: argparse.ArgumentParser) -> None:
+    """Take the learner either positionally or as ``--learner``.
+
+    Every other command that names a person one at a time takes it
+    positionally, and `send batch` takes `--learner`. An agent driving Baton
+    reaches for the flag often enough that `baton lesson publish --learner X
+    --session N` was a usage error in production; the positional stays the
+    documented form and the flag is simply also accepted.
+    """
+    parser.add_argument("name", metavar="NAME", nargs="?", default="")
+    parser.add_argument(
+        "--learner",
+        metavar="NAME",
+        default="",
+        help="The learner, if you would rather not pass NAME positionally.",
+    )
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     """Attach the ``lesson`` command group."""
     parser = subparsers.add_parser(
@@ -71,7 +89,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     parser.set_defaults(handler=_require_subcommand)
 
     stage = group.add_parser("stage", help="Start a draft, collecting context automatically.")
-    stage.add_argument("name", metavar="NAME")
+    _name_argument(stage)
     stage.add_argument(
         "--session",
         type=int,
@@ -96,7 +114,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "the JSON Schema, the lesson context, and the learner's teaching profile."
         ),
     )
-    contract.add_argument("name", metavar="NAME")
+    _name_argument(contract)
     contract.set_defaults(handler=handle_contract)
 
     ingest = group.add_parser(
@@ -104,13 +122,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Validate and store a model-written summary.",
         description="Exits 4 with every violation if the JSON does not conform. Nothing is stored.",
     )
-    ingest.add_argument("name", metavar="NAME")
+    _name_argument(ingest)
     ingest.add_argument("--file", metavar="PATH", help="JSON file. Use - for stdin.")
     ingest.add_argument("--json-text", metavar="JSON", help="JSON as a literal argument.")
     ingest.set_defaults(handler=handle_ingest)
 
     render_cmd = group.add_parser("render", help="Preview the rendered summary.")
-    render_cmd.add_argument("name", metavar="NAME")
+    _name_argument(render_cmd)
     render_cmd.add_argument(
         "--format", choices=("markdown", "blocks", "message"), default="markdown"
     )
@@ -120,7 +138,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     listing.set_defaults(handler=handle_list)
 
     show = group.add_parser("show", help="One draft in full.")
-    show.add_argument("name", metavar="NAME")
+    _name_argument(show)
     show.set_defaults(handler=handle_show)
 
     publish = group.add_parser(
@@ -131,7 +149,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "Blocks matching docs.preserve — recordings, embeds — are kept."
         ),
     )
-    publish.add_argument("name", metavar="NAME")
+    _name_argument(publish)
+    publish.add_argument(
+        "--session",
+        type=int,
+        default=None,
+        help="Refuse unless the staged draft is for this session number.",
+    )
     publish.add_argument("--dry-run", action="store_true", help="Report what would change.")
     publish.add_argument(
         "--force",
@@ -141,7 +165,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     publish.set_defaults(handler=handle_publish)
 
     remove = group.add_parser("remove", help="Discard a draft.")
-    remove.add_argument("name", metavar="NAME")
+    _name_argument(remove)
     remove.set_defaults(handler=handle_remove)
 
     clear = group.add_parser("clear", help="Discard every draft.")
@@ -165,6 +189,32 @@ def _staging(ctx: Context) -> StagingStore:
 
 def _published(ctx: Context) -> PublishedRecord:
     return PublishedRecord(ctx.config.state_dir / "published")
+
+
+def _named(ctx: Context) -> str:
+    """The learner this invocation is about, from NAME or ``--learner``.
+
+    Both is fine when they agree — an agent that passes the flag and the
+    positional has said the same thing twice, not two different things. Two
+    different names is refused rather than one of them silently winning: the
+    cost of publishing the wrong person's lesson is a message to the wrong
+    family.
+    """
+    positional = str(getattr(ctx.args, "name", "") or "")
+    flag = str(getattr(ctx.args, "learner", "") or "")
+    label = ctx.config.label("learner")
+    if positional and flag and normalise(positional) != normalise(flag):
+        raise UsageError(
+            f'Two different {label}s were given: "{positional}" and "{flag}".',
+            remedy=f"Pass the {label} once: as NAME, or as --learner.",
+        )
+    name = positional or flag
+    if not name:
+        raise UsageError(
+            f"`baton lesson {ctx.args.lesson_command}` needs a {label}.",
+            remedy=f'Name one: `baton lesson {ctx.args.lesson_command} "<name>"`.',
+        )
+    return name
 
 
 def _resolve(ctx: Context, store, name: str):
@@ -591,7 +641,7 @@ def _read_payload(ctx: Context) -> Any:
 def handle_stage(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner = _resolve(ctx, store, _named(ctx))
 
         context = ctx.args.context
         if ctx.args.context_file:
@@ -680,7 +730,7 @@ def handle_stage(ctx: Context) -> Exit:
 def handle_contract(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner = _resolve(ctx, store, _named(ctx))
     finally:
         store.close()
 
@@ -726,7 +776,7 @@ def handle_contract(ctx: Context) -> Exit:
 def handle_ingest(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner = _resolve(ctx, store, _named(ctx))
     finally:
         store.close()
 
@@ -759,7 +809,7 @@ def handle_ingest(ctx: Context) -> Exit:
 def handle_render(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner = _resolve(ctx, store, _named(ctx))
     finally:
         store.close()
 
@@ -834,7 +884,7 @@ def handle_list(ctx: Context) -> Exit:
 def handle_show(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner = _resolve(ctx, store, _named(ctx))
     finally:
         store.close()
 
@@ -850,7 +900,7 @@ def handle_publish(ctx: Context) -> Exit:
     staging = _staging(ctx)
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner = _resolve(ctx, store, _named(ctx))
         draft = staging.require(learner.id, learner.name)
         # Read while the store is open: which URLs on the page are the song
         # rather than the recording, so neither the description update nor the
@@ -858,6 +908,18 @@ def handle_publish(ctx: Context) -> Exit:
         piece_sources = _piece_sources(store, learner, draft.piece_snapshot)
     finally:
         store.close()
+
+    label = ctx.config.label("session")
+    if ctx.args.session is not None and int(ctx.args.session) != draft.session_number:
+        # An assertion, not a selector: a learner has one draft at a time, so
+        # naming a session cannot choose between them. What it can do is stop
+        # a publish that believed it was finishing a different lesson.
+        raise UsageError(
+            f"{learner.name}'s staged draft is {label} {draft.session_number}, "
+            f"not {label} {ctx.args.session}.",
+            remedy=f"Publish the draft as it stands with `baton lesson publish "
+            f'"{learner.name}"`, or re-stage with `--session {ctx.args.session}` first.',
+        )
 
     if draft.summary is None:
         raise UsageError(
@@ -890,7 +952,6 @@ def handle_publish(ctx: Context) -> Exit:
         timezone=ctx.config.timezone,
     )
     theory = _theory(ctx)
-    label = ctx.config.label("session")
 
     if ctx.args.dry_run:
         plan = publisher.plan(
@@ -1030,7 +1091,7 @@ def handle_publish(ctx: Context) -> Exit:
 def handle_remove(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner = _resolve(ctx, store, _named(ctx))
     finally:
         store.close()
 

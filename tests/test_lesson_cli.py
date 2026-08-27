@@ -990,3 +990,89 @@ def test_a_document_store_that_refuses_the_link_does_not_fail_the_publish(
     assert payload["recording"]["status"] == "error"
     assert "notion refused the block" in payload["recording"]["error"]
     assert payload["appended"] > 0  # the summary itself still landed
+
+
+# -- naming the learner ----------------------------------------------------------
+
+
+def test_the_learner_can_be_named_by_flag_instead_of_positionally(studio, capsys):
+    """`baton lesson publish --learner X --session N` was a usage error in
+    production, and the agent that typed it had every reason to: `send batch`
+    takes `--learner`. Both spellings work now; the positional stays the
+    documented one."""
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "--learner", "Ada Whitfield", "--session", "3") == Exit.OK
+    assert out(capsys)["appended"] > 0
+
+
+def test_the_flag_works_for_every_subcommand_that_names_a_learner(studio, capsys):
+    """Knowing it works on one and not the next is worse than it never
+    working."""
+    assert call(studio, "stage", "--learner", "Ada Whitfield", "--session", "3") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "contract", "--learner", "Ada Whitfield") == Exit.OK
+    capsys.readouterr()
+    ingested = call(
+        studio, "ingest", "--learner", "Ada Whitfield", "--json-text", json.dumps(SUMMARY)
+    )
+    assert ingested == Exit.OK
+    capsys.readouterr()
+    assert call(studio, "render", "--learner", "Ada Whitfield") == Exit.OK
+    capsys.readouterr()
+    assert call(studio, "show", "--learner", "Ada Whitfield") == Exit.OK
+    capsys.readouterr()
+    assert call(studio, "remove", "--learner", "Ada Whitfield") == Exit.OK
+
+
+def test_the_positional_and_the_flag_may_agree(studio, capsys):
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield", "--learner", "Ada Whitfield") == Exit.OK
+
+
+def test_two_different_learners_in_one_invocation_are_refused(studio, capsys):
+    """Silently letting one win publishes somebody's lesson under somebody
+    else's name."""
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield", "--learner", "Bruno Castell") == Exit.USAGE
+
+    payload = out(capsys)
+    assert "Ada Whitfield" in payload["message"]
+    assert "Bruno Castell" in payload["message"]
+
+
+def test_naming_nobody_at_all_says_which_command_wanted_a_name(studio, capsys):
+    assert call(studio, "publish") == Exit.USAGE
+
+    payload = out(capsys)
+    assert "publish" in payload["message"]
+    assert "publish" in payload["remedy"]
+
+
+# -- publish --session asserts which lesson is being published --------------------
+
+
+def test_publish_refuses_a_session_the_draft_is_not_for(studio, capsys):
+    """A learner has one draft at a time, so `--session` cannot pick between
+    them — but it can stop a publish that thought it was finishing a different
+    lesson."""
+    prepared(studio, capsys)  # staged for session 3
+
+    assert call(studio, "publish", "Ada Whitfield", "--session", "2") == Exit.USAGE
+
+    payload = out(capsys)
+    assert "lesson 3" in payload["message"]
+    assert "lesson 2" in payload["message"]
+
+
+def test_publish_refusing_a_session_writes_nothing(studio, capsys):
+    prepared(studio, capsys)
+    _, docs = studio
+    before = list(docs.list_blocks("doc-ada-03"))
+
+    assert call(studio, "publish", "Ada Whitfield", "--session", "2") == Exit.USAGE
+
+    assert docs.list_blocks("doc-ada-03") == before

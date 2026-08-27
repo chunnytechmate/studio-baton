@@ -34,6 +34,12 @@ baton lesson publish "<name>" --json
 
 `baton lesson list`, `show`, `remove` inspect and discard drafts.
 
+Every one of these takes the learner positionally or as `--learner "<name>"` —
+use whichever reads better, but not two different names in one invocation.
+`publish` also takes `--session N`, which does not choose a lesson (a learner
+has one draft at a time) but refuses if the staged draft is for a different
+one. Pass it when you believe you know which session you are finishing.
+
 ## Writing the summary
 
 `contract` gives you the JSON Schema, the lesson notes, the learner's teaching
