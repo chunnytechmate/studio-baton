@@ -189,6 +189,32 @@ def _capture_piece_snapshot(store: LearnerStore, learner: Learner) -> PieceSnaps
     return PieceSnapshot.capture(piece)
 
 
+def _piece_sources(
+    store: LearnerStore, learner: Learner, snapshot: PieceSnapshot
+) -> tuple[str, ...]:
+    """URLs on the page that are the piece being learnt, not this recording.
+
+    The song a lesson works on sits on the same page as the lesson, and Notion
+    turns a pasted song URL into a bookmark and an embed — shapes
+    `find_video_link` reads. A song on YouTube looks exactly like a recording
+    on YouTube, which is how a publish once tried to write a lesson summary
+    onto a record label's music video and was refused by YouTube itself.
+
+    Both the piece this lesson was taught on and the one the learner is on now
+    are named, because a song can be changed after the fact: the page is
+    corrected to the new source while the snapshot still holds the old one.
+    """
+    links: list[str] = []
+    if snapshot.piece is not None and snapshot.piece.source_link:
+        links.append(snapshot.piece.source_link)
+    if learner.current_piece_id:
+        with contextlib.suppress(BatonError):
+            piece = store.get_piece(learner.current_piece_id)
+            if piece is not None and piece.source_link:
+                links.append(piece.source_link)
+    return tuple(links)
+
+
 def _require_force_compatible(
     draft: LessonDraft, published: Mapping[str, Any] | None, *, force: bool
 ) -> None:
@@ -253,7 +279,7 @@ def _titles_from(summary: dict[str, Any] | None) -> str:
 
 
 def _update_youtube_description(
-    ctx: Context, docs, doc_id: str, learner, draft: LessonDraft
+    ctx: Context, docs, doc_id: str, learner, draft: LessonDraft, *, exclude: tuple[str, ...] = ()
 ) -> dict[str, Any] | None:
     """Best-effort: put the just-published summary on the lesson's YouTube
     video description too, the way the studio's previous pipeline did.
@@ -261,6 +287,8 @@ def _update_youtube_description(
     Returns ``None`` when there was nothing to do (no YouTube configured, no
     video on the document yet, or the link on the document is not a YouTube
     URL at all) — that is the ordinary case for most sessions, not a failure.
+    ``exclude`` names URLs that are the piece's own source rather than the
+    recording, so the summary is never written onto the song's own video.
     A configured-but-failing update (wrong owner, API error) is reported but
     never raised: the document is already published, and this is a nice-to-
     have on top of it, not a reason to make the command exit non-zero.
@@ -271,6 +299,7 @@ def _update_youtube_description(
         blocks=tuple(
             str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
         ),
+        exclude=exclude,
     )
     video_id = extract_video_id(video_link) if video_link else None
     if not video_id:
@@ -302,7 +331,12 @@ def _update_youtube_description(
 
 
 def _retry_youtube_description(
-    ctx: Context, draft: LessonDraft, learner: Learner, published_record: Mapping | None
+    ctx: Context,
+    draft: LessonDraft,
+    learner: Learner,
+    published_record: Mapping | None,
+    *,
+    exclude: tuple[str, ...] = (),
 ) -> dict | None:
     """The description update a re-run of publish owes, if any.
 
@@ -338,7 +372,9 @@ def _retry_youtube_description(
     if attempted >= cap:
         return None
 
-    result = _update_youtube_description(ctx, open_docs(ctx.config), draft.doc_id, learner, draft)
+    result = _update_youtube_description(
+        ctx, open_docs(ctx.config), draft.doc_id, learner, draft, exclude=exclude
+    )
     if result is None:
         # No video on the document yet: still nothing to describe, and not a
         # spent attempt. The wide case above picks it up once one lands.
@@ -351,6 +387,96 @@ def _retry_youtube_description(
     return result
 
 
+def _recording_line(recording: dict[str, Any] | None) -> str:
+    """One line saying what `_stitch_recording` did, or nothing at all."""
+    if not recording:
+        return ""
+    if recording["status"] == "linked":
+        return f"\n  linked the uploaded recording: {recording['url']}"
+    return f"\n  the uploaded recording could NOT be linked: {recording['error']}"
+
+
+def _uploaded_recording(ctx: Context, draft: LessonDraft) -> str:
+    """The recording already uploaded for this session, as a URL, or "".
+
+    Read through the narrow part of the video job record that is a contract
+    between the two halves of the pipeline: who and which session the job was
+    for, and whether `uploaded` happened. A job that has uploaded holds the
+    only durable note that the recording exists at all, and nothing else in
+    Baton can answer "is there one?" once the run has ended.
+    """
+    from ..pipelines.video import VideoJobStore
+
+    for job in VideoJobStore(ctx.config.state_dir / "video").list():
+        if int(job.session_number or 0) != int(draft.session_number):
+            continue
+        # Ids are the identity when both sides have one; a job recorded before
+        # the learner was matched has only the folder name it came from.
+        if job.learner_id and draft.learner_id:
+            if str(job.learner_id) != str(draft.learner_id):
+                continue
+        elif job.learner_name != draft.learner_name:
+            continue
+        if not job.done("uploaded"):
+            continue
+        url = str(job.steps.get("uploaded", {}).get("url", "")) or job.video_url
+        if url:
+            return url
+    return ""
+
+
+def _stitch_recording(
+    ctx: Context, docs, draft: LessonDraft, *, exclude: tuple[str, ...] = ()
+) -> dict[str, Any] | None:
+    """Put an already-uploaded recording on the page when nothing else did.
+
+    The video pipeline links the recording itself, and in the ordinary run it
+    has done so long before anyone publishes. But a run that uploaded and then
+    failed — the upload is recorded before anything else can fail, on purpose
+    — leaves the video on YouTube and the page with no link to it. Nothing
+    downstream recovers from that on its own: `send` refuses for a missing
+    recording and says to add a video block by hand, which is exactly what a
+    studio had to do at half past nine at night.
+
+    So publish repairs it. Publish is where a person already is when the
+    recording matters, and it is the last step before the message goes out.
+
+    Returns ``None`` when there was nothing to do — the page already shows a
+    recording, or no upload has happened for this session. A failure to append
+    is reported rather than raised: the summary is on the page by now, and the
+    remedy the gate prints still works.
+    """
+    if not draft.doc_id:
+        return None
+    if find_video_link(
+        docs,
+        draft.doc_id,
+        blocks=tuple(
+            str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+        ),
+        exclude=exclude,
+    ):
+        return None
+
+    url = _uploaded_recording(ctx, draft)
+    if not url:
+        return None
+    try:
+        docs.append_blocks(
+            draft.doc_id,
+            [
+                {
+                    "object": "block",
+                    "type": "video",
+                    "video": {"type": "external", "external": {"url": url}},
+                }
+            ],
+        )
+    except BatonError as exc:
+        return {"status": "error", "url": url, "error": str(exc)}
+    return {"status": "linked", "url": url}
+
+
 def _finish_session(
     ctx: Context,
     publisher: SummaryPublisher,
@@ -360,6 +486,7 @@ def _finish_session(
     *,
     resumed: bool = False,
     youtube_result: dict | None = None,
+    recording: dict[str, Any] | None = None,
 ) -> Exit:
     """Mark a published session done on its document.
 
@@ -369,8 +496,9 @@ def _finish_session(
     lets `publish` be re-run to finish a session without appending a second
     copy of the same summary.
 
-    ``youtube_result``, on a resumed run that also owed a description update,
-    is carried into the report so one run's outcome reads as one line.
+    ``youtube_result`` and ``recording``, on a resumed run that also owed a
+    description update or a link to the recording, are carried into the report
+    so one run's outcome reads as one line.
     """
     label = ctx.config.label("session")
     try:
@@ -401,9 +529,14 @@ def _finish_session(
         elif youtube_result and youtube_result["status"] == "error":
             youtube_line = f"; the YouTube description still failed: {youtube_result['error']}"
         ctx.report.result(
-            {**draft.summary_view(), "completed": written, "youtube": youtube_result},
+            {
+                **draft.summary_view(),
+                "completed": written,
+                "youtube": youtube_result,
+                "recording": recording,
+            },
             human=f"{learner_name} — {label} {draft.session_number} was already "
-            f"published; marked it done now{youtube_line}.",
+            f"published; marked it done now{youtube_line}.{_recording_line(recording)}",
         )
     return Exit.OK
 
@@ -714,14 +847,17 @@ def handle_show(ctx: Context) -> Exit:
 
 @guarded("lesson")
 def handle_publish(ctx: Context) -> Exit:
+    staging = _staging(ctx)
     store = open_store(ctx.config)
     try:
         learner = _resolve(ctx, store, ctx.args.name)
+        draft = staging.require(learner.id, learner.name)
+        # Read while the store is open: which URLs on the page are the song
+        # rather than the recording, so neither the description update nor the
+        # gate can mistake one for the other.
+        piece_sources = _piece_sources(store, learner, draft.piece_snapshot)
     finally:
         store.close()
-
-    staging = _staging(ctx)
-    draft = staging.require(learner.id, learner.name)
 
     if draft.summary is None:
         raise UsageError(
@@ -780,7 +916,11 @@ def handle_publish(ctx: Context) -> Exit:
         # them: marking the session done, and the YouTube description update.
         docs_state = draft.targets.get("docs", {})
 
-        youtube_result = _retry_youtube_description(ctx, draft, learner, published_record)
+        # Before the description update, which needs a video to describe.
+        recording = _stitch_recording(ctx, open_docs(ctx.config), draft, exclude=piece_sources)
+        youtube_result = _retry_youtube_description(
+            ctx, draft, learner, published_record, exclude=piece_sources
+        )
         if youtube_result is not None:
             staging.save(draft)
 
@@ -793,6 +933,7 @@ def handle_publish(ctx: Context) -> Exit:
                 learner.name,
                 resumed=True,
                 youtube_result=youtube_result,
+                recording=recording,
             )
 
         if youtube_result is not None:
@@ -808,15 +949,15 @@ def handle_publish(ctx: Context) -> Exit:
                     f"{youtube_result['error']}"
                 )
             ctx.report.result(
-                {**draft.summary_view(), "youtube": youtube_result},
-                human=human,
+                {**draft.summary_view(), "youtube": youtube_result, "recording": recording},
+                human=human + _recording_line(recording),
             )
             return Exit.OK
 
         ctx.report.result(
-            {**draft.summary_view(), "skipped": "already published"},
+            {**draft.summary_view(), "skipped": "already published", "recording": recording},
             human=f"{learner.name} — {label} {draft.session_number} "
-            "was already published. Use --force to publish again.",
+            f"was already published. Use --force to publish again.{_recording_line(recording)}",
         )
         return Exit.OK
 
@@ -844,8 +985,13 @@ def handle_publish(ctx: Context) -> Exit:
     )
     published_store.save(draft, short_message=message, doc_url=result.doc_url)
 
+    # After the blocks, never before: a publish deletes everything the
+    # preserve policy does not protect, and a recording linked first would be
+    # the thing it deleted.
+    docs = open_docs(ctx.config)
+    recording = _stitch_recording(ctx, docs, draft, exclude=piece_sources)
     youtube_result = _update_youtube_description(
-        ctx, open_docs(ctx.config), draft.doc_id, learner, draft
+        ctx, docs, draft.doc_id, learner, draft, exclude=piece_sources
     )
     if youtube_result is not None:
         status = youtube_result["status"]
@@ -869,11 +1015,13 @@ def handle_publish(ctx: Context) -> Exit:
             **result.to_dict(),
             "completed": draft.targets["docs"].get("completed", {}),
             "youtube": youtube_result,
+            "recording": recording,
         },
         human=f"Published {learner.name} — {label} "
         f"{draft.session_number}\n"
         f"  appended {result.appended}, removed {result.deleted}, kept {result.preserved}\n"
         f"  marked the {label} done"
+        f"{_recording_line(recording)}"
         f"{youtube_line}",
     )
     return Exit.OK

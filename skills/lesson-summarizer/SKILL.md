@@ -72,6 +72,19 @@ closed.** Re-run `baton lesson publish` — it appends nothing the second time
 and only finishes the session. Say so rather than reporting the summary as
 lost.
 
+**Publish links a recording the video pipeline uploaded but never put on the
+page.** When a run uploads and then dies, the video is on YouTube and the page
+has no link to it, and `send` refuses for a missing recording. Publish repairs
+that itself — including a re-run of an already-published lesson, which is the
+one write it still owes. Report `recording` when it is present: `linked` with
+the URL, or `error` with the reason. Never add the block by hand.
+
+**A song on the page is not the lesson's recording.** The piece being learnt
+lives on the same page as a bookmark and an embed, and publish knows to skip
+those. If `youtube` comes back `null` and you can see a YouTube link on the
+page, that link is the song — the recording has not landed yet. Do not go
+looking for a way to make Baton use it.
+
 ## Exit codes
 
 | Code | Do this |

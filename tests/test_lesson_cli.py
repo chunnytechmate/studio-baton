@@ -707,3 +707,286 @@ def test_re_staging_does_not_reopen_the_description_gate(studio, capsys, monkeyp
     payload = out(capsys)
     assert payload["skipped"] == "already published"
     assert fake_publisher.descriptions == described
+
+
+# -- the song being learnt is not the lesson's recording -------------------------
+
+SONG = "https://www.youtube.com/watch?v=kPa7bsKwL-c"
+RECORDING = "https://youtu.be/-c6xs_5aCVw"
+
+
+def _teach(profile, source_link: str, *, piece_id: int = 2) -> None:
+    """Give the piece a source link on a video host, as a pop song has."""
+    connection = sqlite3.connect(profile / "data" / "studio.db")
+    connection.execute("UPDATE pieces SET source_link = ? WHERE id = ?", (source_link, piece_id))
+    connection.commit()
+    connection.close()
+
+
+def test_publish_does_not_write_the_summary_onto_the_songs_own_video(studio, capsys, monkeypatch):
+    """What production did: the page held the song and no recording, so the
+    description step took the song's video for the lesson's and YouTube
+    refused it — `Video kPa7bsKwL-c belongs to 'LadyGagaVEVO'`. There is
+    nothing to describe here, and saying so is the whole answer."""
+    from baton.adapters.fakes import FakePublisher
+
+    profile, docs = studio
+    _teach(profile, SONG)
+    docs.blocks["doc-ada-03"] = [
+        Block(id="head", type="heading_2", text="🎵 Die With a Smile"),
+        Block(id="bm", type="bookmark", url=SONG),
+        Block(id="em", type="embed", url=SONG),
+    ]
+    fake_publisher = FakePublisher()
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["youtube"] is None
+    assert fake_publisher.descriptions == {}
+
+
+def test_publish_describes_the_recording_that_sits_beside_the_song(studio, capsys, monkeypatch):
+    from baton.adapters.fakes import FakePublisher
+
+    profile, docs = studio
+    _teach(profile, SONG)
+    docs.blocks["doc-ada-03"] = [
+        Block(id="recording", type="video", url=RECORDING),
+        Block(id="em", type="embed", url=SONG),
+    ]
+    fake_publisher = FakePublisher()
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["youtube"] == {"status": "ok", "video_id": "-c6xs_5aCVw"}
+    assert "kPa7bsKwL-c" not in fake_publisher.descriptions
+
+
+# -- publish links an upload the pipeline never got onto the page ----------------
+
+
+def _uploaded(profile, url: str = RECORDING, **overrides) -> None:
+    """Record a video job that reached `uploaded` and stopped there — the
+    state a run leaves behind when it dies after YouTube accepted the file."""
+    from baton.pipelines.video import VideoJob, VideoJobStore
+
+    job = VideoJob(
+        learner_folder=overrides.pop("learner_folder", "Ada Whitfield"),
+        learner_id=overrides.pop("learner_id", "1"),
+        learner_name=overrides.pop("learner_name", "Ada Whitfield"),
+        session_number=overrides.pop("session_number", 3),
+        doc_id="doc-ada-03",
+        video_id="-c6xs_5aCVw",
+        video_url=url,
+        **overrides,
+    )
+    job.record("uploaded", video_id=job.video_id, url=url)
+    VideoJobStore(profile / "state" / "video").save(job)
+
+
+def test_publish_links_an_upload_the_pipeline_left_off_the_page(studio, capsys):
+    """The recording was on YouTube from twenty to nine; the page had no link
+    to it, so `send` refused with "add a video block to the document" and a
+    person had to do exactly that by hand. Publish is where they already are.
+    """
+    profile, docs = studio
+    _uploaded(profile)
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["recording"] == {"status": "linked", "url": RECORDING}
+    assert RECORDING in {block.url for block in docs.list_blocks("doc-ada-03")}
+
+
+def test_a_linked_upload_then_gets_its_youtube_description(studio, capsys, monkeypatch):
+    """Linking it is what makes the description step have something to do —
+    the two run in that order for that reason."""
+    from baton.adapters.fakes import FakePublisher
+
+    profile, docs = studio
+    _uploaded(profile)
+    docs.blocks["doc-ada-03"] = []
+    fake_publisher = FakePublisher()
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["youtube"] == {"status": "ok", "video_id": "-c6xs_5aCVw"}
+
+
+def test_a_forced_republish_links_the_upload_too(studio, capsys):
+    """`publish --force` is what the studio actually reached for, and it
+    reported `preserved: 0, youtube: null` — nothing kept, nothing linked."""
+    profile, docs = studio
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+
+    _uploaded(profile)  # the upload lands afterwards, unlinked
+
+    assert call(studio, "publish", "Ada Whitfield", "--force") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["recording"] == {"status": "linked", "url": RECORDING}
+    assert RECORDING in {block.url for block in docs.list_blocks("doc-ada-03")}
+
+
+def test_a_re_run_of_an_already_published_lesson_links_the_upload(studio, capsys):
+    """Without --force, the summary is left alone — but the recording is one
+    of the writes a re-run legitimately still owes."""
+    profile, docs = studio
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+    after_first = len(docs.list_blocks("doc-ada-03"))
+
+    _uploaded(profile)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["recording"] == {"status": "linked", "url": RECORDING}
+    assert len(docs.list_blocks("doc-ada-03")) == after_first + 1
+
+
+def test_publish_does_not_link_a_second_copy_of_a_recording_already_shown(studio, capsys):
+    """The ordinary case: the pipeline linked it itself. Nothing to repair,
+    and repairing it anyway would put the video on the page twice."""
+    profile, docs = studio
+    _uploaded(profile)
+    docs.blocks["doc-ada-03"] = [Block(id="vid", type="video", url=RECORDING)]
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["recording"] is None
+    videos = [block.url for block in docs.list_blocks("doc-ada-03") if block.type == "video"]
+    assert videos == [RECORDING]
+
+
+def test_publish_leaves_a_hand_pasted_recording_alone(studio, capsys):
+    """A recording someone put on the page by hand is a recording as far as
+    the gate is concerned, so there is nothing missing to repair — and adding
+    the pipeline's copy beside it would give the page two.
+
+    The fixture's `docs.preserve` keeps `embed`, so this one survives the
+    republish; a shape the policy does not protect is deleted by publish
+    itself, and then there genuinely is nothing on the page.
+    """
+    profile, docs = studio
+    _uploaded(profile, url="https://youtu.be/otherupload")
+    docs.blocks["doc-ada-03"] = [Block(id="em", type="embed", url=RECORDING)]
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["recording"] is None
+    assert not [block for block in docs.list_blocks("doc-ada-03") if block.type == "video"]
+
+
+def test_publish_does_not_link_another_sessions_upload(studio, capsys):
+    """Job records outlive the session they were for. Linking week 2's
+    recording under week 3 is worse than linking nothing."""
+    profile, docs = studio
+    _uploaded(profile, session_number=2)
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["recording"] is None
+    assert docs.list_blocks("doc-ada-03") != []  # the summary landed; no video did
+    assert not [block for block in docs.list_blocks("doc-ada-03") if block.type == "video"]
+
+
+def test_publish_does_not_link_another_learners_upload(studio, capsys):
+    profile, docs = studio
+    _uploaded(profile, learner_folder="Bruno Castell", learner_id="2", learner_name="Bruno Castell")
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["recording"] is None
+
+
+def test_publish_ignores_a_job_that_never_uploaded(studio, capsys):
+    """A job that only downloaded has nothing to link, and its `video_url` is
+    empty — reading it as one would put a blank video block on the page."""
+    from baton.pipelines.video import VideoJob, VideoJobStore
+
+    profile, docs = studio
+    job = VideoJob(
+        learner_folder="Ada Whitfield",
+        learner_id="1",
+        learner_name="Ada Whitfield",
+        session_number=3,
+    )
+    job.record("downloaded", count=3)
+    VideoJobStore(profile / "state" / "video").save(job)
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    assert out(capsys)["recording"] is None
+
+
+def test_a_dry_run_links_nothing(studio, capsys):
+    profile, docs = studio
+    _uploaded(profile)
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    assert call(studio, "publish", "Ada Whitfield", "--dry-run") == Exit.OK
+
+    assert docs.list_blocks("doc-ada-03") == []
+
+
+def test_a_document_store_that_refuses_the_link_does_not_fail_the_publish(
+    studio, capsys, monkeypatch
+):
+    """The summary is on the page by the time this runs. The remedy the send
+    gate prints still works, and a non-zero exit here would say the publish
+    itself had failed."""
+    from baton.errors import UpstreamError
+
+    profile, docs = studio
+    _uploaded(profile)
+    docs.blocks["doc-ada-03"] = []
+    prepared(studio, capsys)
+
+    class RefusingVideoBlocks:
+        """The fixture's store, except that appending a video block fails."""
+
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def append_blocks(self, doc_id, blocks):
+            if any(block.get("type") == "video" for block in blocks):
+                raise UpstreamError("notion refused the block", service="notion")
+            return self._inner.append_blocks(doc_id, blocks)
+
+    refusing = RefusingVideoBlocks(docs)
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_docs", lambda _config: refusing)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["recording"]["status"] == "error"
+    assert "notion refused the block" in payload["recording"]["error"]
+    assert payload["appended"] > 0  # the summary itself still landed
