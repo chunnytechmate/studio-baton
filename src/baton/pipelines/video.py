@@ -424,8 +424,18 @@ class VideoPipeline:
 
             # Last, and only now: the source is the only remaining copy until
             # this point.
+            leftover = [clip.id for clip in clips if clip.id in job.clip_ids]
             if not job.done("source_trashed"):
                 self._trash(job)
+            elif leftover:
+                # The step says the source was trashed, yet the source still
+                # lists clips this job already owns. The recorded success and
+                # the source disagreed exactly this way in production
+                # (2026-08-27): both jobs recorded `moved` counts and eight
+                # clips stayed in Drive until a person trashed them by hand.
+                # Re-issuing the trash is idempotent on clips already gone.
+                moved = self.source.trash(leftover)
+                job.record("source_trashed", moved=moved, reclaimed=len(leftover))
 
             job.status = "done"
             self.jobs.save(job)
