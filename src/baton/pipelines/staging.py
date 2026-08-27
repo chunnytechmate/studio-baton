@@ -379,4 +379,23 @@ class PublishedRecord:
                 records.append(data)
         if not records:
             return None
-        return max(records, key=lambda item: (str(item.get("published_at", "")),))
+
+        def _order(item: dict[str, Any]) -> tuple[str, int]:
+            """Newest first by time, then by session.
+
+            `published_at` is written to the second, so two publishes inside
+            one second compare equal and `max` falls back to whichever the
+            filesystem's glob happened to yield first — an ordering that
+            differs between Linux and macOS and is not an ordering at all.
+            Left there, `send lesson` with no `--session` could pick the
+            earlier of the two and send last week's message. The session
+            number is the tie-break because it is the thing that actually
+            advances.
+            """
+            try:
+                session = int(item.get("session_number", 0) or 0)
+            except (TypeError, ValueError):
+                session = 0
+            return str(item.get("published_at", "")), session
+
+        return max(records, key=_order)

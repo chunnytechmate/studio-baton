@@ -65,6 +65,27 @@ def test_latest_picks_the_most_recent_among_only_that_learners_records(tmp_path:
     assert latest["short_message"] == "newer"
 
 
+def test_two_publishes_in_one_second_are_ordered_by_session(tmp_path: Path, monkeypatch):
+    """The tie the `_Clock` above exists to avoid, met head-on.
+
+    `published_at` is written to the second, so a studio that publishes two
+    sessions in the same second leaves two records that compare equal. `max`
+    then returned whichever the filesystem's glob yielded first — Linux and
+    macOS disagreed, which is how this surfaced — and `send lesson` with no
+    `--session` could pick the earlier one and send last week's message.
+    """
+    monkeypatch.setattr(staging, "_now", lambda: "2026-08-17T00:00:01+00:00")
+    records = PublishedRecord(tmp_path)
+    records.save(_draft("ada", "Ada Whitfield", 3), short_message="last week")
+    records.save(_draft("ada", "Ada Whitfield", 4), short_message="this week")
+
+    latest = records.latest("ada")
+
+    assert latest is not None
+    assert latest["short_message"] == "this week"
+    assert latest["session_number"] == 4
+
+
 def test_a_learner_with_no_records_gets_nothing_even_when_a_neighbour_has(tmp_path: Path):
     records = PublishedRecord(tmp_path)
     records.save(_draft("ada-1", "Ada the Second", 3), short_message="for ada-1")
