@@ -409,9 +409,14 @@ class VideoPipeline:
                 self._upload(job, combined)
                 self.jobs.save(job)
 
-            if not job.done("doc_linked"):
-                self._link(job)
-                self.jobs.save(job)
+            # Verified against the live page, never against the step record
+            # alone: a later rebuild of the document can drop the block after
+            # the step was recorded (observed 2026-08-27, when a forced
+            # publish rewrote a page between the link and the send and the
+            # gate refused the missing video). `_link` appends only what the
+            # page is missing, so this stays idempotent.
+            self._link(job)
+            self.jobs.save(job)
 
             if not job.done("cleaned"):
                 self._clean(job)
