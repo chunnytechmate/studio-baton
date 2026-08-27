@@ -49,6 +49,10 @@ tmp/
 # known defects before they are fixed and stay on the machine.
 /review/
 
+# Local-only work briefs. These carry raw session transcripts with real
+# learner names and page links — the reason they never reach this repo.
+/briefs/
+
 # Screenshots dropped at the repo root by browser-driven sessions, and the
 # Playwright MCP scratch directory that produces them. Nothing here is a
 # project asset; a real doc image would live under docs/ and stay tracked.
