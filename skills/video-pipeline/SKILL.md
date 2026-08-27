@@ -20,7 +20,9 @@ baton video run --dry-run --json        # what is waiting, changes nothing
 baton video run --detach --json         # start it; returns a job id at once
 baton job wait <id> --timeout 90 --json
 baton job logs <id> --tail 50
-baton video status --json               # per-learner progress
+baton video status --json               # per-learner progress; every job has
+                                        # learner_name, and error is null (not
+                                        # "") when there is none
 baton video resume --detach --json      # continue whatever did not finish
 ```
 
@@ -41,6 +43,17 @@ check `baton job status` later. The job outlives every one of these calls.
 **Re-running is safe and is the correct response to most failures.** A finished
 upload is never repeated, and source clips are only discarded once everything
 else succeeded. Use `baton video resume`.
+
+**A new week's clips start a new job by themselves.** When a folder whose job
+is already done receives clips the job has never seen, `video run` archives
+the done job and starts the next session's job — `video forget` is no longer
+part of the weekly loop. If no next session exists yet, that learner fails
+with a remedy naming it; create the session, then re-run.
+
+**`video resume` never collects, but never stays quiet either.** It continues
+unfinished jobs and re-trashes source clips a done job's record claims were
+already moved. When clips are waiting that only `video run` may collect, the
+result says so (`waiting_clips`) — report that and suggest `video run`.
 
 **Never use `baton video forget`** unless the user explicitly asks and
 understands it: if the upload already happened, starting over publishes a
