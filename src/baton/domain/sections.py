@@ -29,6 +29,7 @@ from collections.abc import Mapping
 #: translate these under ``summary.sections``.
 WRITTEN_HEADINGS: dict[str, str] = {
     "overview": "Overview",
+    "progress": "Progress",
     "covered": "What we covered",
     "focus": "Focus areas",
     "goals": "Practice goals",
@@ -45,6 +46,7 @@ WRITTEN_HEADINGS: dict[str, str] = {
 #: back the same way.
 READ_KEYWORDS: dict[str, tuple[str, ...]] = {
     "overview": ("ภาพรวมการเรียน", "overview"),
+    "progress": ("พัฒนาการ", "ความก้าวหน้า", "progress"),
     "content": ("เนื้อหา", "สิ่งที่เรียน", "core lesson"),
     "focus": ("โฟกัส", "focus"),
     "practice_goals": ("เป้าหมายการซ้อม", "practice goals"),
@@ -56,12 +58,16 @@ READ_KEYWORDS: dict[str, tuple[str, ...]] = {
 #: inferred: the two vocabularies grew apart, and guessing at the pairing from
 #: the names alone would silently mis-file ``covered`` and ``goals``.
 #:
+#: ``progress`` is the one section whose two names match, because it was added
+#: after this module existed to hold both.
+#:
 #: Sections read back but never written — ``next_goal``, ``homework`` — are
 #: absent on purpose. Nothing Baton writes carries those headings; homework
 #: arrives through ``docs.homework_types`` instead, which claims checklist
 #: blocks wherever they sit.
 WRITES_INTO: dict[str, str] = {
     "overview": "overview",
+    "progress": "progress",
     "covered": "content",
     "focus": "focus",
     "goals": "practice_goals",

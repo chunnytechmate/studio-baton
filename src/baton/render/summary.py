@@ -123,6 +123,11 @@ def to_blocks(
     blocks.append(_heading(names["overview"]))
     blocks.extend(_paragraph(line) for line in summary.get("overview", []))
 
+    progress = summary.get("progress", []) or []
+    if progress:
+        blocks.append(_heading(names["progress"]))
+        blocks.extend(_bullet(f"{item['before']} → {item['after']}") for item in progress)
+
     covered = summary.get("covered", [])
     if covered:
         blocks.append(_heading(names["covered"]))
@@ -173,6 +178,13 @@ def to_markdown(
     lines.append("")
     lines.extend(summary.get("overview", []))
     lines.append("")
+
+    progress = summary.get("progress", []) or []
+    if progress:
+        lines.append(f"## {names['progress']}")
+        lines.append("")
+        lines.extend(f"- {item['before']} → {item['after']}" for item in progress)
+        lines.append("")
 
     covered = summary.get("covered", [])
     if covered:

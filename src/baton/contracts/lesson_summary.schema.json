@@ -5,14 +5,50 @@
   "description": "The structure a model must return for one session. Baton renders this; the model never writes the final document. Free prose drifts in ways a small local model cannot be told out of, so the shape is enforced rather than requested.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["overview", "covered", "goals", "short_summary"],
+  "required": [
+    "overview",
+    "covered",
+    "goals",
+    "short_summary"
+  ],
   "properties": {
     "overview": {
       "description": "One to three sentences on how the session went overall. Compare with the previous session where there is something real to compare.",
       "type": "array",
       "minItems": 1,
       "maxItems": 3,
-      "items": { "type": "string", "minLength": 3, "maxLength": 400 }
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 400
+      }
+    },
+    "progress": {
+      "description": "What changed since the previous session, each entry as the state before and the state now. This is the section a family reads to learn whether the lessons are working, and the one a rating cannot carry: \"doing very well\" is a verdict, \"needed counting aloud with them\" to \"counts through the piece unaided\" is evidence. Required whenever there is a previous session to compare against.",
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "before",
+          "after"
+        ],
+        "properties": {
+          "before": {
+            "description": "How it stood before — from the previous session, not a guess.",
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          },
+          "after": {
+            "description": "How it stands now, observed in this session.",
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        }
+      }
     },
     "covered": {
       "description": "What was actually worked on. One entry per topic, technique, or passage.",
@@ -22,10 +58,19 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["topic"],
+        "required": [
+          "topic"
+        ],
         "properties": {
-          "topic": { "type": "string", "minLength": 2, "maxLength": 120 },
-          "detail": { "type": "string", "maxLength": 600 },
+          "topic": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 600
+          },
           "notation": {
             "description": "Tab, chord chart, or rhythm notation, rendered as a code block so it keeps its alignment.",
             "type": "string",
@@ -41,10 +86,21 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["issue", "fix"],
+        "required": [
+          "issue",
+          "fix"
+        ],
         "properties": {
-          "issue": { "type": "string", "minLength": 3, "maxLength": 300 },
-          "fix": { "type": "string", "minLength": 3, "maxLength": 400 }
+          "issue": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          },
+          "fix": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 400
+          }
         }
       }
     },
@@ -53,13 +109,21 @@
       "type": "array",
       "minItems": 1,
       "maxItems": 8,
-      "items": { "type": "string", "minLength": 3, "maxLength": 300 }
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 300
+      }
     },
     "callouts": {
       "description": "References into the studio's own theory notes, by id. Baton substitutes the stored text. A model cannot invent theory content here — an id that does not exist is rejected.",
       "type": "array",
       "maxItems": 6,
-      "items": { "type": "string", "minLength": 1, "maxLength": 120 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      }
     },
     "extra_sections": {
       "description": "Typed escape hatch for a studio whose lessons do not fit the fixed sections. Still structured, so it still renders deterministically.",
@@ -68,14 +132,25 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["heading", "items"],
+        "required": [
+          "heading",
+          "items"
+        ],
         "properties": {
-          "heading": { "type": "string", "minLength": 2, "maxLength": 120 },
+          "heading": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120
+          },
           "items": {
             "type": "array",
             "minItems": 1,
             "maxItems": 12,
-            "items": { "type": "string", "minLength": 1, "maxLength": 400 }
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 400
+            }
           }
         }
       }
@@ -84,11 +159,25 @@
       "description": "The message a parent receives. Constraints here are validated, not merely requested: emoji, links, and length are checked by code because a prose instruction not to use them is exactly what a small model ignores.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["covered", "progress"],
+      "required": [
+        "covered",
+        "progress"
+      ],
       "properties": {
-        "covered": { "type": "string", "minLength": 3, "maxLength": 300 },
-        "progress": { "type": "string", "minLength": 3, "maxLength": 300 },
-        "homework": { "type": "string", "maxLength": 300 }
+        "covered": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 300
+        },
+        "progress": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 300
+        },
+        "homework": {
+          "type": "string",
+          "maxLength": 300
+        }
       }
     }
   }

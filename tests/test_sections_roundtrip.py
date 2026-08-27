@@ -25,6 +25,7 @@ from baton.render import summary as render
 
 SUMMARY = {
     "overview": ["เล่นได้ตลอดเพลงแล้ว"],
+    "progress": [{"before": "ต้องครูช่วยนับจังหวะ", "after": "นับเองได้ตลอดเพลง"}],
     "covered": [{"topic": "Blackbird ห้อง 9-16", "detail": "นิ้วโป้งกับนิ้วชี้"}],
     "focus": [{"issue": "เปลี่ยนคอร์ด C ช้า", "fix": "ซ้อมสลับช้า ๆ"}],
     "goals": ["ห้อง 9-16 ที่ 80bpm"],
@@ -58,6 +59,26 @@ def test_every_section_baton_writes_reads_back_with_content():
     assert "เล่นได้ตลอดเพลงแล้ว" in sections["overview"]
     assert "Blackbird" in sections["content"]
     assert "เปลี่ยนคอร์ด C ช้า" in sections["focus"]
+
+
+def test_the_progress_section_reads_back_too():
+    """Added after this module existed, so it is the one section whose written
+    and read names match — and the trap this file guards is a section that is
+    written and then cannot be found."""
+    page = _as_page(render.to_blocks(SUMMARY))
+    sections = SectionRules.from_config(_config()).read(page)
+
+    assert "นับเองได้ตลอดเพลง" in sections["progress"]
+
+
+def test_progress_is_not_required_for_prep():
+    """Deliberate: every page published before this section existed has no
+    such heading, and `prep.required` is fail-closed. Adding it there would
+    refuse the teacher a briefing for every learner with an older summary —
+    exactly the failure this module was written to fix."""
+    from baton.core.config import packaged_defaults
+
+    assert "progress" not in packaged_defaults()["prep"]["required"]
 
 
 def test_the_content_section_is_not_empty():
