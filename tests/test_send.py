@@ -846,3 +846,98 @@ def test_a_snapshot_whose_piece_lost_its_track_is_not_backfilled_from_today():
     gathered = gather_context(MOVED_ON, "1", _published_with(PieceSnapshot.capture(trackless)))
 
     assert gathered.practice_track == ""
+
+
+# -- the song being learnt is not the lesson's recording -------------------------
+
+SONG = "https://www.youtube.com/watch?v=kPa7bsKwL-c"
+RECORDING = "https://youtu.be/-c6xs_5aCVw"
+
+
+def _teach(profile, source_link: str, *, piece_id: int = 2) -> None:
+    """Give the piece a source link on a video host, as a pop song has."""
+    connection = sqlite3.connect(profile / "data" / "studio.db")
+    connection.execute("UPDATE pieces SET source_link = ? WHERE id = ?", (source_link, piece_id))
+    connection.commit()
+    connection.close()
+
+
+def test_the_song_on_the_page_is_not_sent_as_the_recording(studio, capsys):
+    """What production did: the page held the song the lesson worked on and no
+    recording yet, and the message went out carrying the link to the song's
+    official music video. The gate did not stop it because a link *was* found.
+
+    The send must be refused instead — the recording is genuinely missing.
+    """
+    profile, messenger, docs = studio
+    _teach(profile, SONG)
+    docs.blocks["doc-ada-03"] = [
+        Block(id="head", type="heading_2", text="🎵 Die With a Smile"),
+        Block(id="bm", type="bookmark", url=SONG),
+        Block(id="em", type="embed", url=SONG),
+    ]
+    publish(profile, "1")
+
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.GATE
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [m["field"] for m in payload["details"]["missing"]] == ["video_link"]
+    assert messenger.sent == []
+
+
+def test_the_recording_goes_out_when_it_sits_beside_the_song(studio, capsys):
+    profile, messenger, docs = studio
+    _teach(profile, SONG)
+    docs.blocks["doc-ada-03"] = [
+        Block(id="recording", type="video", url=RECORDING),
+        Block(id="bm", type="bookmark", url=SONG),
+        Block(id="em", type="embed", url=SONG),
+    ]
+    publish(profile, "1")
+
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.OK
+
+    capsys.readouterr()
+    assert RECORDING in messenger.sent[0][1]
+    assert SONG not in messenger.sent[0][1]
+
+
+def test_the_song_taught_that_lesson_is_excluded_after_the_learner_moves_on(studio, capsys):
+    """The song can be changed after the lesson was published — that is what
+    happened the night this was found. The page then holds the new source,
+    while the record holds the old one, and both are the piece rather than the
+    recording."""
+    profile, messenger, docs = studio
+    old_song = "https://youtu.be/oldsong0000"
+    _teach(profile, SONG)  # the learner is on the new song now
+    docs.blocks["doc-ada-03"] = [Block(id="em", type="embed", url=old_song)]
+    publish(
+        profile,
+        "1",
+        piece_snapshot=PieceSnapshot.capture(
+            Piece(id="2", title="Die With a Smile", source_link=old_song)
+        ).to_dict(),
+    )
+
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.GATE
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [m["field"] for m in payload["details"]["missing"]] == ["video_link"]
+    assert messenger.sent == []
+
+
+def test_send_video_carries_the_recording_rather_than_the_song(studio, capsys):
+    """`send video` reads the page the same way and had the same bug."""
+    profile, messenger, docs = studio
+    _teach(profile, SONG)
+    docs.blocks["doc-ada-03"] = [
+        Block(id="recording", type="video", url=RECORDING),
+        Block(id="em", type="embed", url=SONG),
+    ]
+    publish(profile, "1")
+
+    assert call(studio, "video", "Ada Whitfield", "--to", "teacher") == Exit.OK
+
+    capsys.readouterr()
+    assert RECORDING in messenger.sent[0][1]
+    assert SONG not in messenger.sent[0][1]

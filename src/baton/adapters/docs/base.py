@@ -12,6 +12,7 @@ links are on it"), so a rewrite physically cannot delete an uploaded recording.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -67,20 +68,53 @@ VIDEO_LINK_BLOCKS: tuple[str, ...] = ("video", "bookmark", "embed")
 _VIDEO_HOSTS: tuple[str, ...] = ("youtube", "youtu.be")
 
 
+def video_identity(url: str) -> str:
+    """A comparable identity for a video URL.
+
+    ``youtu.be/ID``, ``watch?v=ID`` and ``/embed/ID`` are one video written
+    three ways, and Notion rewrites freely between them — so comparing the
+    strings lets the same video pass twice as two different ones. Anything
+    that is not a YouTube URL has no id to compare and falls back to the URL
+    itself, folded only where a difference never means a different page.
+    """
+    from ..media.google import extract_video_id  # pure string parsing, no extra needed
+
+    return extract_video_id(url) or url.strip().rstrip("/").casefold()
+
+
 def find_video_link(
-    docs: DocStore, doc_id: str, *, blocks: tuple[str, ...] = VIDEO_LINK_BLOCKS
+    docs: DocStore,
+    doc_id: str,
+    *,
+    blocks: tuple[str, ...] = VIDEO_LINK_BLOCKS,
+    exclude: Iterable[str] = (),
 ) -> str:
-    """The newest recording link on a session document, or "" when there is none.
+    """This session's recording link on its document, or "" when there is none.
 
     Shared by every caller that needs "the recording, if any" — `baton send`
     and the YouTube description step both read the same document the same
     way, rather than each growing its own copy that quietly drifts from the
     other (the original system had this duplicated across skills).
 
+    Two rules keep the *song being learnt* from being read as the recording of
+    the lesson. A studio keeps both on the same page, and once the song is a
+    YouTube link — for a pop song it always is — nothing in the shape of the
+    URL tells the two apart:
+
+    * a `video` block wins over a bookmark or an embed however far up the page
+      it sits. The pipeline writes the recording as a `video` block; Notion
+      turns a pasted song URL into a bookmark and an embed, and those land
+      below it. Reading the last link on the page therefore read the song.
+    * a URL named in ``exclude`` is never the recording, in any shape.
+
     Args:
         blocks: Block types that may hold the link. The default matches the
             shapes the previous system accepted; ``docs.video_link_blocks``
             overrides it per studio.
+        exclude: URLs that are something other than this lesson's recording —
+            in practice the piece's own ``source_link``. Compared by video
+            identity, not as strings, so the song still matches after Notion
+            has rewritten it into another of YouTube's URL shapes.
 
     A document-store failure degrades to "no recording link" rather than
     raising: the field is optional everywhere it is read, so an outage here
@@ -91,15 +125,23 @@ def find_video_link(
     if not doc_id:
         return ""
     try:
-        for block in reversed(docs.list_blocks(doc_id)):
-            if block.type not in blocks or not block.url:
-                continue
-            if block.type != "video" and not any(host in block.url for host in _VIDEO_HOSTS):
-                continue
-            return block.url
+        page = docs.list_blocks(doc_id)
     except BatonError:
         return ""
-    return ""
+
+    excluded = {video_identity(url) for url in exclude if url}
+    candidates = [
+        block
+        for block in reversed(page)
+        if block.type in blocks
+        and block.url
+        and (block.type == "video" or any(host in block.url for host in _VIDEO_HOSTS))
+        and video_identity(block.url) not in excluded
+    ]
+    for block in candidates:
+        if block.type == "video":
+            return block.url
+    return candidates[0].url if candidates else ""
 
 
 @dataclass(frozen=True)

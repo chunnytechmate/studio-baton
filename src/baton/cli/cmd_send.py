@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.chat import open_chat
@@ -26,7 +27,7 @@ from ..exits import Exit
 from ..pipelines.lesson_video import send_video
 from ..pipelines.recording import list_candidates, send_recording
 from ..pipelines.send import send_lesson
-from ..pipelines.staging import PublishedRecord
+from ..pipelines.staging import PieceSnapshot, PublishedRecord
 from .guard import guarded
 
 if TYPE_CHECKING:
@@ -194,6 +195,37 @@ def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
     return status.date, status.titles
 
 
+def _piece_sources(store, learner: Learner | None, published: Mapping[str, Any]) -> tuple[str, ...]:
+    """URLs on the page that are the piece being learnt, not this recording.
+
+    A studio keeps the song on the same page as the lesson, and Notion turns a
+    pasted song URL into a bookmark and an embed. Both are shapes
+    `find_video_link` reads, and a song on YouTube is indistinguishable from a
+    recording on YouTube by its URL alone — which is how a lesson message once
+    went out carrying the link to the song's official music video.
+
+    Both the piece the lesson was taught on and the one the learner is on now
+    are named, because a song can be changed after the fact: the page is
+    corrected to the new source while the record still holds the old one, and
+    either can be the link sitting on the page.
+
+    Degrades to naming fewer URLs rather than raising. Everything it protects
+    against is a wrong link, and refusing to send at all is worse than the
+    ordering rule in `find_video_link` catching the same case on its own.
+    """
+    links: list[str] = []
+    with contextlib.suppress(BatonError):
+        snapshot = PieceSnapshot.from_record(published)
+        if snapshot.piece is not None and snapshot.piece.source_link:
+            links.append(snapshot.piece.source_link)
+    if learner is not None and learner.current_piece_id:
+        with contextlib.suppress(BatonError):
+            piece = store.get_piece(learner.current_piece_id)
+            if piece is not None and piece.source_link:
+                links.append(piece.source_link)
+    return tuple(links)
+
+
 def _messenger(ctx: Context, *, what: str, key: str) -> Messenger:
     """The configured messenger, wrapped so one message cannot go out twice.
 
@@ -273,6 +305,7 @@ def _send_one(
             blocks=tuple(
                 str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
             ),
+            exclude=_piece_sources(store, learner, published),
         )
         date, titles = _date_and_titles(docs, doc_id)
         date = _date_format(ctx).of_text(date)
@@ -491,27 +524,30 @@ def handle_video(ctx: Context) -> Exit:
     summary — a taste of it rides along, the whole thing stays one tap away.
     """
     label = ctx.config.label("session")
+    # The store stays open past the published record because the piece it
+    # names is what tells the song on the page apart from the recording.
     store = open_store(ctx.config)
     try:
         learner = _resolve(ctx, store, ctx.args.name)
+
+        records = PublishedRecord(ctx.config.state_dir / "published")
+        if ctx.args.session is not None:
+            published = records.get(learner.id, ctx.args.session)
+            if published is None:
+                raise UsageError(
+                    f"No published {label} {ctx.args.session} for {learner.name}.",
+                    remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
+                )
+        else:
+            published = records.latest(learner.id)
+            if published is None:
+                raise UsageError(
+                    f"Nothing has been published for {learner.name} yet.",
+                    remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
+                )
+        piece_sources = _piece_sources(store, learner, published)
     finally:
         store.close()
-
-    records = PublishedRecord(ctx.config.state_dir / "published")
-    if ctx.args.session is not None:
-        published = records.get(learner.id, ctx.args.session)
-        if published is None:
-            raise UsageError(
-                f"No published {label} {ctx.args.session} for {learner.name}.",
-                remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
-            )
-    else:
-        published = records.latest(learner.id)
-        if published is None:
-            raise UsageError(
-                f"Nothing has been published for {learner.name} yet.",
-                remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
-            )
 
     session_number = int(published.get("session_number", 0) or 0)
     doc_id = str(published.get("doc_id", ""))
@@ -523,6 +559,7 @@ def handle_video(ctx: Context) -> Exit:
         blocks=tuple(
             str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
         ),
+        exclude=piece_sources,
     )
     date, titles = _date_and_titles(docs, doc_id)
     date = _date_format(ctx).of_text(date)

@@ -41,6 +41,13 @@ message — do not look for one, and never send the message another way.
 **If a command fails, do not send the message by hand.** No API calls, no other
 tools. Report the failure and stop.
 
+**`missing: video_link` when the page visibly has a YouTube link means that
+link is the song, not the recording.** Baton reads the piece's own
+`source_link` and refuses to send it as the lesson's video — that refusal is
+the fix for a message that once went out carrying a music video. Run `baton
+lesson publish "<name>"`, which links the recording if one was uploaded; if
+that reports nothing, the recording genuinely does not exist yet.
+
 **"Already sent" means it went out. Say so and stop.** Baton keeps a receipt of
 every delivery, so a repeat of the same learner's same session is refused with
 exit `5` and a message saying when the first one was sent. This is what catches

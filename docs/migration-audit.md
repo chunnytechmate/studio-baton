@@ -524,6 +524,18 @@ Checked against the live pages before fixing: all four currently carry a
 pipeline-written `video` block, so no send was blocked yet — the trap was
 armed for the first hand-added link.
 
+**Amended after the 2026-08-27 production trial:** "newest-last ordering
+preserved across shapes" no longer holds, because that tolerance had a second
+edge. The studio keeps the song a lesson works on on the lesson's own page,
+Notion turns the pasted song URL into a bookmark and an embed, and those sit
+*below* the pipeline's `video` block — so the newest link on the page was the
+song, and one lesson message went out carrying the link to its official music
+video. `find_video_link` now prefers a `video` block wherever it sits, and
+takes an `exclude` list of URLs (the piece's `source_link`, current and
+snapshotted, compared by video id rather than as strings) that are never the
+recording in any shape. Everything else in this entry stands: a hand-pasted
+bookmark is still found when no `video` block is there.
+
 ### F19 — there is no way to onboard a learner 🔴 open
 
 **Lane 8.** `add_student.py` did the whole first day: insert the learner
