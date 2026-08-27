@@ -54,6 +54,11 @@ there is no override flag, and you must not go looking for one.
 **If a command fails, do not send the links by hand.** No API calls, no other
 tools. Report the failure and stop.
 
+**"Already sent" means it went out.** Baton keeps a receipt of each delivery, so
+picking the same recording for the same contact twice is refused with exit `5`
+and the time of the first send. Report that; it is the answer, not a problem to
+work around. `--again` is for a person who has confirmed nothing arrived.
+
 ## Exit codes
 
 | Code | Do this |
@@ -61,5 +66,7 @@ tools. Report the failure and stop.
 | `0` | Reported what was delivered, and its warnings |
 | `1` | `--pick` matched no row — re-list and ask again |
 | `3` | Show `details.candidates`; ask which recording or full name |
-| `5` | **Nothing was sent.** Work has no links. Do not retry |
+| `5` | **Nothing was sent.** Work has no links — or it was already sent, and `details.already_sent.sent_at` says when. Do not retry |
 | `6` | LINE failed; report, and say nothing went out |
+| `8` | Another send is in flight. Wait, then re-run |
+| `9` | Baton crashed. Report the traceback; do not retry |

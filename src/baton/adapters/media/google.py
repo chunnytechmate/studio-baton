@@ -15,6 +15,7 @@ from typing import Any, TypeVar
 
 from ...core.config import Config
 from ...errors import ConfigError, UpstreamError
+from .. import google_http
 from .base import VIDEO_SUFFIXES, SourceClip, UploadResult
 
 _VIDEO_ID = re.compile(r"(?:youtu\.be/|[?&]v=|/embed/)(?P<id>[A-Za-z0-9_-]{11})")
@@ -48,6 +49,16 @@ def _require_google() -> Any:
 
 
 _T = TypeVar("_T")
+
+
+def _timeout(config: Config, section: str) -> float:
+    """Seconds one HTTP exchange with this service may take.
+
+    Per-section rather than global: a YouTube upload chunk and a Drive metadata
+    listing do not deserve the same patience, and a studio on a slow uplink
+    needs to be able to raise one without raising the other.
+    """
+    return float(config.get(f"{section}.timeout_seconds", google_http.DEFAULT_TIMEOUT_SECONDS))
 
 
 def _credentials(config: Config, section: str) -> Any:
@@ -124,8 +135,11 @@ class DriveSource:
                 lambda: build(
                     "drive",
                     "v3",
-                    credentials=_credentials(self.config, "media.drive"),
                     cache_discovery=False,
+                    **google_http.build_kwargs(
+                        _credentials(self.config, "media.drive"),
+                        _timeout(self.config, "media.drive"),
+                    ),
                 ),
             )
         return self._service
@@ -234,8 +248,11 @@ class YouTubePublisher:
                 lambda: build(
                     "youtube",
                     "v3",
-                    credentials=_credentials(self.config, "media.youtube"),
                     cache_discovery=False,
+                    **google_http.build_kwargs(
+                        _credentials(self.config, "media.youtube"),
+                        _timeout(self.config, "media.youtube"),
+                    ),
                 ),
             )
         return self._service

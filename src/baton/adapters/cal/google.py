@@ -27,6 +27,7 @@ from typing import Any, ClassVar, TypeVar
 from ...core.config import Config
 from ...core.retry import RETRYABLE_STATUS, retry
 from ...errors import BatonError, ConfigError, UpstreamError
+from .. import google_http
 from .base import CalendarEvent
 
 _T = TypeVar("_T")
@@ -108,10 +109,21 @@ class GoogleCalendar:
 
     SCOPES: ClassVar[list[str]] = ["https://www.googleapis.com/auth/calendar"]
 
-    def __init__(self, config: Config, calendar_id: str = "primary", *, attempts: int = 3) -> None:
+    def __init__(
+        self,
+        config: Config,
+        calendar_id: str = "primary",
+        *,
+        attempts: int = 3,
+        timeout: float = 60.0,
+    ) -> None:
         self.config = config
         self.calendar_id = calendar_id
         self.attempts = max(1, attempts)
+        # Deliberately far below the media default: booking is something a
+        # person waits on, and a minute of silence from Calendar already means
+        # the answer is not coming.
+        self.timeout = timeout
         self._service: Any = None
 
     @classmethod
@@ -120,6 +132,7 @@ class GoogleCalendar:
             config,
             calendar_id=str(config.get("calendar.google.calendar_id", "primary")),
             attempts=int(config.get("calendar.google.attempts", 3)),
+            timeout=float(config.get("calendar.google.timeout_seconds", 60.0)),
         )
 
     @property
@@ -134,7 +147,12 @@ class GoogleCalendar:
                 token_uri="https://oauth2.googleapis.com/token",  # noqa: S106 - public endpoint
                 scopes=self.SCOPES,
             )
-            self._service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
+            self._service = build(
+                "calendar",
+                "v3",
+                cache_discovery=False,
+                **google_http.build_kwargs(credentials, self.timeout),
+            )
         return self._service
 
     @staticmethod

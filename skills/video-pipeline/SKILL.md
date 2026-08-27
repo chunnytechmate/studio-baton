@@ -18,7 +18,7 @@ and wait for it.
 ```bash
 baton video run --dry-run --json        # what is waiting, changes nothing
 baton video run --detach --json         # start it; returns a job id at once
-baton job wait <id> --timeout 600 --json
+baton job wait <id> --timeout 90 --json
 baton job logs <id> --tail 50
 baton video status --json               # per-learner progress
 baton video resume --detach --json      # continue whatever did not finish
@@ -31,6 +31,12 @@ and the two follow-up commands to the user.
 
 **`job wait` exits with the job's own exit code.** Exit `8` means it is still
 running — that is not a failure, report it and offer to keep waiting.
+
+**Keep `--timeout` under your own harness's limit.** Claude Code kills a shell
+command at two minutes by default; a `--timeout 600` never returns its exit 8,
+it gets killed, and a killed wait tells you nothing about the job. Wait in short
+turns instead — 90 seconds, report, wait again — or just report the job id and
+check `baton job status` later. The job outlives every one of these calls.
 
 **Re-running is safe and is the correct response to most failures.** A finished
 upload is never repeated, and source clips are only discarded once everything
@@ -52,4 +58,6 @@ do not guess, and do not rename anything yourself.
 | `2` | Run `baton doctor`; credentials or ffmpeg are missing |
 | `6` | Some learners failed. Report them, suggest `baton video resume` |
 | `7` | A job died without recording an outcome. Report; re-running is safe |
-| `8` | Still running. Report the job id |
+| `8` | Still running, or another video run holds the lock. Report the job id |
+| `9` | Baton crashed. Report the traceback; do not retry |
+| `143` | Your wait was killed by the harness, not the job. The job is unaffected — check `baton job status` |

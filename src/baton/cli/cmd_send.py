@@ -12,8 +12,11 @@ import contextlib
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.chat import open_chat
+from ..adapters.chat.base import Messenger
+from ..adapters.chat.guard import GuardedMessenger
 from ..adapters.db import open_store
 from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
+from ..core.receipts import DEFAULT_WINDOW_HOURS, Receipts
 from ..domain.localdate import DateFormat
 from ..domain.models import Learner
 from ..domain.prep import SectionRules
@@ -24,6 +27,7 @@ from ..pipelines.lesson_video import send_video
 from ..pipelines.recording import list_candidates, send_recording
 from ..pipelines.send import send_lesson
 from ..pipelines.staging import PublishedRecord
+from .guard import guarded
 
 if TYPE_CHECKING:
     from .app import Context
@@ -36,7 +40,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Send a lesson message, refusing when required data is missing.",
         description=(
             "Sends the message that was published — never a re-derived one. A "
-            "missing required field blocks the send with exit 5; there is no override."
+            "missing required field blocks the send with exit 5 and there is no "
+            "override. A message that already went out is refused the same way, "
+            "and that one a person can override with --again."
         ),
     )
     group = parser.add_subparsers(dest="send_command", metavar="<subcommand>")
@@ -49,6 +55,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--session", type=int, default=None, help="Defaults to the latest published session."
     )
     lesson.add_argument("--dry-run", action="store_true", help="Run the gate and stop.")
+    lesson.add_argument(
+        "--again",
+        action="store_true",
+        help="Send even if an identical message already went out. For a "
+        "person who has confirmed the first one never arrived.",
+    )
     lesson.set_defaults(handler=handle_lesson)
 
     recording = group.add_parser(
@@ -76,6 +88,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Send the Nth recording from the newest-first list (1 is the latest).",
     )
     recording.add_argument("--dry-run", action="store_true", help="Compose the message and stop.")
+    recording.add_argument(
+        "--again",
+        action="store_true",
+        help="Send even if an identical message already went out. For a "
+        "person who has confirmed the first one never arrived.",
+    )
     recording.set_defaults(handler=handle_recording)
 
     batch = group.add_parser("batch", help="Send several learners' messages in one invocation.")
@@ -89,6 +107,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="One learner per flag. Pass the same command once for a whole day.",
     )
     batch.add_argument("--dry-run", action="store_true")
+    batch.add_argument(
+        "--again",
+        action="store_true",
+        help="Send even if an identical message already went out. For a "
+        "person who has confirmed the first one never arrived.",
+    )
     batch.set_defaults(handler=handle_batch)
 
     video = group.add_parser(
@@ -107,6 +131,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--session", type=int, default=None, help="Defaults to the latest published session."
     )
     video.add_argument("--dry-run", action="store_true", help="Compose the message and stop.")
+    video.add_argument(
+        "--again",
+        action="store_true",
+        help="Send even if an identical message already went out. For a "
+        "person who has confirmed the first one never arrived.",
+    )
     video.set_defaults(handler=handle_video)
 
     contacts = group.add_parser("contacts", help="List configured contacts.")
@@ -164,6 +194,31 @@ def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
     return status.date, status.titles
 
 
+def _messenger(ctx: Context, *, what: str, key: str) -> Messenger:
+    """The configured messenger, wrapped so one message cannot go out twice.
+
+    Every send path in this module goes through here. That is the point: the
+    duplicate a harness causes — killing the command in the gap between a
+    platform accepting the message and Baton printing that it did — is not
+    something any one composer can see coming.
+
+    Args:
+        what: How a refusal names the message to a person.
+        key: What the message *is*, independent of its wording. Never the text:
+            `send lesson` varies its opening and closing phrase deliberately,
+            so two sends of one summary are two different strings and only an
+            identity can recognise them as the same message.
+    """
+    window = float(ctx.config.get("chat.duplicate_window_hours", DEFAULT_WINDOW_HOURS))
+    return GuardedMessenger(
+        open_chat(ctx.config),
+        Receipts.for_state(ctx.config.state_dir, window),
+        again=bool(getattr(ctx.args, "again", False)),
+        what=what,
+        key=key,
+    )
+
+
 def _send_one(
     ctx: Context,
     name: str,
@@ -178,7 +233,6 @@ def _send_one(
     duplicate check and the send act on the same person — the check cannot
     compare raw strings and the send compare records.
     """
-    messenger = open_chat(ctx.config)
     store = open_store(ctx.config)
     try:
         learner = resolved if resolved is not None else _resolve(ctx, store, name)
@@ -200,6 +254,16 @@ def _send_one(
                     remedy=f'Run `baton lesson publish "{learner.name}"` first.',
                 )
 
+        # Built here, not at the top: the identity of this message is the
+        # learner and the session it publishes, and neither is known until the
+        # name has been resolved and the published record found.
+        label = ctx.config.label("session")
+        session_number = published.get("session_number")
+        messenger = _messenger(
+            ctx,
+            what=f"{learner.name}'s {label} {session_number} summary",
+            key=f"lesson|{learner.id}|{session_number}",
+        )
         recipient_id = messenger.resolve(ctx.args.to)
         docs = open_docs(ctx.config)
         doc_id = str(published.get("doc_id", ""))
@@ -231,6 +295,7 @@ def _send_one(
         store.close()
 
 
+@guarded("send")
 def handle_lesson(ctx: Context) -> Exit:
     result = _send_one(ctx, ctx.args.name, session=ctx.args.session, dry_run=ctx.args.dry_run)
 
@@ -253,6 +318,7 @@ def handle_lesson(ctx: Context) -> Exit:
     return Exit.OK
 
 
+@guarded("send", when=lambda ctx: ctx.args.pick is not None)
 def handle_recording(ctx: Context) -> Exit:
     """List a learner's recorded works, or deliver the picked one's links.
 
@@ -319,9 +385,13 @@ def handle_recording(ctx: Context) -> Exit:
 
     # The contact resolves here rather than before the gate: a wrong contact
     # name should not be the error that masks "there is nothing to send".
-    messenger = open_chat(ctx.config)
-    recipient_id = messenger.resolve(ctx.args.to)
     work = works[index]
+    messenger = _messenger(
+        ctx,
+        what=f"{learner.name}'s recording “{work.title}”",
+        key=f"recording|{learner.id}|{getattr(work, 'id', '') or work.title}",
+    )
+    recipient_id = messenger.resolve(ctx.args.to)
     result = send_recording(
         messenger,
         recipient_id=recipient_id,
@@ -343,6 +413,7 @@ def handle_recording(ctx: Context) -> Exit:
     return Exit.OK
 
 
+@guarded("send")
 def handle_batch(ctx: Context) -> Exit:
     """Every learner in one invocation, reported together.
 
@@ -410,6 +481,7 @@ def handle_batch(ctx: Context) -> Exit:
     return Exit.OK if not blocked else Exit.GATE
 
 
+@guarded("send")
 def handle_video(ctx: Context) -> Exit:
     """The latest published session's video, sent on its own.
 
@@ -464,7 +536,11 @@ def handle_video(ctx: Context) -> Exit:
     with contextlib.suppress(BatonError):
         sections = SectionRules.from_config(ctx.config).read(docs.list_blocks(doc_id))
 
-    messenger = open_chat(ctx.config)
+    messenger = _messenger(
+        ctx,
+        what=f"{learner.name}'s {ctx.config.label('session')} {session_number} video",
+        key=f"video|{learner.id}|{session_number}",
+    )
     recipient_id = messenger.resolve(ctx.args.to)
     result = send_video(
         messenger,

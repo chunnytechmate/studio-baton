@@ -23,6 +23,7 @@ from ..errors import BatonError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
 from ..pipelines.schedule import Scheduler
+from .guard import guarded
 
 if TYPE_CHECKING:
     from .app import Context
@@ -168,6 +169,7 @@ def _pick_session(ctx: Context, store, learner, wanted: int | None):
 # -- handlers ----------------------------------------------------------------
 
 
+@guarded("calendar")
 def handle_book(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
@@ -192,6 +194,7 @@ def handle_book(ctx: Context) -> Exit:
     return Exit.OK
 
 
+@guarded("calendar")
 def handle_schedule(ctx: Context) -> Exit:
     if bool(ctx.args.text) == bool(ctx.args.file):
         raise UsageError(
@@ -277,6 +280,7 @@ def handle_schedule(ctx: Context) -> Exit:
     return Exit.OK if not blocked else Exit.NEEDS_HUMAN
 
 
+@guarded("calendar")
 def handle_cancel(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:

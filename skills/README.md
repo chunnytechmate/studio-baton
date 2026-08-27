@@ -36,7 +36,8 @@ often not a login shell.
 ## The rules every skill follows
 
 1. **Run the command. Read the exit code. Branch on the number.** Never parse
-   the prose; with `--json` every command prints one document on stdout.
+   the prose; with `--json` every command prints one document on stdout — on a
+   crash and on a kill too, so an empty stdout means the process never ran.
 2. **Exit 3 means stop and ask.** The payload carries `candidates`. Show them
    and wait — never pick one.
 3. **Exit 5 means the data is incomplete.** There is no override flag. Report
@@ -45,6 +46,16 @@ often not a login shell.
    resubmit.
 5. **Never work around a failure by calling an API directly.** If a command
    cannot do it, say so and stop.
+6. **Exit 9 is a bug in Baton, not in your command line.** Report the message
+   and stop; re-running with different arguments cannot help.
+7. **"Already sent" is not a failure to fix.** A send refused as a duplicate
+   (exit `5`, message says *already sent*) means the message went out. Say so.
+   `--again` exists for a person who has confirmed it never arrived — never
+   reach for it on your own.
+8. **Check the version before trusting this table.** `baton --version --json`
+   prints the version and every command that exists. If a command a skill names
+   is missing there, the installed Baton is older than the skill; say so rather
+   than guessing at a substitute.
 
 | Code | Meaning | What the agent does |
 | --- | --- | --- |
@@ -55,4 +66,6 @@ often not a login shell.
 | `5` | Gate blocked it | Report `details.missing`. **Do not retry** |
 | `6` | Upstream failed | Report. Re-running later is safe |
 | `7` | State needs an audit | Report. Do not force anything |
-| `8` | Job still running | Wait, or report the job id |
+| `8` | Job still running, or another run is in the way | Wait, or report the job id. Two agents on one profile collide here — the other run is not yours to stop |
+| `9` | Baton itself crashed | Report `message` and `details.traceback`. **Do not retry** |
+| `130` / `143` | Interrupted / killed (a harness time limit) | The work may or may not have completed. Check before re-running |

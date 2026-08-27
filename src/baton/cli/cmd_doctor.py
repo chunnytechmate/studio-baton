@@ -21,6 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .. import __version__
 from ..adapters import cal as cal_adapters
 from ..adapters import chat as chat_adapters
 from ..adapters import db as db_adapters
@@ -341,6 +342,11 @@ def handle(ctx: Context) -> Exit:
     failed = report.failed
 
     payload = {
+        # First field on purpose. `doctor` is the command a harness runs before
+        # it trusts anything, and "which Baton am I talking to" is part of that
+        # answer: a skill written for a newer version otherwise finds out by
+        # getting `usage` back from a command that simply does not exist yet.
+        "version": __version__,
         "profile": str(config.profile_dir),
         "config_file": str(config.config_file),
         "locale": locale,
@@ -366,6 +372,9 @@ def handle(ctx: Context) -> Exit:
 
     lines = [
         t("doctor.title"),
+        # No catalogue key: a version string reads the same in every language,
+        # and inventing one to translate the word "baton" helps nobody.
+        f"  baton {__version__}",
         f"  {t('doctor.profile')}: {config.profile_dir}",
         f"  {t('doctor.locale')}: {locale}    {t('doctor.timezone')}: {config.timezone}",
         "",

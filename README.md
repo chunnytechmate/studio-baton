@@ -129,14 +129,25 @@ database or Postgres schema is a config change, not a migration.
 | `2` | Configuration or environment is incomplete — nothing was attempted |
 | `3` | Ambiguous input; a person must choose. A `candidates` list is returned |
 | `4` | Submitted content failed schema validation; nothing was written |
-| `5` | A fail-closed gate blocked the action. **No override flag exists** |
+| `5` | A fail-closed gate blocked the action. **No override exists** for missing data; a refusal for *already sent* is the one case a person can override with `--again` |
 | `6` | Upstream service failed after retries |
 | `7` | Local job state is inconsistent and needs an audit |
-| `8` | A background job is still running, or is in the way |
+| `8` | A background job is still running, or another run holds the lock |
+| `9` | Baton itself crashed. The payload carries the traceback — a bug report, not a retry |
+| `130` / `143` | Interrupted (Ctrl-C) or killed. Under a harness, `143` is a time limit expiring |
+
+One documented exception: `job wait` exits with the code of the command it
+supervised, which can be anything a wrapped program returns.
 
 With `--json`, every command — success or failure — prints one JSON document on
 stdout and nothing else. Progress goes to stderr. An agent reads the code and
-the document; it never parses prose.
+the document; it never parses prose. That holds for a crash and for a kill too,
+so an empty stdout means the process never got to run at all.
+
+`baton --version --json` answers the question a harness has to ask first: the
+version, and every command that exists in it. A skill written against a newer
+Baton is then a mismatch someone can see, instead of an "unknown command" an
+agent cannot tell from its own typo.
 
 **Gates fail closed.** A lesson message is not sent when a required field is
 missing. There is deliberately no way to force it: the fix is to supply the
@@ -337,25 +348,42 @@ command can be handed to a supervisor that outlives the shell that started it:
 ```bash
 baton job spawn --name nightly -- baton video run   # returns at once
 baton job list                                      # what is running
-baton job wait <id> --timeout 600                   # exits 8 if still going
+baton job wait <id> --timeout 90                    # exits 8 if still going
 baton job logs <id> --tail 50
 baton job stop <id>                                 # SIGTERM, then SIGKILL
 ```
 
 `job wait` exits with the job's *own* exit code, so waiting on a detached run
-and running it in the foreground are indistinguishable to a caller.
+and running it in the foreground are indistinguishable to a caller. Keep
+`--timeout` below whatever your harness allows one command to take — Claude
+Code's default is two minutes — because a wait that gets killed tells you
+nothing, while the job it was waiting on carries on regardless.
 
 Two properties make this safe to point an agent at. A job whose supervisor died
 without recording an outcome reads as `orphaned` (exit `7`) rather than silently
-"running forever" — liveness is checked, not assumed. And pipelines take a
-whole-run lock held by an open file handle, so a second run cannot collide with
-a first; the OS drops the lock however the holder dies, which means there is no
-stale lockfile to clear by hand:
+"running forever" — liveness is checked, not assumed. And the writing commands
+take a whole-run lock held by an open file handle, so a second run cannot
+collide with a first; the OS drops the lock however the holder dies, which means
+there is no stale lockfile to clear by hand:
 
 ```
 ✗ Another run already holds video.lock.
   Wait for it to finish (`baton job list`), or stop it (`baton job stop <id>`), then re-run.
 ```
+
+There is one lock per workflow — `video`, `lesson`, `calendar`, `send` — so an
+evening of encoding does not stop the day's messages. Read-only commands and
+`--dry-run` take nothing. This matters most where two agents share one profile,
+as a Claude Code session and an OpenClaw container do: neither knows the other
+exists, and exit `8` is how they find out.
+
+**A message is not sent twice.** Every delivery leaves a receipt — a digest, not
+the message — and an identical send inside the next 12 hours is refused with
+exit `5` naming the time of the first. This is aimed squarely at what a harness
+does to a correct program: kill the call in the gap between the platform
+accepting a message and Baton printing that it did, and the agent, reasoning
+correctly from what it can see, sends again. `--again` overrides it, and belongs
+to a person who has confirmed the first message never arrived.
 
 ## Configuration
 

@@ -51,6 +51,7 @@ from ..pipelines.staging import (
 from ..render import piece as render_piece
 from ..render import summary as render
 from ..render import youtube as render_youtube
+from .guard import guarded
 
 if TYPE_CHECKING:
     from .app import Context
@@ -711,6 +712,7 @@ def handle_show(ctx: Context) -> Exit:
     return Exit.OK
 
 
+@guarded("lesson")
 def handle_publish(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:

@@ -276,6 +276,10 @@ media:
     client_id_env: GOOGLE_CLIENT_ID
     client_secret_env: GOOGLE_CLIENT_SECRET
     download_retries: 3
+    # Seconds one HTTP exchange with Drive may take. The Google client library
+    # has no deadline of its own, so without this a wedged connection hangs the
+    # command forever instead of failing and being retried.
+    timeout_seconds: 300
 
   publish:
     driver: youtube
@@ -292,6 +296,9 @@ media:
     description_attempts: 3
     privacy: unlisted
     category_id: "22"
+    # Per upload chunk, not per video: an 8 MB chunk that has not moved in five
+    # minutes is a stalled connection, not a slow one.
+    timeout_seconds: 300
     max_parallel_uploads: 3
   encode:
     driver: ffmpeg
@@ -337,6 +344,9 @@ calendar:
     # already marked in progress, so a transient fault here is the one thing
     # that can still leave the two records disagreeing.
     attempts: 3
+    # Lower than the media services on purpose: a booking is something someone
+    # is waiting on, and a minute of silence already means no answer is coming.
+    timeout_seconds: 60
     refresh_token_env: GOOGLE_CALENDAR_REFRESH_TOKEN
     client_id_env: GOOGLE_CLIENT_ID
     client_secret_env: GOOGLE_CLIENT_SECRET

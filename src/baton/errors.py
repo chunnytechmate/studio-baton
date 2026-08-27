@@ -128,6 +128,41 @@ class GateError(BatonError):
         self.missing = missing or []
 
 
+class DuplicateSendError(BatonError):
+    """This exact message already went out, and nothing was sent again.
+
+    A sibling of :class:`GateError` rather than a use of it: a gate blocks
+    because data is *missing*, and its refusal is final by design. This one
+    blocks because the work is already *done*, and the single thing it cannot
+    know is whether the message arrived. So it does carry an override —
+    ``--again`` — for the person who watched a phone stay silent. An agent is
+    told, in the remedy, that the decision is not its own to make.
+
+    Exit code stays :attr:`~baton.exits.Exit.GATE`: from a caller's side this
+    is the same event as any other refusal — nothing was sent, and re-running
+    the identical command will not change that.
+    """
+
+    exit_code = Exit.GATE
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        already_sent: dict[str, Any],
+        window_hours: float,
+        remedy: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            remedy=remedy
+            or "Nothing was sent. Re-run with --again only if a person has "
+            "confirmed the first message never arrived.",
+            details={"already_sent": already_sent, "window_hours": window_hours},
+        )
+        self.already_sent = already_sent
+
+
 class UpstreamError(BatonError):
     """A remote service failed after retries were exhausted."""
 

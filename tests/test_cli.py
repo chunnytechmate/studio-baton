@@ -240,10 +240,36 @@ def test_a_missing_argument_names_the_argument_not_the_command(profile, capsys):
     assert "Unknown command `learner`" not in payload["message"]
 
 
-def test_help_and_version_still_exit_through_argparse(profile, capsys):
+def test_help_still_exits_through_argparse(profile, capsys):
     with pytest.raises(SystemExit) as excinfo:
-        run(["--version"])
+        run(["--help"])
     assert excinfo.value.code == 0
+
+
+def test_version_is_a_result_not_an_argparse_exit(profile, capsys):
+    """`--version` goes through the reporter like every other answer.
+
+    argparse's own `action="version"` printed prose and raised SystemExit
+    before the JSON machinery existed, so `--json --version` answered in a
+    format no caller could parse — and version is precisely the question an
+    agent has to ask before it trusts the rest.
+    """
+    assert run(["--version"]) == int(Exit.OK)
+    assert capsys.readouterr().out.startswith("baton ")
+
+
+def test_version_in_json_lists_the_commands_that_exist(profile, capsys):
+    assert run(["--json", "--version"]) == int(Exit.OK)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["version"]
+    # A harness compares this against what its skills call, instead of
+    # discovering the mismatch one `usage` exit at a time.
+    assert "send lesson" in payload["commands"]
+    assert "lesson publish" in payload["commands"]
+    # The supervisor is an implementation detail of `job spawn`, not surface.
+    assert not any(name.endswith("supervise") for name in payload["commands"])
 
 
 def test_internal_job_supervisor_is_hidden_from_help(profile, capsys):

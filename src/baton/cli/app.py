@@ -10,8 +10,11 @@ than true for the commands someone remembered to wire up correctly.
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
+import traceback
 from collections.abc import Callable, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from typing import Any, NoReturn
 
@@ -20,13 +23,75 @@ from ..core import config as config_module
 from ..core.i18n import Translator, translator
 from ..core.output import Reporter, format_error
 from ..errors import BatonError, UsageError
-from ..exits import Exit
+from ..exits import SLUG, Exit
 
 Handler = Callable[["Context"], "Exit | int"]
 
 
 class _ParseFailure(Exception):
     pass
+
+
+class _Terminated(Exception):
+    """SIGTERM arrived. Raised from the handler so the envelope still happens."""
+
+
+@contextmanager
+def _terminate_as_exception() -> Any:
+    """Turn SIGTERM into an exception for the duration of a command.
+
+    An agent harness caps how long one call may run and kills what overruns —
+    that is the ordinary end of a long Baton command, not an exotic one. The
+    default disposition kills the process outright, so stdout stays empty and
+    the caller cannot tell "cut short" from "crashed before printing". Raising
+    instead lets the same envelope every other failure produces come out.
+
+    Restored on the way out, and skipped entirely off the main thread, where
+    ``signal.signal`` raises. The supervisor in :mod:`baton.core.jobs` installs
+    its own SIGTERM handler for its own child; this one is for the foreground.
+    """
+    try:
+        previous = signal.getsignal(signal.SIGTERM)
+    except (ValueError, OSError, AttributeError):  # pragma: no cover - exotic platform
+        yield
+        return
+
+    def _raise(_signum: int, _frame: Any) -> None:
+        raise _Terminated()
+
+    try:
+        signal.signal(signal.SIGTERM, _raise)
+    except (ValueError, OSError):  # pragma: no cover - not the main thread
+        yield
+        return
+    try:
+        yield
+    finally:
+        with suppress(ValueError, OSError):
+            signal.signal(signal.SIGTERM, previous)
+
+
+def _force_utf8_streams() -> None:
+    """Make stdout and stderr carry Thai whatever the environment claims.
+
+    Baton's output is Thai as often as English, and ``json.dumps`` is called
+    with ``ensure_ascii=False`` on purpose — a parent reads the message, not an
+    escape sequence. A stream that cannot encode Thai therefore does not
+    degrade, it raises, and the whole document is lost after the work already
+    happened.
+
+    Python already coerces a bare C/POSIX locale to UTF-8, so this only matters
+    when something set the encoding explicitly — ``PYTHONIOENCODING=ascii`` in a
+    container image, or a genuinely non-UTF-8 locale. ``backslashreplace``
+    rather than plain UTF-8 for stderr: diagnostics must never be the thing
+    that kills a run.
+    """
+    for stream, errors in ((sys.stdout, "strict"), (sys.stderr, "backslashreplace")):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        with suppress(Exception):
+            reconfigure(encoding="utf-8", errors=errors)
 
 
 class _ArgumentParser(argparse.ArgumentParser):
@@ -145,9 +210,17 @@ def build_parser() -> argparse.ArgumentParser:
         "2 for configuration problems, "
         "3 when a person must choose, 4 on invalid submitted content, "
         "5 when a safety gate blocks the action, 6 on upstream failure, "
-        "7 on inconsistent local state, and 8 while a background job is still running.",
+        "7 on inconsistent local state, 8 while a background job is still "
+        "running or another run holds the lock, 9 when Baton itself crashed, "
+        "and 130/143 when it was interrupted or killed.",
     )
-    parser.add_argument("--version", action="version", version=f"baton {__version__}")
+    # Not argparse's `action="version"`: that prints prose and raises
+    # SystemExit before the JSON machinery is reached, so `--json --version`
+    # answered in a format no caller could parse. Version is the one question
+    # an agent must ask *before* it trusts anything else — a skill written for
+    # a newer Baton meets an older one as an "unknown command" it cannot tell
+    # from its own typo.
+    parser.add_argument("--version", action="store_true", help="Print the version and exit.")
     # Declared directly rather than inherited: the top level is the one place
     # these carry real defaults, and mixing that with the shared SUPPRESS
     # copies is what broke them last time.
@@ -193,6 +266,34 @@ def build_parser() -> argparse.ArgumentParser:
         module.register(subparsers)
 
     return parser
+
+
+def command_names(parser: argparse.ArgumentParser | None = None) -> list[str]:
+    """Every invocable command, as the words a caller would type.
+
+    Reported by ``--version`` so a harness can check that the Baton in front of
+    it has the commands its skills were written against, instead of discovering
+    the mismatch one exit code at a time.
+
+    Read off the parser rather than kept as a list: a hand-maintained inventory
+    is exactly the kind that goes stale and answers the question wrongly, which
+    is worse than not answering it.
+    """
+    parser = parser or build_parser()
+    names: list[str] = []
+    for action in parser._subparsers._group_actions if parser._subparsers else []:
+        choices = getattr(action, "choices", None)
+        if not isinstance(choices, dict):
+            continue
+        for name, sub in choices.items():
+            if name == "supervise":  # internal; not part of the surface
+                continue
+            nested = command_names(sub)
+            if nested:
+                names.extend(f"{name} {child}" for child in nested)
+            else:
+                names.append(name)
+    return names
 
 
 def _offending_token(argv: Sequence[str]) -> str:
@@ -273,6 +374,13 @@ def run(argv: Sequence[str] | None = None) -> int:
 
     report = Reporter(json_mode=args.json_mode, quiet=args.quiet)
 
+    if getattr(args, "version", False):
+        report.result(
+            {"version": __version__, "commands": sorted(command_names())},
+            human=f"baton {__version__}",
+        )
+        return int(Exit.OK)
+
     handler: Handler | None = getattr(args, "handler", None)
     if handler is None:
         parser.print_help(sys.stderr)
@@ -281,7 +389,8 @@ def run(argv: Sequence[str] | None = None) -> int:
     context = Context(args=args, report=report)
 
     try:
-        return int(handler(context))
+        with _terminate_as_exception():
+            return int(handler(context))
     except BatonError as err:
         payload = err.to_dict()
         report.failure(payload, human=format_error(payload))
@@ -289,17 +398,65 @@ def run(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         interrupted: dict[str, Any] = {
             "ok": False,
-            "error": "interrupted",
+            "error": SLUG[Exit.INTERRUPTED],
             "exit_code": int(Exit.INTERRUPTED),
             "message": "Interrupted.",
+            "remedy": "Nothing was left half-written; re-run when ready. "
+            "A resumable pipeline skips the steps that already succeeded.",
         }
-        report.failure(interrupted, human="✗ Interrupted.")
+        report.failure(interrupted, human=format_error(interrupted))
         return int(Exit.INTERRUPTED)
+    except _Terminated:
+        terminated: dict[str, Any] = {
+            "ok": False,
+            "error": SLUG[Exit.TERMINATED],
+            "exit_code": int(Exit.TERMINATED),
+            "message": "Terminated before the command finished (SIGTERM).",
+            "remedy": "The run was cut short, not refused — whether its work "
+            "completed is unknown. Check with `baton video status` or the "
+            "relevant `show` command before re-running, and prefer `--detach` "
+            "for work that outlives one call.",
+        }
+        report.failure(terminated, human=format_error(terminated))
+        return int(Exit.TERMINATED)
+    except Exception as err:
+        # Without this, an unexpected exception left stdout empty and exited 1
+        # — the code reserved for *bad invocation*. An agent branching on the
+        # number then reads a bug in Baton as a mistake of its own and loops
+        # rewriting arguments that were never wrong.
+        crash: dict[str, Any] = {
+            "ok": False,
+            "error": SLUG[Exit.INTERNAL],
+            "exit_code": int(Exit.INTERNAL),
+            "message": f"Baton failed unexpectedly: {type(err).__name__}: {err}",
+            "remedy": "This is a bug in Baton, not in how the command was "
+            "called — re-running with different arguments will not help. "
+            "Report it with the traceback in `details`.",
+            "details": {
+                "exception": type(err).__name__,
+                "traceback": traceback.format_exc(),
+            },
+        }
+        # Suppressed: the envelope is a courtesy at this point, and a stdout
+        # that is closed or unencodable — one plausible cause of the crash
+        # itself — must not turn the report of a failure into a second one.
+        with suppress(Exception):
+            report.failure(crash, human=f"{format_error(crash)}\n\n{crash['details']['traceback']}")
+        return int(Exit.INTERNAL)
 
 
 def main() -> None:
     """Console-script entry point."""
+    _force_utf8_streams()
     sys.exit(run())
 
 
-__all__ = ["Context", "Handler", "UsageError", "build_parser", "main", "run"]
+__all__ = [
+    "Context",
+    "Handler",
+    "UsageError",
+    "build_parser",
+    "command_names",
+    "main",
+    "run",
+]
