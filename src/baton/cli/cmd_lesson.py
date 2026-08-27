@@ -303,18 +303,23 @@ def _body_rules(ctx: Context) -> dict[str, Any]:
 def _voice(ctx: Context, learner: Learner) -> list[str]:
     """How to write for this learner in particular, from their own record.
 
-    The learners table has carried a `tone` and whether there is an instrument
-    at home since the first migration, and both reached the model as bare words
-    with nothing saying what to do about them — so a six-year-old and an exam
-    candidate got the same voice. An unrecognised tone contributes nothing
-    rather than guessing: the column is free text, and a studio that invented
-    a word for it has not yet said what the word means.
+    The learners table has carried a `tone`, an `instrument`, and whether there
+    is an instrument at home since the first migration, and all three reached
+    the model as bare words with nothing saying what to do about them — so a
+    six-year-old and an exam candidate got the same voice, and a drum lesson
+    and a guitar lesson got the same notation. An unrecognised value
+    contributes nothing rather than guessing: these columns are free text, and
+    a studio that invented a word for one has not yet said what it means.
     """
     lines = []
     tone = str(learner.tone or "").strip()
     guidance = str(ctx.config.section("summary.tones").get(tone, "")).strip()
     if guidance:
         lines.append(guidance)
+    instrument = str(learner.instrument or "").strip()
+    notation = str(ctx.config.section("summary.instruments").get(instrument, "")).strip()
+    if notation:
+        lines.append(notation)
     if not learner.has_instrument:
         without = str(ctx.config.get("summary.no_instrument_at_home", "")).strip()
         if without:
@@ -341,6 +346,30 @@ def _theory(ctx: Context) -> dict[str, str]:
 
     data = jsonio.read_json(path, {})
     return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
+def _previous_context(ctx: Context, record: Mapping[str, Any] | None) -> str:
+    """What the last lesson was, for the next one to be written against.
+
+    The full summary where the record has one, the parent's message otherwise.
+    Only the message used to be kept, and three bullet lines are a thin thing
+    to judge a week's progress from — the `progress` section asks what changed
+    since last time, and the answer has to be compared against what actually
+    happened, not against the sentence a family was sent about it.
+
+    Records written before summaries were stored keep working on the message,
+    which is what they have.
+    """
+    if not record:
+        return ""
+    summary = record.get("summary")
+    if isinstance(summary, dict):
+        return render.to_markdown(
+            summary,
+            sections=ctx.config.get("summary.sections", {}),
+            callout_texts=_theory(ctx),
+        )
+    return str(record.get("short_message", ""))
 
 
 def _titles_from(summary: dict[str, Any] | None) -> str:
@@ -740,15 +769,14 @@ def handle_stage(ctx: Context) -> Exit:
                 previous = history.latest_done(views)
                 if previous is not None:
                     record = _published(ctx).get(learner.id, previous.number)
-                    if record:
-                        previous_context = str(record.get("short_message", ""))
+                    previous_context = _previous_context(ctx, record)
 
         if ctx.args.session is not None and not ctx.args.no_previous:
             # Read the previous summary from Baton's own records rather than
             # from the document store, so this path stays offline too.
             record = _published(ctx).latest(learner.id)
             if record and int(record.get("session_number", 0)) < session_number:
-                previous_context = str(record.get("short_message", ""))
+                previous_context = _previous_context(ctx, record)
 
         piece_snapshot = _capture_piece_snapshot(store, learner)
         draft = LessonDraft(

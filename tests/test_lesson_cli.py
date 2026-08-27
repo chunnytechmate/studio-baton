@@ -765,6 +765,63 @@ def test_an_unrecognised_tone_says_nothing_rather_than_guessing(studio, capsys):
     assert any("language of this profile" in line for line in lines)  # the rest survives
 
 
+def test_notation_guidance_follows_the_learners_instrument(studio, capsys):
+    """`instrument` is a column like `tone` is, and it reached the model just
+    as bare. A drum part written as guitar tab is unreadable to the family it
+    is for."""
+    lines = _instructions(studio, capsys, "Bruno Castell", "1")  # drums
+
+    assert any("drum tab" in line for line in lines)
+    assert not any("chords and tab" in line for line in lines)
+
+
+def test_a_guitarist_gets_the_chord_convention_instead(studio, capsys):
+    lines = _instructions(studio, capsys, "Clara Nguyen", "1")  # piano: no entry
+
+    assert not any("drum tab" in line for line in lines)
+
+    guitar = _instructions(studio, capsys, "Ada Whitfield", "3")
+
+    assert any("chords and tab" in line for line in guitar)
+
+
+# -- what the next lesson is written against -------------------------------------
+
+
+def test_the_previous_lesson_arrives_in_full_not_as_the_parents_message(studio, capsys):
+    """Only the three-line message used to be kept, and it is a thin thing to
+    judge a week's progress from — `progress` asks what changed since last
+    time, and the answer has to be measured against what actually happened."""
+    _publish_session_two(studio, capsys)
+
+    assert call(studio, "stage", "Ada Whitfield", "--session", "3", "--context", "n") == Exit.OK
+    capsys.readouterr()
+    assert call(studio, "contract", "Ada Whitfield") == Exit.OK
+    previous = out(capsys)["context"]["previous_session_summary"]
+
+    # The detail of the lesson, which never reached the parent's message.
+    assert "Thumb-and-finger pattern" in previous
+    assert "Late change to C" in previous
+
+
+def test_a_record_written_before_summaries_were_kept_still_works(studio, capsys):
+    """Records published by an older Baton have only the message. A thinner
+    context is better than none, and better than a crash."""
+    from baton.core import jsonio
+
+    _publish_session_two(studio, capsys)
+    path = next((studio[0] / "state" / "published").glob("1-2.json"))
+    record = jsonio.read_json(path, {})
+    record.pop("summary")
+    jsonio.write_json(path, record)
+
+    assert call(studio, "stage", "Ada Whitfield", "--session", "3", "--context", "n") == Exit.OK
+    capsys.readouterr()
+    call(studio, "contract", "Ada Whitfield")
+
+    assert "Blackbird bars 9 to 16" in out(capsys)["context"]["previous_session_summary"]
+
+
 # -- progress is asked for once there is something to compare with ---------------
 
 PROGRESS = [{"before": "Needed the count called out", "after": "Counts through unaided"}]

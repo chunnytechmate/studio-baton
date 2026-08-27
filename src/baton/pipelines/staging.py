@@ -332,6 +332,13 @@ class PublishedRecord:
                 "doc_url": doc_url,
                 "titles": draft.titles,
                 "short_message": short_message,
+                # Kept alongside the message composed from it, because the two
+                # answer different questions later. The message is what the
+                # family was told; the summary is what the lesson was, and it
+                # is what the next lesson has to be compared against. A draft
+                # is overwritten by the next `stage`, and the document can be
+                # edited by hand, so this is the only durable copy.
+                "summary": draft.summary,
                 "published_at": _now(),
             },
         )

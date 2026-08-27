@@ -212,10 +212,12 @@ referenced by an id that exists. A rejection is total: nothing is stored, and
 every violation comes back at once with a pointer to it.
 
 One studio voice still has to meet a six-year-old and an exam candidate
-differently, so the `tone` on a learner's record and whether they own an
-instrument are turned into wording guidance and handed to the model for that
-learner alone — both columns had existed since the first migration with nothing
-reading them.
+differently, so a learner's `tone`, their `instrument`, and whether they own one
+at home are turned into wording and notation guidance and handed to the model
+for that learner alone — three columns that had existed since the first
+migration with nothing reading them. The lesson before is handed over in full
+rather than as the message a parent was sent about it, since that is what the
+progress section has to be measured against.
 
 The same layer keeps the sections from collapsing into each other. Each answers
 a different question — how the session went, what changed since last time, what

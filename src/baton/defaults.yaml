@@ -480,6 +480,20 @@ summary:
       notes have not already used, and make a practice goal sound like
       something worth doing rather than homework.
 
+  # How notation is written for each instrument, keyed by the `instrument`
+  # column. The `notation` field of a covered entry renders as a code block, so
+  # it keeps its alignment — but nothing said what *shape* belonged in it, and
+  # a drum part written as guitar tab is unreadable to the family it is for.
+  # Same rule as `tones`: an instrument with no entry adds nothing.
+  instruments:
+    guitar: >-
+      Write chords and tab in `notation` as a code block, one voicing per line
+      (for example `Em7: 022033`).
+    drums: >-
+      Write rhythms in `notation` as standard ASCII drum tab, one line per
+      voice (HH, SD, BD). Describe technique as ordinary sentences instead:
+      no drawn arrows, which do not survive a monospace block.
+
   # Added to the instructions when the learner has no instrument at home. A
   # practice goal they cannot possibly do is the fastest way to teach a family
   # that the goals are not meant seriously.
