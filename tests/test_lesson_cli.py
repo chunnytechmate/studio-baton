@@ -914,8 +914,8 @@ def test_the_rendered_summary_shows_progress_as_a_change(studio, capsys):
 
 # -- the song being learnt is not the lesson's recording -------------------------
 
-SONG = "https://www.youtube.com/watch?v=kPa7bsKwL-c"
-RECORDING = "https://youtu.be/-c6xs_5aCVw"
+SONG = "https://www.youtube.com/watch?v=aSongVideo1"
+RECORDING = "https://youtu.be/aLessonRec1"
 
 
 def _teach(profile, source_link: str, *, piece_id: int = 2) -> None:
@@ -929,8 +929,9 @@ def _teach(profile, source_link: str, *, piece_id: int = 2) -> None:
 def test_publish_does_not_write_the_summary_onto_the_songs_own_video(studio, capsys, monkeypatch):
     """What production did: the page held the song and no recording, so the
     description step took the song's video for the lesson's and YouTube
-    refused it — `Video kPa7bsKwL-c belongs to 'LadyGagaVEVO'`. There is
-    nothing to describe here, and saying so is the whole answer."""
+    refused it: `Video <id> belongs to <a record label's channel>, not to the
+    configured account.` There is nothing to describe here, and saying so is
+    the whole answer."""
     from baton.adapters.fakes import FakePublisher
 
     profile, docs = studio
@@ -965,8 +966,8 @@ def test_publish_describes_the_recording_that_sits_beside_the_song(studio, capsy
 
     assert call(studio, "publish", "Ada Whitfield") == Exit.OK
 
-    assert out(capsys)["youtube"] == {"status": "ok", "video_id": "-c6xs_5aCVw"}
-    assert "kPa7bsKwL-c" not in fake_publisher.descriptions
+    assert out(capsys)["youtube"] == {"status": "ok", "video_id": "aLessonRec1"}
+    assert "aSongVideo1" not in fake_publisher.descriptions
 
 
 # -- publish links an upload the pipeline never got onto the page ----------------
@@ -983,7 +984,7 @@ def _uploaded(profile, url: str = RECORDING, **overrides) -> None:
         learner_name=overrides.pop("learner_name", "Ada Whitfield"),
         session_number=overrides.pop("session_number", 3),
         doc_id="doc-ada-03",
-        video_id="-c6xs_5aCVw",
+        video_id="aLessonRec1",
         video_url=url,
         **overrides,
     )
@@ -1022,7 +1023,7 @@ def test_a_linked_upload_then_gets_its_youtube_description(studio, capsys, monke
 
     assert call(studio, "publish", "Ada Whitfield") == Exit.OK
 
-    assert out(capsys)["youtube"] == {"status": "ok", "video_id": "-c6xs_5aCVw"}
+    assert out(capsys)["youtube"] == {"status": "ok", "video_id": "aLessonRec1"}
 
 
 def test_a_forced_republish_links_the_upload_too(studio, capsys):

@@ -116,24 +116,24 @@ def test_a_page_holding_only_the_song_reads_as_having_no_recording():
     production actually did, is sending the wrong link to a parent."""
     page = _page(
         Block(id="h", type="heading_2", text="🎵 Die With a Smile"),
-        Block(id="bm", type="bookmark", url="https://www.youtube.com/watch?v=kPa7bsKwL-c"),
-        Block(id="em", type="embed", url="https://www.youtube.com/watch?v=kPa7bsKwL-c"),
+        Block(id="bm", type="bookmark", url="https://www.youtube.com/watch?v=aSongVideo1"),
+        Block(id="em", type="embed", url="https://www.youtube.com/watch?v=aSongVideo1"),
     )
 
-    excluded = ["https://www.youtube.com/watch?v=kPa7bsKwL-c"]
+    excluded = ["https://www.youtube.com/watch?v=aSongVideo1"]
     assert find_video_link(page, "doc1", exclude=excluded) == ""
 
 
 def test_the_recording_is_still_found_beside_the_song():
     """The whole point: both are on the page, and the right one goes out."""
     page = _page(
-        Block(id="recording", type="video", url="https://youtu.be/-c6xs_5aCVw"),
-        Block(id="bm", type="bookmark", url="https://www.youtube.com/watch?v=2dSGCzeuPlA"),
-        Block(id="em", type="embed", url="https://www.youtube.com/watch?v=2dSGCzeuPlA"),
+        Block(id="recording", type="video", url="https://youtu.be/aLessonRec1"),
+        Block(id="bm", type="bookmark", url="https://www.youtube.com/watch?v=aSongVideo2"),
+        Block(id="em", type="embed", url="https://www.youtube.com/watch?v=aSongVideo2"),
     )
 
-    excluded = ["https://www.youtube.com/watch?v=2dSGCzeuPlA"]
-    assert find_video_link(page, "doc1", exclude=excluded) == "https://youtu.be/-c6xs_5aCVw"
+    excluded = ["https://www.youtube.com/watch?v=aSongVideo2"]
+    assert find_video_link(page, "doc1", exclude=excluded) == "https://youtu.be/aLessonRec1"
 
 
 def test_a_hand_pasted_recording_survives_an_exclusion_list():

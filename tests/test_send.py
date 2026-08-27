@@ -850,8 +850,8 @@ def test_a_snapshot_whose_piece_lost_its_track_is_not_backfilled_from_today():
 
 # -- the song being learnt is not the lesson's recording -------------------------
 
-SONG = "https://www.youtube.com/watch?v=kPa7bsKwL-c"
-RECORDING = "https://youtu.be/-c6xs_5aCVw"
+SONG = "https://www.youtube.com/watch?v=aSongVideo1"
+RECORDING = "https://youtu.be/aLessonRec1"
 
 
 def _teach(profile, source_link: str, *, piece_id: int = 2) -> None:
