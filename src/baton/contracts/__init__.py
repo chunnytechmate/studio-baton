@@ -17,9 +17,11 @@ can fix them in one pass rather than discovering them one re-run at a time.
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import unicodedata
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -177,6 +179,185 @@ def validate_callouts(payload: dict[str, Any], known_ids: set[str]) -> list[dict
     return violations
 
 
+def _body_strings(payload: dict[str, Any]) -> list[tuple[str, str]]:
+    """Every sentence the document body will show, each with its JSON Pointer.
+
+    The parent-facing `short_summary` is deliberately absent: it restates the
+    document on purpose, and it has its own rules. What is checked here is
+    whether the *document* says one thing several times.
+    """
+    found: list[tuple[str, str]] = []
+    for index, line in enumerate(payload.get("overview", []) or []):
+        found.append((f"/overview/{index}", str(line)))
+    for index, item in enumerate(payload.get("progress", []) or []):
+        if isinstance(item, dict):
+            found.append((f"/progress/{index}/after", str(item.get("after", ""))))
+    for index, entry in enumerate(payload.get("covered", []) or []):
+        if not isinstance(entry, dict):
+            continue
+        for field in ("topic", "detail"):
+            if entry.get(field):
+                found.append((f"/covered/{index}/{field}", str(entry[field])))
+    for index, item in enumerate(payload.get("focus", []) or []):
+        if isinstance(item, dict):
+            for field in ("issue", "fix"):
+                if item.get(field):
+                    found.append((f"/focus/{index}/{field}", str(item[field])))
+    for index, goal in enumerate(payload.get("goals", []) or []):
+        found.append((f"/goals/{index}", str(goal)))
+    return [(pointer, text) for pointer, text in found if text.strip()]
+
+
+def _fold(text: str) -> str:
+    """Normalise a sentence for comparison: case, spacing, and punctuation."""
+    stripped = "".join(
+        char
+        for char in unicodedata.normalize("NFC", text)
+        if not unicodedata.category(char).startswith("P")
+    )
+    return " ".join(stripped.casefold().split())
+
+
+def validate_no_repetition(
+    payload: dict[str, Any], *, max_repeats: int = 2, similarity: float = 0.82
+) -> list[dict[str, str]]:
+    """Refuse a document that says the same thing in too many places.
+
+    Each section of a summary is meant to carry a different *kind* of
+    information — what happened, what changed, what is still hard, what to
+    practise. When one fact is restated in three of them the page grows without
+    telling a family anything more, and the sections stop meaning what their
+    headings promise.
+
+    Comparison is on characters rather than words: Thai does not space its
+    words, so a word-based measure reads a Thai sentence as one long token and
+    matches nothing.
+
+    Args:
+        max_repeats: How many places one fact may appear in. Two is a
+            restatement; three is padding.
+        similarity: How alike two sentences must be to count as the same fact.
+    """
+    entries = [(pointer, _fold(text)) for pointer, text in _body_strings(payload)]
+    entries = [(pointer, folded) for pointer, folded in entries if len(folded) >= 12]
+
+    clusters: list[list[tuple[str, str]]] = []
+    for pointer, folded in entries:
+        for cluster in clusters:
+            if difflib.SequenceMatcher(None, cluster[0][1], folded).ratio() >= similarity:
+                cluster.append((pointer, folded))
+                break
+        else:
+            clusters.append([(pointer, folded)])
+
+    violations = []
+    for cluster in clusters:
+        if len(cluster) <= max_repeats:
+            continue
+        where = ", ".join(pointer for pointer, _ in cluster[:max_repeats])
+        for pointer, _ in cluster[max_repeats:]:
+            violations.append(
+                _violation(
+                    pointer,
+                    f"repeats what is already said at {where}",
+                    "Each section answers a different question. Cut this, or "
+                    "replace it with what that section alone can say.",
+                )
+            )
+    return violations
+
+
+def _phrase_hits(text: str, phrases: Iterable[str]) -> str:
+    """The first listed phrase this text contains, or ""."""
+    folded = _fold(text)
+    for phrase in phrases:
+        candidate = _fold(str(phrase))
+        if candidate and candidate in folded:
+            return str(phrase)
+    return ""
+
+
+def validate_specific_language(
+    payload: dict[str, Any], vague_phrases: Iterable[str]
+) -> list[dict[str, str]]:
+    """Refuse a verdict where an observation belongs.
+
+    "Did very well" is the safest sentence a model can write and the emptiest:
+    it survives any lesson, so it describes none. A family reading it learns
+    nothing they could not have assumed, and the teacher who wrote the notes
+    gets no credit for what they actually saw.
+
+    A list rather than a cleverer measure, because the phrases that do this are
+    few, studio-specific, and known — and a rule a studio can read is one it
+    can argue with.
+    """
+    phrases = [str(phrase) for phrase in vague_phrases if str(phrase).strip()]
+    if not phrases:
+        return []
+    violations = []
+    for pointer, text in _body_strings(payload):
+        hit = _phrase_hits(text, phrases)
+        if hit:
+            violations.append(
+                _violation(
+                    pointer,
+                    f"rates the lesson (`{hit}`) instead of describing it",
+                    "Say what was observed: what they managed, how much help "
+                    "it took, what changed since last time.",
+                )
+            )
+    return violations
+
+
+def validate_practice_goals(
+    payload: dict[str, Any], not_practicable: Iterable[str]
+) -> list[dict[str, str]]:
+    """Refuse a practice goal nobody can practise.
+
+    `goals` renders as the checklist a learner and their family work through
+    between lessons. Anything on it that can only happen in the next lesson —
+    or that asks for an attitude rather than an action — cannot be ticked off,
+    and an uncompletable checklist teaches a family to ignore the list.
+    """
+    phrases = [str(phrase) for phrase in not_practicable if str(phrase).strip()]
+    if not phrases:
+        return []
+    violations = []
+    for index, goal in enumerate(payload.get("goals", []) or []):
+        hit = _phrase_hits(str(goal), phrases)
+        if hit:
+            violations.append(
+                _violation(
+                    f"/goals/{index}",
+                    f"`{hit}` is not something to practise at home",
+                    "Write what to do between now and the next lesson, with "
+                    "how long or how many times. Anything that happens in the "
+                    "lesson itself belongs in `focus`.",
+                )
+            )
+    return violations
+
+
+def validate_progress(payload: dict[str, Any], *, expected: bool) -> list[dict[str, str]]:
+    """Require the progress section once there is something to compare against.
+
+    Not expressible in the schema, which cannot see whether this learner has a
+    previous session. The first lesson of a course has nothing to compare and
+    is not asked to invent one; every lesson after it is.
+    """
+    if not expected or (payload.get("progress") or []):
+        return []
+    return [
+        _violation(
+            "/progress",
+            "is missing, and this session has a previous one to compare with",
+            "Name what changed since last time, as `before` and `after` — what "
+            "they needed help with then and manage now. If genuinely nothing "
+            "changed, say that as the one entry rather than leaving it out.",
+        )
+    ]
+
+
 def validate_lesson_summary(
     payload: Any,
     *,
@@ -184,6 +365,10 @@ def validate_lesson_summary(
     allow_emoji: bool = False,
     allow_links: bool = False,
     known_callouts: set[str] | None = None,
+    expect_progress: bool = False,
+    max_repeats: int = 2,
+    vague_phrases: Iterable[str] = (),
+    goals_not_practicable: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Validate a complete lesson summary, or raise with every violation.
 
@@ -194,6 +379,12 @@ def validate_lesson_summary(
         allow_links: Permit links in that message.
         known_callouts: Theory ids that exist. ``None`` skips the check, for
             a studio that keeps no theory notes.
+        expect_progress: Whether this session has a previous one to compare
+            against, which is what makes `progress` required.
+        max_repeats: How many places one fact may appear in.
+        vague_phrases: Phrases that rate a lesson instead of describing it.
+        goals_not_practicable: Phrases that make a practice goal impossible to
+            do at home.
 
     Returns:
         The payload, unchanged, once it is acceptable.
@@ -222,6 +413,11 @@ def validate_lesson_summary(
         )
         if known_callouts is not None:
             violations.extend(validate_callouts(payload, known_callouts))
+        violations.extend(validate_progress(payload, expected=expect_progress))
+        violations.extend(validate_no_repetition(payload, max_repeats=max_repeats))
+        violations.extend(validate_specific_language(payload, vague_phrases))
+        violations.extend(validate_practice_goals(payload, goals_not_practicable))
+        violations.sort(key=lambda item: item["path"])
 
     if violations:
         raise ContractError(
@@ -238,6 +434,10 @@ __all__ = [
     "load_schema",
     "validate_callouts",
     "validate_lesson_summary",
+    "validate_no_repetition",
+    "validate_practice_goals",
+    "validate_progress",
     "validate_schema",
     "validate_short_summary",
+    "validate_specific_language",
 ]

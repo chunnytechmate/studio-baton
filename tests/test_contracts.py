@@ -236,3 +236,186 @@ def test_extra_sections_stay_structured():
 def test_an_extra_section_without_items_is_rejected():
     with pytest.raises(ContractError):
         validate_lesson_summary(valid(extra_sections=[{"heading": "Empty"}]))
+
+
+# -- progress: the section that made the others repeat themselves ------------
+
+PROGRESS = [{"before": "Needed counting aloud with them", "after": "Counts through unaided"}]
+
+
+def test_a_progress_entry_is_accepted():
+    validate_lesson_summary(valid(progress=PROGRESS), expect_progress=True)
+
+
+def test_progress_is_required_once_there_is_a_session_to_compare_with():
+    """The prompt already told the model to judge what is new against the
+    previous session, and until this section existed there was nowhere to put
+    the answer — so it leaked into the overview and the covered list, which is
+    how one fact came to be stated three times."""
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(valid(), expect_progress=True)
+
+    paths = [v["path"] for v in excinfo.value.violations]
+    assert "/progress" in paths
+    assert any("before" in v.get("hint", "") for v in excinfo.value.violations)
+
+
+def test_the_first_lesson_is_not_asked_to_invent_a_comparison():
+    """No previous session means nothing to compare, and a model told to
+    produce progress anyway would produce fiction."""
+    validate_lesson_summary(valid(), expect_progress=False)
+
+
+def test_progress_needs_both_sides_of_the_change():
+    """ "Counts unaided" alone is an observation. It only becomes evidence of
+    progress beside what it replaced."""
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(valid(progress=[{"after": "Counts unaided"}]))
+
+    assert any(v["path"].startswith("/progress/0") for v in excinfo.value.violations)
+
+
+# -- one fact, one section ---------------------------------------------------
+
+
+def test_a_fact_stated_three_times_is_rejected():
+    """Two places is a restatement — the overview naming what the covered list
+    details. Three is padding, and it is how a summary grows longer while
+    telling a family less."""
+    line = "She counts the whole bar herself now without any help from me"
+    payload = valid(
+        overview=[line],
+        covered=[{"topic": "Counting", "detail": line}],
+        focus=[{"issue": line, "fix": "Keep it in the warm-up"}],
+    )
+
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(payload)
+
+    repeats = [v for v in excinfo.value.violations if "repeats" in v["reason"]]
+    assert [v["path"] for v in repeats] == ["/focus/0/issue"]
+    assert "/overview/0" in repeats[0]["reason"]
+
+
+def test_saying_something_twice_is_allowed():
+    """The overview is meant to name what the sections below detail."""
+    line = "She counts the whole bar herself now without any help from me"
+    validate_lesson_summary(valid(overview=[line], covered=[{"topic": "Counting", "detail": line}]))
+
+
+def test_near_duplicates_count_as_the_same_fact():
+    """A model that reworded the sentence still said it three times."""
+    payload = valid(
+        overview=["She counts the whole bar herself now without any help"],
+        covered=[{"topic": "Counting", "detail": "She counts the whole bar herself, without help"}],
+        focus=[
+            {"issue": "She counts a whole bar herself now without any help", "fix": "Keep it up"}
+        ],
+    )
+
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(payload)
+
+    assert any("repeats" in v["reason"] for v in excinfo.value.violations)
+
+
+def test_two_genuinely_different_sentences_are_not_a_repeat():
+    payload = valid(
+        overview=["The tempo held all the way through the B section this week"],
+        covered=[{"topic": "Reading", "detail": "Named every note on the top two strings"}],
+        focus=[{"issue": "The change to C is still late", "fix": "Four beats each, alone"}],
+    )
+
+    validate_lesson_summary(payload)
+
+
+def test_the_repeat_limit_is_configurable():
+    line = "She counts the whole bar herself now without any help from me"
+    payload = valid(
+        overview=[line],
+        covered=[{"topic": "Counting", "detail": line}],
+        focus=[{"issue": line, "fix": "Keep it in the warm-up"}],
+    )
+
+    validate_lesson_summary(payload, max_repeats=3)
+
+
+# -- a verdict is not an observation -----------------------------------------
+
+VAGUE = ["did well", "very good"]
+
+
+def test_a_rating_instead_of_an_observation_is_rejected():
+    """ "Did well" survives any lesson, so it describes none."""
+    payload = valid(covered=[{"topic": "Rhythm", "detail": "She did well with the fill"}])
+
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(payload, vague_phrases=VAGUE)
+
+    assert excinfo.value.violations[0]["path"] == "/covered/0/detail"
+    assert "did well" in excinfo.value.violations[0]["reason"]
+
+
+def test_the_same_thing_said_specifically_passes():
+    payload = valid(
+        covered=[{"topic": "Rhythm", "detail": "Played three bars into the fill with one cue"}]
+    )
+
+    validate_lesson_summary(payload, vague_phrases=VAGUE)
+
+
+def test_the_parent_message_is_not_held_to_the_body_rule():
+    """It restates the document on purpose and has its own rules; a warm line
+    to a family is not the failure this catches."""
+    payload = valid()
+    payload["short_summary"]["progress"] = "She did well this week"
+
+    validate_lesson_summary(payload, vague_phrases=VAGUE)
+
+
+def test_a_studio_with_no_phrase_list_is_unaffected():
+    payload = valid(covered=[{"topic": "Rhythm", "detail": "She did well with the fill"}])
+
+    validate_lesson_summary(payload, vague_phrases=[])
+
+
+# -- a practice goal must be practisable -------------------------------------
+
+NOT_PRACTICABLE = ["next lesson", "be more"]
+
+
+def test_a_goal_that_can_only_happen_in_the_lesson_is_rejected():
+    """`goals` renders as the checklist a family works through at home. One
+    line on it that nobody can tick teaches them to ignore the list."""
+    payload = valid(goals=["Score full marks for attention in the next lesson"])
+
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(payload, goals_not_practicable=NOT_PRACTICABLE)
+
+    assert excinfo.value.violations[0]["path"] == "/goals/0"
+    assert "focus" in excinfo.value.violations[0]["hint"]
+
+
+def test_an_attitude_is_not_a_practice_goal():
+    payload = valid(goals=["Be more open to reading from the page"])
+
+    with pytest.raises(ContractError) as excinfo:
+        validate_lesson_summary(payload, goals_not_practicable=NOT_PRACTICABLE)
+
+    assert excinfo.value.violations[0]["path"] == "/goals/0"
+
+
+def test_an_actionable_goal_passes():
+    payload = valid(goals=["Read the teacher's chart once a day, without playing"])
+
+    validate_lesson_summary(payload, goals_not_practicable=NOT_PRACTICABLE)
+
+
+def test_the_rule_only_reads_goals():
+    """The same words are legitimate elsewhere — what the teacher will do in
+    the next lesson belongs in `focus`."""
+    payload = valid(
+        focus=[{"issue": "Reading tires her quickly", "fix": "Use a larger chart next lesson"}]
+    )
+
+    validate_lesson_summary(payload, goals_not_practicable=NOT_PRACTICABLE)

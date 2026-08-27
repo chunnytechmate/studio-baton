@@ -34,26 +34,48 @@ baton lesson publish "<name>" --json
 
 `baton lesson list`, `show`, `remove` inspect and discard drafts.
 
-Every one of these takes the learner positionally or as `--learner "<name>"` —
-use whichever reads better, but not two different names in one invocation.
-`publish` also takes `--session N`, which does not choose a lesson (a learner
-has one draft at a time) but refuses if the staged draft is for a different
-one. Pass it when you believe you know which session you are finishing.
+Each takes the learner positionally or as `--learner "<name>"`, but not two
+different names at once. `publish --session N` does not choose a lesson — a
+learner has one draft at a time — it refuses if the draft is for another one.
 
 ## Writing the summary
 
-`contract` gives you the JSON Schema, the lesson notes, the learner's teaching
-profile, and the callout ids that exist. Return **one JSON object and nothing
-else** — no prose around it, no markdown fence.
+`contract` gives you the schema, the lesson notes, the teaching profile, and the
+callout ids that exist. Return **one JSON object and nothing else** — no prose
+around it, no markdown fence.
 
-- Base every statement on `lesson_notes`. Do not invent progress that is not
-  described there.
-- Say plainly what is still difficult, and pair each difficulty with a fix.
-- Use `previous_session_summary` to judge what is new, not to repeat it.
-- Use only callout ids from `available_callout_ids`. Never write theory text —
-  Baton substitutes the studio's own wording from the id.
+- Base every statement on `lesson_notes`; invent no progress it does not
+  describe. Use `previous_session_summary` to judge what is new, not to repeat.
+- Use only callout ids from `available_callout_ids`; never write theory text.
 - The `short_summary` is what a parent reads. No emoji, no links, one line per
   field. These are validated, not requested.
+
+**One fact belongs to one section.** Each answers a different question, and a
+fact stated in more than two of them is rejected with a pointer to the third.
+
+| Section | Answers |
+| --- | --- |
+| `overview` | How did the session go? |
+| `progress` | What is different from last time? |
+| `covered` | What was worked on? |
+| `focus` | What is still hard, and what will be done about it? |
+| `goals` | What should they practise at home? |
+
+`progress` is a change, not a rating: each entry is the state `before` and the
+state `after` — "needed the count called out" → "counts through unaided".
+Required once a lesson has a previous session, never asked for on a first one.
+If nothing changed, say that as the one entry rather than omitting the section.
+
+Three things the validator rejects by name:
+
+- **A rating where an observation belongs.** "Did very well" survives any
+  lesson, so it describes none. Say what they managed and how much help it took.
+- **An interpretation instead of what you saw.** "Loses focus once the page
+  comes out" is observed; "gets bored by notation" is a guess about a child's
+  mind that a family will read as a verdict.
+- **A goal nobody can practise at home.** What can only happen in the next
+  lesson belongs in `focus`; "be more open to reading" is an attitude, not an
+  action. Say what to do, and how long or how many times.
 
 ## Rules
 
@@ -64,32 +86,27 @@ same content, and do not report it to the user as a Baton failure.
 **Never publish without showing the render first**, unless the user has asked
 you to run the whole thing unattended.
 
-**Publishing twice is refused.** That is correct: a second publish would leave
-two summaries on the page. Use `--force` only if the user explicitly asks to
-replace it.
+**Publishing twice is refused** — a second publish would leave two summaries on
+the page. Use `--force` only if the user explicitly asks to replace it.
 
 **Publishing ends the session.** It marks the page done and fills the date and
-repertoire columns if they are empty, so the next summary goes to the next
-session and `prep` can brief this one. You do not do this afterwards, and there
-is no command for it.
+repertoire columns if empty, so the next summary goes to the next session and
+`prep` can brief this one. There is no separate command for it.
 
 **Exit 6 after a publish means the summary landed but the session is not
-closed.** Re-run `baton lesson publish` — it appends nothing the second time
-and only finishes the session. Say so rather than reporting the summary as
-lost.
+closed.** Re-run `baton lesson publish`: it appends nothing the second time and
+only finishes the session. Say so rather than reporting the summary as lost.
 
-**Publish links a recording the video pipeline uploaded but never put on the
-page.** When a run uploads and then dies, the video is on YouTube and the page
-has no link to it, and `send` refuses for a missing recording. Publish repairs
-that itself — including a re-run of an already-published lesson, which is the
-one write it still owes. Report `recording` when it is present: `linked` with
-the URL, or `error` with the reason. Never add the block by hand.
+**Publish repairs a recording the pipeline uploaded but never linked.** A run
+that dies after uploading leaves the video on YouTube and the page without it,
+and `send` then refuses. Publish appends the block itself — a re-run of an
+already-published lesson included. Report `recording` (`linked` with the URL,
+or `error`); never add the block by hand.
 
 **A song on the page is not the lesson's recording.** The piece being learnt
-lives on the same page as a bookmark and an embed, and publish knows to skip
-those. If `youtube` comes back `null` and you can see a YouTube link on the
-page, that link is the song — the recording has not landed yet. Do not go
-looking for a way to make Baton use it.
+sits on the same page as a bookmark and an embed, and publish skips those. If
+`youtube` is `null` while a YouTube link is visible on the page, that link is
+the song and the recording has not landed yet.
 
 ## Exit codes
 

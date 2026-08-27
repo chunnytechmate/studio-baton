@@ -289,6 +289,16 @@ def _short_summary_rules(ctx: Context) -> dict[str, Any]:
     }
 
 
+def _body_rules(ctx: Context) -> dict[str, Any]:
+    """The document-body rules, as `validate_lesson_summary` takes them."""
+    rules = ctx.config.section("summary.body")
+    return {
+        "max_repeats": int(rules.get("max_repeats", 2)),
+        "vague_phrases": [str(item) for item in rules.get("vague_phrases", [])],
+        "goals_not_practicable": [str(item) for item in rules.get("goals_not_practicable", [])],
+    }
+
+
 def _footer(ctx: Context) -> Footer:
     """The disclosure appended to every published summary, from config."""
     return Footer.from_config(ctx.config.section("summary.footer"))
@@ -766,6 +776,7 @@ def handle_contract(ctx: Context) -> Exit:
             "previous_session_summary": draft.previous_context,
         },
         "constraints": {
+            "body": _body_rules(ctx),
             "short_summary": rules,
             "available_callout_ids": sorted(theory),
             "language": ctx.config.locale,
@@ -775,6 +786,13 @@ def handle_contract(ctx: Context) -> Exit:
             "Base every statement on `lesson_notes`. Do not invent progress.",
             "Say what is still difficult plainly; pair each difficulty with a fix.",
             "Use `previous_session_summary` to judge what is new, not to repeat it.",
+            "Put what changed in `progress`, as the state before and the state "
+            "now — not as a rating. `overview` says how the session went; "
+            "`progress` says what is different; `covered` says what was worked "
+            "on; `focus` says what is still hard; `goals` says what to practise "
+            "at home. One fact belongs in one of them.",
+            "Describe what was observed rather than what it means: what they "
+            "managed, how much help it took, what changed.",
             "Only use callout ids from `available_callout_ids`; never write theory text.",
             f"Write in the language of this profile ({ctx.config.locale}).",
         ],
@@ -804,6 +822,10 @@ def handle_ingest(ctx: Context) -> Exit:
     summary = contracts.validate_lesson_summary(
         payload,
         known_callouts=set(theory) if theory else None,
+        # The first lesson of a course has nothing to compare against and is
+        # not asked to invent a comparison; every lesson after it is.
+        expect_progress=bool(draft.previous_context.strip()),
+        **_body_rules(ctx),
         **_short_summary_rules(ctx),
     )
 

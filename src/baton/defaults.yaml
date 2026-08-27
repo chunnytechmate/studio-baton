@@ -150,6 +150,7 @@ docs:
   # These defaults are the studio's own template headings.
   sections:
     overview: [ภาพรวมการเรียน, Overview]
+    progress: [พัฒนาการ, ความก้าวหน้า, Progress]
     content: [เนื้อหา, สิ่งที่เรียน, Core Lesson]
     focus: [โฟกัส, Focus]
     practice_goals: [เป้าหมายการซ้อม, Practice Goals]
@@ -420,6 +421,7 @@ summary:
   # the renderer never invents a heading of its own.
   sections:
     overview: Overview
+    progress: Progress
     covered: What we covered
     focus: Focus areas
     goals: Practice goals
@@ -446,6 +448,46 @@ summary:
     era: gregorian
     # Twelve names, January first, or none to leave %B to strftime.
     months: []
+
+  # Constraints on the document body, validated in code for the same reason
+  # `short_summary` below is: a small model agrees with a prose rule and then
+  # writes past it. These are what keep each section carrying a different kind
+  # of information instead of restating the others.
+  body:
+    # How many places one fact may appear in. Two is a restatement — the
+    # overview naming what the covered list details. Three is padding, and it
+    # is how a summary grows long while saying less.
+    max_repeats: 2
+
+    # Phrases that deliver a verdict where an observation belongs. "Did very
+    # well" survives any lesson, so it describes none; a family learns nothing
+    # from it and the teacher's actual notes are lost behind it. Replace this
+    # list with your own wording, or empty it to turn the rule off.
+    vague_phrases:
+      - ทำได้ดีมาก
+      - ทำได้ดี
+      - เก่งมาก
+      - ดีขึ้นมาก
+      - ตั้งใจดีมาก
+      - very good
+      - did well
+      - great job
+      - excellent progress
+
+    # Phrases that make a practice goal impossible to practise. `goals` renders
+    # as the checklist a family works through between lessons: anything that
+    # can only happen in the next lesson, or that asks for an attitude rather
+    # than an action, cannot be ticked off.
+    goals_not_practicable:
+      - คาบถัดไป
+      - คาบหน้า
+      - ในคาบ
+      - เปิดใจ
+      - พยายามให้มากขึ้น
+      - next lesson
+      - in class
+      - try harder
+      - be more
 
   # Constraints enforced on the parent-facing message. These are validated in
   # code, not merely requested in a prompt — a prose instruction not to use

@@ -709,6 +709,96 @@ def test_re_staging_does_not_reopen_the_description_gate(studio, capsys, monkeyp
     assert fake_publisher.descriptions == described
 
 
+# -- progress is asked for once there is something to compare with ---------------
+
+PROGRESS = [{"before": "Needed the count called out", "after": "Counts through unaided"}]
+
+
+def test_a_first_summary_needs_no_progress_section(studio, capsys):
+    """Nothing has been published for Ada, so `stage` finds no previous
+    summary and the lesson is not asked to invent a comparison."""
+    stage_ada(studio, capsys)
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY)) == Exit.OK
+
+
+def _publish_session_two(studio, capsys) -> None:
+    """Leave a published session 2 behind, so staging session 3 has a previous
+    summary to carry in."""
+    call(studio, "stage", "Ada Whitfield", "--session", "2", "--context", "notes")
+    call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+
+
+def test_a_later_summary_is_refused_without_one(studio, capsys):
+    """Once a previous session's message exists, `stage` carries it into the
+    draft — and the contract instruction to judge what is new finally has a
+    field to put the answer in."""
+    _publish_session_two(studio, capsys)
+    stage_ada(studio, capsys)
+
+    code = call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
+
+    assert code == Exit.CONTRACT
+    payload = out(capsys)
+    assert "/progress" in [v["path"] for v in payload["details"]["violations"]]
+
+
+def test_the_same_summary_with_progress_is_accepted(studio, capsys):
+    _publish_session_two(studio, capsys)
+    stage_ada(studio, capsys)
+
+    with_progress = {**SUMMARY, "progress": PROGRESS}
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(with_progress)) == (
+        Exit.OK
+    )
+
+
+def test_staging_without_the_previous_summary_drops_the_requirement(studio, capsys):
+    """`--no-previous` says there is nothing to compare against, and the rule
+    follows that rather than the session number."""
+    _publish_session_two(studio, capsys)
+    assert (
+        call(studio, "stage", "Ada Whitfield", "--session", "3", "--no-previous", "--context", "n")
+        == Exit.OK
+    )
+    capsys.readouterr()
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY)) == Exit.OK
+
+
+def test_the_contract_hands_the_model_the_body_rules(studio, capsys):
+    """A rule the model is judged against but never shown is a trap. The
+    contract carries the phrase lists and the repeat limit beside the schema."""
+    stage_ada(studio, capsys)
+
+    assert call(studio, "contract", "Ada Whitfield") == Exit.OK
+    payload = out(capsys)
+
+    assert payload["constraints"]["body"]["max_repeats"] == 2
+    assert "progress" in payload["schema"]["properties"]
+    assert any("progress" in line for line in payload["instructions"])
+
+
+def test_the_rendered_summary_shows_progress_as_a_change(studio, capsys):
+    stage_ada(studio, capsys)
+    call(
+        studio,
+        "ingest",
+        "Ada Whitfield",
+        "--json-text",
+        json.dumps({**SUMMARY, "progress": PROGRESS}),
+    )
+    capsys.readouterr()
+
+    assert call(studio, "render", "Ada Whitfield") == Exit.OK
+
+    markdown = out(capsys)["markdown"]
+    assert "Needed the count called out → Counts through unaided" in markdown
+
+
 # -- the song being learnt is not the lesson's recording -------------------------
 
 SONG = "https://www.youtube.com/watch?v=kPa7bsKwL-c"

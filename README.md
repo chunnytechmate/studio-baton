@@ -211,6 +211,19 @@ parent's message, no links, one line per field, and every theory callout
 referenced by an id that exists. A rejection is total: nothing is stored, and
 every violation comes back at once with a pointer to it.
 
+The same layer keeps the sections from collapsing into each other. Each answers
+a different question — how the session went, what changed since last time, what
+was worked on, what is still hard, what to practise — so a fact stated in more
+than two of them is rejected, a rating where an observation belongs ("did very
+well") is rejected by name, and a practice goal nobody can practise at home is
+sent back. `progress` is required once a learner has a previous session to
+compare with, and is written as a change rather than a verdict:
+
+```
+## Progress
+- Needed the count called out → Counts through the piece unaided
+```
+
 ```
 $ baton lesson ingest "Ada Whitfield" --file summary.json
 exit 4 | contract | The lesson summary does not match the required structure (3 problems).
