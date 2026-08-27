@@ -16,6 +16,12 @@ from baton.adapters import google_http
 
 
 def test_a_timeout_produces_an_authorized_transport():
+    # Skipped on a core install: `google-auth-httplib2` arrives with the
+    # `google` extra, and CI's test job installs only `dev`. The behaviour when
+    # it is missing has its own test below — that path is the one a core
+    # install actually takes.
+    pytest.importorskip("google_auth_httplib2")
+
     kwargs = google_http.build_kwargs("fake-credentials", 30.0)
 
     assert "http" in kwargs
@@ -33,9 +39,12 @@ def test_no_timeout_falls_back_to_plain_credentials(timeout):
 
 
 def test_a_missing_helper_library_is_not_fatal(monkeypatch):
-    """`google-auth-httplib2` ships with the API client, so its absence means
-    an installation odd enough that working without a deadline beats refusing
-    to work at all."""
+    """A core install has no `google-auth-httplib2`, and that must still work.
+
+    It ships with the API client, so on a `[google]` install it is always
+    there. Anywhere else — including CI's own test job — the deadline is
+    quietly skipped rather than made into a crash.
+    """
     import builtins
 
     real_import = builtins.__import__
