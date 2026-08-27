@@ -1,4 +1,4 @@
-"""Google calls get a deadline like everything else Baton talks to.
+"""What `adapters.google_http` owes the caller for taking the transport over.
 
 `core.retry.http_request` forces a timeout onto every `requests` call and the
 encoder kills ffmpeg on its own clock, but `googleapiclient` builds its
@@ -6,6 +6,9 @@ transport from `httplib2.Http()`, whose timeout defaults to the socket default
 — which is `None`. A Drive listing that never gets an answer never returned,
 and under a harness that reads as a shell command hanging until it is killed,
 with a booking that may or may not have been made and nothing written down.
+
+Building that transport ourselves also skips `googleapiclient`'s own setup, so
+the 308 handling resumable uploads need is tested here too.
 """
 
 from __future__ import annotations
@@ -29,6 +32,28 @@ def test_a_timeout_produces_an_authorized_transport():
     # the credentials rather than beside them.
     assert "credentials" not in kwargs
     assert kwargs["http"].http.timeout == 30.0
+
+
+def test_the_transport_does_not_follow_308_as_a_redirect():
+    """A resumable upload's ``308 Resume Incomplete`` must reach the API client.
+
+    httplib2 ships 308 among its redirect codes, and a 308 from a resumable
+    upload carries `Range:` and no `Location:` — so httplib2 raises
+    `RedirectMissingLocation` on the first chunk of any upload big enough to
+    need a second one. Every YouTube upload over one chunk (8 MB) failed that
+    way in 0.4.0, because taking the transport over here stopped
+    `googleapiclient.http.build_http` — which drops 308 — from ever running.
+
+    Nothing else in the suite catches this: the video pipeline's tests all run
+    against fakes, and no fake speaks httplib2.
+    """
+    pytest.importorskip("google_auth_httplib2")
+
+    transport = google_http.build_kwargs("fake-credentials", 30.0)["http"].http
+
+    assert 308 not in transport.redirect_codes
+    # The other redirects are httplib2's business, not ours.
+    assert {301, 302, 303, 307} <= transport.redirect_codes
 
 
 @pytest.mark.parametrize("timeout", [None, 0, -1])
