@@ -340,6 +340,26 @@ class PublishedRecord:
         data = jsonio.read_json(self._path(learner_id, session_number), None)
         return data if isinstance(data, dict) else None
 
+    def note_youtube(self, learner_id: str, session_number: int, state: dict[str, Any]) -> None:
+        """Fold a description-update outcome into an existing record.
+
+        The record is written before the description step runs — the message
+        must survive even when the video update fails — so the outcome is
+        folded in afterwards rather than the record rewritten, and
+        ``published_at`` keeps meaning "when the summary went out".
+
+        This is the durable half of the youtube target's memory: re-staging
+        overwrites the draft wholesale, and a re-run that could no longer tell
+        whether the description had been written would either skip work still
+        owed or repeat work already done.
+        """
+        path = self._path(learner_id, session_number)
+        data = jsonio.read_json(path, None)
+        if not isinstance(data, dict):
+            return
+        data["youtube"] = state
+        jsonio.write_json(path, data)
+
     def latest(self, learner_id: str) -> dict[str, Any] | None:
         """The most recently published session for a learner.
 

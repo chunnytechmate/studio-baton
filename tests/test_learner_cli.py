@@ -284,3 +284,60 @@ def test_labels_from_the_profile_reach_human_output(profile, studio, capsys):
 def test_subcommand_is_required(studio, capsys):
     p, _ = studio
     assert run(["--profile", str(p), "learner"]) == Exit.USAGE
+
+
+def test_in_progress_can_show_recording_readiness(studio, capsys, monkeypatch):
+    """The teacher's morning column: which unfinished lessons already have
+    their recording on the page. The old report answered this by scanning
+    every page of every learner; this reads only the window's candidates."""
+    from datetime import datetime, timedelta
+
+    from baton.adapters.cal.base import CalendarEvent
+    from baton.adapters.fakes import FakeCalendar
+
+    _profile, fake = studio
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%dT17:00:00")
+    calendar = FakeCalendar(
+        [
+            CalendarEvent(
+                id="e1", title="Bruno Castell (lesson 1)", start=yesterday, end=yesterday
+            ),
+            CalendarEvent(id="e2", title="Clara Nguyen (lesson 1)", start=yesterday, end=yesterday),
+        ]
+    )
+    monkeypatch.setattr("baton.cli.cmd_calendar.open_calendar", lambda _config: calendar)
+    monkeypatch.setattr("baton.cli.cmd_calendar.open_docs", lambda _config: fake)
+
+    # Bruno's unfinished lesson already has its recording; Clara's does not.
+    fake.blocks["doc-bruno-01"] = [
+        Block(id="v", type="video", url="https://youtu.be/bruno-1"),
+    ]
+
+    assert call(studio, "in-progress", "--videos") == Exit.OK
+
+    payload = json.loads(capsys.readouterr().out)
+    by_name = {row["learner"]["name"]: row for row in payload["in_progress"]}
+    assert by_name["Bruno Castell"]["video_link"] == "https://youtu.be/bruno-1"
+    assert by_name["Clara Nguyen"]["video_link"] == ""
+
+
+def test_in_progress_without_the_flag_reads_no_blocks(studio, capsys, monkeypatch):
+    """The default report stays as cheap as it was: no block reads, no field."""
+    from datetime import datetime, timedelta
+
+    from baton.adapters.cal.base import CalendarEvent
+    from baton.adapters.fakes import FakeCalendar
+
+    _profile, fake = studio
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%dT17:00:00")
+    calendar = FakeCalendar(
+        [CalendarEvent(id="e1", title="Bruno Castell (lesson 1)", start=yesterday, end=yesterday)]
+    )
+    monkeypatch.setattr("baton.cli.cmd_calendar.open_calendar", lambda _config: calendar)
+    monkeypatch.setattr("baton.cli.cmd_calendar.open_docs", lambda _config: fake)
+
+    assert call(studio, "in-progress") == Exit.OK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "video_link" not in payload["in_progress"][0]
+    assert fake.blocks.get("doc-bruno-01") is None

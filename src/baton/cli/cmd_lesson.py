@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from .. import contracts
 from ..adapters.db import open_store
 from ..adapters.db.base import LearnerStore
-from ..adapters.docs import find_video_link, open_docs
+from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..adapters.docs.base import PreservePolicy
 from ..adapters.media import open_publisher
 from ..adapters.media.google import extract_video_id
@@ -264,7 +264,13 @@ def _update_youtube_description(
     never raised: the document is already published, and this is a nice-to-
     have on top of it, not a reason to make the command exit non-zero.
     """
-    video_link = find_video_link(docs, doc_id)
+    video_link = find_video_link(
+        docs,
+        doc_id,
+        blocks=tuple(
+            str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+        ),
+    )
     video_id = extract_video_id(video_link) if video_link else None
     if not video_id:
         return None
@@ -294,6 +300,56 @@ def _update_youtube_description(
     return {"status": "ok", "video_id": video_id}
 
 
+def _retry_youtube_description(
+    ctx: Context, draft: LessonDraft, learner: Learner, published_record: Mapping | None
+) -> dict | None:
+    """The description update a re-run of publish owes, if any.
+
+    Two cases, both with the summary already on the page:
+
+    - a previous attempt failed and has attempts left;
+    - no attempt was ever made, because the recording had not landed on the
+      document when the summary was published. That is the ordinary order for
+      a lesson filmed while the summary is written: publish, then the video
+      pipeline uploads and links the recording. Without this second case the
+      description is never written at all, since nothing recorded the missed
+      work as pending.
+
+    Two places remember the outcome, and only one survives re-staging: the
+    draft is overwritten wholesale by every `stage`, while the published
+    record is per session. Both are consulted, for the same reason the
+    docs-completion check consults both.
+
+    Returns the outcome dict (``status`` plus extras) once recorded on the
+    draft and folded into the published record, or ``None`` when there was
+    nothing to do — already done, out of attempts, or still no video to
+    describe.
+    """
+    recorded = dict((published_record or {}).get("youtube") or {})
+
+    if draft.target_done("youtube") or recorded.get("status") == "ok":
+        return None
+    cap = int(ctx.config.get("media.youtube.description_attempts", 3))
+    attempted = max(
+        int(draft.targets.get("youtube", {}).get("attempts", 0)),
+        int(recorded.get("attempts", 0)),
+    )
+    if attempted >= cap:
+        return None
+
+    result = _update_youtube_description(ctx, open_docs(ctx.config), draft.doc_id, learner, draft)
+    if result is None:
+        # No video on the document yet: still nothing to describe, and not a
+        # spent attempt. The wide case above picks it up once one lands.
+        return None
+    status = result["status"]
+    extra = {key: value for key, value in result.items() if key != "status"}
+    draft.record_target("youtube", status, **extra)
+    state = dict(draft.targets["youtube"])
+    _published(ctx).note_youtube(draft.learner_id, draft.session_number, state)
+    return result
+
+
 def _finish_session(
     ctx: Context,
     publisher: SummaryPublisher,
@@ -302,6 +358,7 @@ def _finish_session(
     learner_name: str,
     *,
     resumed: bool = False,
+    youtube_result: dict | None = None,
 ) -> Exit:
     """Mark a published session done on its document.
 
@@ -310,6 +367,9 @@ def _finish_session(
     can be retried without consequence. Recording which one happened is what
     lets `publish` be re-run to finish a session without appending a second
     copy of the same summary.
+
+    ``youtube_result``, on a resumed run that also owed a description update,
+    is carried into the report so one run's outcome reads as one line.
     """
     label = ctx.config.label("session")
     try:
@@ -334,10 +394,15 @@ def _finish_session(
     staging.save(draft)
 
     if resumed:
+        youtube_line = ""
+        if youtube_result and youtube_result["status"] == "ok":
+            youtube_line = "; updated the YouTube description now"
+        elif youtube_result and youtube_result["status"] == "error":
+            youtube_line = f"; the YouTube description still failed: {youtube_result['error']}"
         ctx.report.result(
-            {**draft.summary_view(), "completed": written},
+            {**draft.summary_view(), "completed": written, "youtube": youtube_result},
             human=f"{learner_name} — {label} {draft.session_number} was already "
-            f"published; marked it done now.",
+            f"published; marked it done now{youtube_line}.",
         )
     return Exit.OK
 
@@ -708,12 +773,43 @@ def handle_publish(ctx: Context) -> Exit:
     if published and not ctx.args.force:
         # Appending the same summary twice leaves two copies on the page and
         # nothing to tell them apart, so a repeat is refused rather than done.
-        # Finishing the session is a separate write, though, and if that is
-        # what failed last time then re-running is exactly how to fix it —
-        # the blocks are already where they belong.
+        # The two writes that can legitimately follow a publish are separate
+        # from the blocks, though, and re-running is exactly how to finish
+        # them: marking the session done, and the YouTube description update.
         docs_state = draft.targets.get("docs", {})
+
+        youtube_result = _retry_youtube_description(ctx, draft, learner, published_record)
+        if youtube_result is not None:
+            staging.save(draft)
+
         if docs_state.get("status") == "ok" and not docs_state.get("completed"):
-            return _finish_session(ctx, publisher, staging, draft, learner.name, resumed=True)
+            return _finish_session(
+                ctx,
+                publisher,
+                staging,
+                draft,
+                learner.name,
+                resumed=True,
+                youtube_result=youtube_result,
+            )
+
+        if youtube_result is not None:
+            if youtube_result["status"] == "ok":
+                human = (
+                    f"{learner.name} — {label} {draft.session_number} was already "
+                    "published; updated the YouTube description now."
+                )
+            else:
+                human = (
+                    f"{learner.name} — {label} {draft.session_number} was already "
+                    f"published; the YouTube description still failed: "
+                    f"{youtube_result['error']}"
+                )
+            ctx.report.result(
+                {**draft.summary_view(), "youtube": youtube_result},
+                human=human,
+            )
+            return Exit.OK
 
         ctx.report.result(
             {**draft.summary_view(), "skipped": "already published"},
@@ -754,6 +850,9 @@ def handle_publish(ctx: Context) -> Exit:
         extra = {key: value for key, value in youtube_result.items() if key != "status"}
         draft.record_target("youtube", status, **extra)
         staging.save(draft)
+        published_store.note_youtube(
+            draft.learner_id, draft.session_number, dict(draft.targets["youtube"])
+        )
 
     _finish_session(ctx, publisher, staging, draft, learner.name)
 

@@ -26,22 +26,14 @@ from typing import TYPE_CHECKING, Any
 
 from ..adapters.docs.base import Block
 from .footer import Footer
+from .sections import READ_KEYWORDS, WRITTEN_HEADINGS, with_written_headings
 
 if TYPE_CHECKING:
     from ..core.config import Config
 
 #: The sections a session template defines, in the order headings are tried.
-#: Order is behaviour: a heading matching two keywords belongs to the first
-#: section listed, which is how "เป้าหมายการซ้อม" stays practice goals while
-#: "เป้าหมายครั้งถัดไป" becomes the next goal.
-DEFAULT_SECTIONS: dict[str, tuple[str, ...]] = {
-    "overview": ("ภาพรวมการเรียน", "overview"),
-    "content": ("เนื้อหา", "สิ่งที่เรียน", "core lesson"),
-    "focus": ("โฟกัส", "focus"),
-    "practice_goals": ("เป้าหมายการซ้อม", "practice goals"),
-    "next_goal": ("ครั้งถัดไป",),
-    "homework": ("การบ้าน", "homework"),
-}
+#: Defined in `domain.sections`, beside the headings Baton writes into them.
+DEFAULT_SECTIONS: dict[str, tuple[str, ...]] = READ_KEYWORDS
 
 #: The credit line the summariser appends, never part of what was taught.
 DEFAULT_FOOTER = r"หางยาว \(\d+ .*\) สรุปนี้มาจากผู้ช่วย AI"
@@ -96,6 +88,17 @@ class SectionRules:
                 keywords[str(name)] = tuple(str(word) for word in words or ())
         if not keywords:
             keywords = dict(DEFAULT_SECTIONS)
+
+        # Every heading the renderer writes is, by construction, a heading this
+        # reader has to recognise. Deriving them rather than asking a studio to
+        # list the same words in two places is what stops the two halves of
+        # Baton drifting apart again — they did, and it cost every published
+        # page its `content` section.
+        written = dict(WRITTEN_HEADINGS)
+        written.update(
+            {str(key): str(value) for key, value in config.section("summary.sections").items()}
+        )
+        keywords = with_written_headings(keywords, written)
 
         types = config.get("docs.homework_types", ["to_do"])
         if isinstance(types, str):

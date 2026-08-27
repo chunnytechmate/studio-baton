@@ -537,3 +537,51 @@ def test_the_fake_store_round_trips_drive_like_sqlite_does():
     assert stored.drive_link == DRIVE
     listed = store.list_works("1")[0]
     assert (listed.video_link, listed.drive_link) == (YT, DRIVE)
+
+
+# -- the lesson page at the end of the message (F16) --------------------------
+
+
+def _publish_record(profile, learner_id="1", doc_url="https://example.invalid/doc-ada-03"):
+    from datetime import datetime, timezone
+
+    from baton.core import jsonio
+
+    record = {
+        "learner_id": learner_id,
+        "learner_name": "Ada Whitfield",
+        "session_number": 3,
+        "doc_id": f"doc-ada-0{3}",
+        "doc_url": doc_url,
+        "titles": "",
+        "short_message": "• …",
+        "published_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    path = profile / "state" / "published" / f"{learner_id}-3.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    jsonio.write_json(path, record)
+    return record
+
+
+def test_the_recording_message_ends_with_the_lesson_page(rec_studio, capsys):
+    """A parent tapping the recording can continue into the lesson it came
+    from — the line the old sender always attached and the rewrite dropped,
+    leaving the message a dead end."""
+    profile, _ = rec_studio
+    _publish_record(profile)
+
+    assert call(rec_studio, "Ada Whitfield", "--to", "teacher", "--pick", "1") == Exit.OK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "📝 รายละเอียด Notion: https://example.invalid/doc-ada-03" in payload["message"]
+    assert payload["message"].rstrip().endswith("https://example.invalid/doc-ada-03")
+
+
+def test_a_recording_still_sends_without_any_published_lesson(rec_studio, capsys):
+    """Nothing published yet — the links go out the way the old sender sent
+    them when its own fetch failed: no line, no block."""
+    assert call(rec_studio, "Ada Whitfield", "--to", "teacher", "--pick", "1") == Exit.OK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "รายละเอียด Notion" not in payload["message"]
+    assert payload["sent"] is True

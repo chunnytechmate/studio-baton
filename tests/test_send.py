@@ -488,6 +488,23 @@ def studio(profile, monkeypatch):
     return profile, messenger, docs
 
 
+def _relax_gate(profile) -> None:
+    """Move the recording link to the optional list, as a studio with no
+    recordings would."""
+    config = profile / "baton.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + textwrap.dedent(
+            """
+            gates:
+              send_lesson_required: [doc_link, short_summary, session_number]
+              send_lesson_optional: [practice_track, video_link]
+            """
+        ),
+        encoding="utf-8",
+    )
+
+
 def publish(profile, learner_id, **overrides):
     """Write a published record directly, as `lesson publish` would have."""
     from datetime import datetime, timezone
@@ -579,6 +596,46 @@ def test_a_batch_rejects_a_duplicated_learner(studio, capsys):
         == Exit.USAGE
     )
 
+    payload = json.loads(capsys.readouterr().out)
+    assert "Ada Whitfield" in payload["message"]
+
+
+def test_a_batch_rejects_two_spellings_of_one_learner(studio, capsys):
+    """ "Ada" is an alias of Ada Whitfield. The pair is not a duplicate as
+    strings, which is exactly how it used to pass the check, send twice, and
+    land as two LINE messages in one sitting."""
+    config = studio[0] / "baton.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + textwrap.dedent(
+            """
+            db:
+              aliases:
+                Ada: Ada Whitfield
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        call(
+            studio,
+            "batch",
+            "--to",
+            "teacher",
+            "--learner",
+            "Ada Whitfield",
+            "--learner",
+            "Ada",
+        )
+        == Exit.USAGE
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    # The refusal names the person, not the spelling.
+    assert "Ada Whitfield" in payload["message"]
+    assert studio[1].sent == []
+
 
 def test_an_unknown_contact_exits_needs_human(studio, capsys):
     profile = studio[0]
@@ -591,16 +648,34 @@ def test_an_unknown_contact_exits_needs_human(studio, capsys):
     assert "teacher" in [c["name"] for c in payload["details"]["candidates"]]
 
 
-def test_a_document_outage_does_not_stop_the_gate(studio, capsys):
-    """The recording link is optional, so a document-store failure must
-    degrade to "no recording line" rather than block the summary. A studio
-    that has made video_link required will see the gate block on it instead —
-    which is that studio's own standard being enforced, not an outage leaking
-    into a different failure."""
+def test_a_document_outage_blocks_the_send_while_the_recording_is_required(studio, capsys):
+    """The packaged gate requires the recording link, so an unreadable
+    document blocks rather than sending a lesson message with no recording in
+    it. That is the studio's standard being enforced — the outage is why the
+    link is unknown, not a second kind of failure."""
     from baton.errors import UpstreamError
 
     profile = studio[0]
     docs = studio[2]
+    publish(profile, "1")
+    docs.fail_with = UpstreamError("notion is down", service="notion")
+
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.GATE
+
+    payload = json.loads(capsys.readouterr().out)
+    assert [item["field"] for item in payload["details"]["missing"]] == ["video_link"]
+    assert studio[1].sent == []
+
+
+def test_a_studio_that_does_not_record_can_make_the_link_optional(studio, capsys):
+    """Moving video_link to the optional list is the supported way out for a
+    studio with no recordings: the send goes, warns, and leaves the recording
+    line off the message."""
+    from baton.errors import UpstreamError
+
+    profile = studio[0]
+    docs = studio[2]
+    _relax_gate(profile)
     publish(profile, "1")
     docs.fail_with = UpstreamError("notion is down", service="notion")
 

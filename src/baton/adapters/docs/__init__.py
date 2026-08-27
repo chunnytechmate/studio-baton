@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from ...core.config import Config
 from ...errors import ConfigError
-from .base import Block, DocStatus, DocStore, PreservePolicy, PreserveRule, find_video_link
+from .base import (
+    VIDEO_LINK_BLOCKS,
+    Block,
+    DocStatus,
+    DocStore,
+    PreservePolicy,
+    PreserveRule,
+    find_video_link,
+)
 from .notion import NotionDocStore
 
 #: Every driver this build implements.
@@ -29,6 +37,7 @@ def open_docs(config: Config) -> DocStore:
 
 __all__ = [
     "DRIVERS",
+    "VIDEO_LINK_BLOCKS",
     "Block",
     "DocStatus",
     "DocStore",

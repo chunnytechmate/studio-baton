@@ -577,3 +577,133 @@ def test_re_staging_does_not_reopen_the_publish_gate(studio, capsys):
 
     assert out(capsys)["skipped"] == "already published"
     assert len(docs.list_blocks("doc-ada-03")) == after_first
+
+
+# -- publish resumes the description update it owes (F5) ----------------------
+
+
+def _video_on(docs):
+    """Put the lesson's recording on the document, keeping whatever else is
+    on the page."""
+    docs.blocks["doc-ada-03"] = [
+        block for block in docs.blocks.get("doc-ada-03", []) if block.type != "video"
+    ] + [Block(id="vid", type="video", url="https://youtu.be/dQw4w9WgXcQ")]
+
+
+def test_a_failed_description_update_is_retried_by_a_re_run(studio, capsys, monkeypatch):
+    """The summary is on the page for good; the description update is the part
+    that can fail (here: a foreign-owned video) and be finished later — without
+    appending a second copy of the summary to get there."""
+    from baton.adapters.fakes import FakePublisher
+
+    _, docs = studio
+    _video_on(docs)
+    prepared(studio, capsys)
+
+    fake_publisher = FakePublisher()
+    fake_publisher.foreign_video_ids = {"dQw4w9WgXcQ"}
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+    payload = out(capsys)
+    assert payload["youtube"]["status"] == "error"
+    after_first = len(docs.list_blocks("doc-ada-03"))
+
+    # The ownership problem is fixed (the video is ours now, say).
+    fake_publisher.foreign_video_ids.clear()
+    capsys.readouterr()
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["youtube"]["status"] == "ok"
+    assert payload["youtube"]["video_id"] == "dQw4w9WgXcQ"
+    # Nothing was appended a second time.
+    assert len(docs.list_blocks("doc-ada-03")) == after_first
+
+
+def test_the_recording_landing_later_gets_its_description(studio, capsys, monkeypatch):
+    """The ordinary order for a filmed lesson: publish, then the video pipeline
+    uploads and links the recording. The first publish found no video and owed
+    nothing; the re-run writes the description once one exists."""
+    from baton.adapters.fakes import FakePublisher
+
+    _, docs = studio
+    prepared(studio, capsys)
+
+    fake_publisher = FakePublisher()
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+    assert out(capsys)["youtube"] is None
+    after_first = len(docs.list_blocks("doc-ada-03"))
+
+    # The recording lands on the document afterwards.
+    _video_on(docs)
+    capsys.readouterr()
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["youtube"]["status"] == "ok"
+    assert payload["youtube"]["video_id"] == "dQw4w9WgXcQ"
+    assert len(docs.list_blocks("doc-ada-03")) == after_first
+
+
+def test_a_re_run_stops_retrying_once_attempts_run_out(studio, capsys, monkeypatch):
+    """A permanently refused update must not be retried on every publish for
+    the rest of the session's life."""
+    from baton.adapters.fakes import FakePublisher
+
+    _, docs = studio
+    _video_on(docs)
+    prepared(studio, capsys)
+
+    fake_publisher = FakePublisher()
+    fake_publisher.foreign_video_ids = {"dQw4w9WgXcQ"}
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+
+    call(studio, "publish", "Ada Whitfield")  # attempt 1
+    capsys.readouterr()
+    call(studio, "publish", "Ada Whitfield")  # attempt 2
+    capsys.readouterr()
+    call(studio, "publish", "Ada Whitfield")  # attempt 3
+    third = out(capsys)
+    assert third["youtube"]["status"] == "error"
+    updates_attempted = fake_publisher.descriptions
+    capsys.readouterr()
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["skipped"] == "already published"
+    # The cap held: no fourth call was made.
+    assert len(updates_attempted) == len(fake_publisher.descriptions)
+
+
+def test_re_staging_does_not_reopen_the_description_gate(studio, capsys, monkeypatch):
+    """The draft is wiped by every `stage`; the published record is what
+    remembers the description was already written. Re-staging to correct a
+    title must not re-update the video."""
+    from baton.adapters.fakes import FakePublisher
+
+    _, docs = studio
+    _video_on(docs)
+    prepared(studio, capsys)
+
+    fake_publisher = FakePublisher()
+    monkeypatch.setattr("baton.cli.cmd_lesson.open_publisher", lambda _config: fake_publisher)
+
+    call(studio, "publish", "Ada Whitfield")
+    capsys.readouterr()
+    described = dict(fake_publisher.descriptions)
+
+    stage_ada(studio, capsys)
+    call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
+    capsys.readouterr()
+
+    assert call(studio, "publish", "Ada Whitfield") == Exit.OK
+
+    payload = out(capsys)
+    assert payload["skipped"] == "already published"
+    assert fake_publisher.descriptions == described
