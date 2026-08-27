@@ -51,7 +51,19 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     spawn.set_defaults(handler=handle_spawn)
 
-    listing = group.add_parser("list", help="List jobs, newest first.")
+    listing = group.add_parser(
+        "list",
+        help="List jobs, newest first.",
+        description=(
+            "Finished jobs older than a few days are hidden — they are history, "
+            "not live work. Use --all to see them; `job prune` deletes them."
+        ),
+    )
+    listing.add_argument(
+        "--all",
+        action="store_true",
+        help="Include finished jobs older than the stale threshold.",
+    )
     listing.set_defaults(handler=handle_list)
 
     status = group.add_parser("status", help="Show one job's lifecycle record.")
@@ -168,11 +180,15 @@ def handle_spawn(ctx: Context) -> Exit:
 
 
 def handle_list(ctx: Context) -> Exit:
-    jobs = _runner(ctx).list()
+    jobs = _runner(ctx).list(include_stale=ctx.args.all)
     payload = {"jobs": [job.to_dict() for job in jobs]}
 
     if not jobs:
-        ctx.report.result(payload, human="No jobs recorded.")
+        hidden = _runner(ctx).list(include_stale=True)
+        human = "No live jobs. Older finished ones are hidden; try --all." if hidden else (
+            "No jobs recorded."
+        )
+        ctx.report.result(payload, human=human)
         return Exit.OK
 
     lines = []

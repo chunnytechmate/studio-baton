@@ -258,8 +258,12 @@ def test_a_run_resumes_from_wherever_it_broke(pipeline, failing_step):
 
 
 def test_resume_processes_nothing_when_every_job_finished(pipeline):
-    built = pipeline[0]
+    built, source = pipeline[:2]
     built.run()
+
+    # A real source stops listing clips once they are trashed; the shared
+    # fake does not, so empty it the way the source would be.
+    source.clips = []
 
     assert built.resume() == []
 

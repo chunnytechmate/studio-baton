@@ -518,6 +518,54 @@ class VideoPipeline:
         return jobs
 
     def resume(self) -> list[VideoJob]:
-        """Continue every job that did not finish, without collecting new clips."""
-        unfinished = [job for job in self.jobs.list() if job.status not in ("done", "skipped")]
-        return [self.run_one(job.learner_folder, []) for job in unfinished]
+        """Continue every job that did not finish, without collecting new clips.
+
+        Unfinished jobs continue from their first pending step. A *completed*
+        job whose source clips are still listed also continues here — its
+        trash step recorded a success the source did not honour, and catching
+        that lie is recovery, not collection. That is the same selection
+        ``run`` sees, minus the new lessons only ``run`` may start, so
+        "resume found nothing" can no longer mean "run will find work that
+        was merely waiting to be reclaimed".
+        """
+        recorded = self.jobs.list()
+        unfinished = [job for job in recorded if job.status not in ("done", "skipped")]
+        jobs = [self.run_one(job.learner_folder, []) for job in unfinished]
+
+        pending: dict[str, list[SourceClip]] = {}
+        for clip in self.source.list_pending():
+            pending.setdefault(clip.learner_folder, []).append(clip)
+
+        for job in recorded:
+            if job.status != "done":
+                continue
+            known = [
+                clip for clip in pending.get(job.learner_folder, []) if clip.id in job.clip_ids
+            ]
+            if known:
+                jobs.append(self.run_one(job.learner_folder, known))
+        return jobs
+
+    def waiting_clips(self) -> int:
+        """Clips pending under folders no unfinished job will collect.
+
+        What `resume` must say out loud instead of "Nothing to process." when
+        a later `run` would find work: new lessons waiting, or nothing at all.
+        Clips a done job already owns are not counted — resume has just
+        reclaimed those, and only genuinely new clips are `run`'s to start.
+        """
+        recorded = self.jobs.list()
+        unfinished = {
+            job.learner_folder for job in recorded if job.status not in ("done", "skipped")
+        }
+        owned: dict[str, set[str]] = {
+            job.learner_folder: set(job.clip_ids)
+            for job in recorded
+            if job.status == "done"
+        }
+        return sum(
+            1
+            for clip in self.source.list_pending()
+            if clip.learner_folder not in unfinished
+            and clip.id not in owned.get(clip.learner_folder, set())
+        )

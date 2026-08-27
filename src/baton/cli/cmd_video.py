@@ -60,6 +60,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     resume = group.add_parser(
         "resume",
         help="Continue jobs that did not finish, without collecting new clips.",
+        description=(
+            "Continues unfinished jobs and re-trashes source clips a completed "
+            "job's record claims were already moved. Never starts a new "
+            "session's job — new clips are `video run`'s to collect."
+        ),
     )
     resume.add_argument("--detach", action="store_true")
     resume.set_defaults(handler=handle_resume)
@@ -206,6 +211,26 @@ def handle_resume(ctx: Context) -> Exit:
     pipeline = _build(ctx)
     with run_lock(ctx.config.state_dir, "video"):
         jobs = pipeline.resume()
+        waiting = pipeline.waiting_clips()
+    if not jobs and waiting:
+        # "Nothing to process." here once sent the operator to bed while a
+        # later `run` found clips waiting the whole time.
+        ctx.report.result(
+            {
+                "jobs": [],
+                "processed": 0,
+                "done": 0,
+                "failed": 0,
+                "skipped": 0,
+                "waiting_clips": waiting,
+            },
+            human=(
+                f"Nothing to resume, but {waiting} clip(s) are waiting under "
+                "folders with no unfinished job.\n"
+                "    collect : baton video run"
+            ),
+        )
+        return Exit.OK
     return _report(ctx, jobs, verb="resumed")
 
 

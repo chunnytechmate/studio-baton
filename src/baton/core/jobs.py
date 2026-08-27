@@ -54,6 +54,13 @@ TERMINAL_STATUSES = frozenset({"done", "failed", "stopped", "orphaned"})
 HEARTBEAT_SECONDS = 5.0
 HEARTBEAT_STALE_SECONDS = 300.0
 
+#: Finished jobs older than this stop appearing in `job list`. A record that
+#: ended days ago is history, not a live problem, but it used to sit in the
+#: listing until the 14-day prune deleted it — a failed job from half a week
+#: back read as tonight's failure. `--all` shows everything; `job status <id>`
+#: always works.
+DEFAULT_LIST_STALE_DAYS = 3.0
+
 if sys.platform == "win32":  # pragma: no cover - platform specific
     import ctypes
     import msvcrt
@@ -143,10 +150,17 @@ class JobInfo:
 class JobRunner:
     """Spawn, inspect, wait on, and stop detached jobs for one profile."""
 
-    def __init__(self, state_dir: Path, config_file: Path) -> None:
+    def __init__(
+        self,
+        state_dir: Path,
+        config_file: Path,
+        *,
+        list_stale_days: float = DEFAULT_LIST_STALE_DAYS,
+    ) -> None:
         self.state_dir = Path(state_dir)
         self.jobs_dir = self.state_dir / JOBS_DIRNAME
         self.config_file = config_file
+        self.list_stale_days = list_stale_days
 
     # -- paths -------------------------------------------------------------
 
@@ -378,12 +392,38 @@ class JobRunner:
             log=str(self._log_path(job_id)),
         )
 
-    def list(self) -> list[JobInfo]:
-        """All jobs, newest first (ids start with a timestamp, so they sort)."""
+    def list(self, *, include_stale: bool = False) -> list[JobInfo]:
+        """All jobs, newest first (ids start with a timestamp, so they sort).
+
+        Args:
+            include_stale: Also list finished jobs older than
+                :attr:`list_stale_days`. Running jobs are always listed —
+                hiding one, however stale its heartbeat, would hide a live
+                process and the lock it may hold.
+        """
         if not self.jobs_dir.is_dir():
             return []
-        jobs = [self.get(p.name) for p in sorted(self.jobs_dir.iterdir(), reverse=True)]
-        return [job for job in jobs if job is not None]
+        cutoff = _utcnow() - timedelta(days=self.list_stale_days)
+        jobs: list[JobInfo] = []
+        for entry in sorted(self.jobs_dir.iterdir(), reverse=True):
+            info = self.get(entry.name)
+            if info is None:
+                continue
+            stale = (self._settled_at(info) or _utcnow()) < cutoff
+            if not include_stale and info.status != "running" and stale:
+                continue
+            jobs.append(info)
+        return jobs
+    def _settled_at(self, info: JobInfo) -> datetime | None:
+        """When a terminal job ended, or ``None`` when it never said."""
+        ended = info.ended_at or info.started_at
+        if not ended:
+            return None
+        try:
+            settled = datetime.fromisoformat(ended)
+        except ValueError:
+            return None
+        return settled if settled.tzinfo else settled.replace(tzinfo=timezone.utc)
 
     def logs(self, job_id: str, *, tail: int | None = None) -> str:
         """Read a job's log, optionally keeping only the last ``tail`` lines."""
@@ -490,25 +530,20 @@ class JobRunner:
             info = self.get(entry.name)
             if info is None or info.status not in TERMINAL_STATUSES:
                 continue
-            ended = info.ended_at or info.started_at
-            try:
-                ended_at = datetime.fromisoformat(ended)
-            except ValueError:
+            settled_at = self._settled_at(info)
+            if settled_at is None or settled_at >= cutoff:
                 continue
-            if ended_at.tzinfo is None:
-                ended_at = ended_at.replace(tzinfo=timezone.utc)
-            if ended_at < cutoff:
-                for victim in entry.rglob("*"):
-                    with suppress(OSError):
-                        victim.unlink()
-                try:
-                    entry.rmdir()
-                except OSError:
-                    # Something survived the unlink sweep (a subdirectory, a
-                    # concurrent writer). The dir is still on disk, so it must
-                    # not be counted as removed.
-                    continue
-                removed += 1
+            for victim in entry.rglob("*"):
+                with suppress(OSError):
+                    victim.unlink()
+            try:
+                entry.rmdir()
+            except OSError:
+                # Something survived the unlink sweep (a subdirectory, a
+                # concurrent writer). The dir is still on disk, so it must
+                # not be counted as removed.
+                continue
+            removed += 1
         return removed
 
 
