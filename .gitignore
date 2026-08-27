@@ -48,3 +48,9 @@ tmp/
 # Local-only review workspace. This repo is public; the review notes track
 # known defects before they are fixed and stay on the machine.
 /review/
+
+# Screenshots dropped at the repo root by browser-driven sessions, and the
+# Playwright MCP scratch directory that produces them. Nothing here is a
+# project asset; a real doc image would live under docs/ and stay tracked.
+.playwright-mcp/
+/*.png
