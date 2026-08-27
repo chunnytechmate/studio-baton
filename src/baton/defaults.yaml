@@ -458,6 +458,11 @@ summary:
   # The column is free text: these are the four the schema names, and a studio
   # adds its own. Written in English here because the rest of the instructions
   # are; write yours in the language you publish in if that reads better.
+  #
+  # These four are examples of the *shape*, not advice about teaching. A real
+  # studio's definitions can be the opposite of them — the one this was built
+  # for wants ordinary technical vocabulary in `standard`, where the default
+  # below avoids it — so replace them with what your studio actually means.
   tones:
     standard: >-
       Write for a parent who follows the lessons but does not teach: name what
@@ -496,11 +501,17 @@ summary:
     # well" survives any lesson, so it describes none; a family learns nothing
     # from it and the teacher's actual notes are lost behind it. Replace this
     # list with your own wording, or empty it to turn the rule off.
+    #
+    # `กำลังพัฒนาดี` is here because the studio this came from had already
+    # named it: its previous summariser carried a rule headed "Accuracy Over
+    # Flattery" reading `"ยังติด" คือ "ยังติด" ไม่ใช่ "กำลังพัฒนาดี"` —
+    # a rule stated in prose, which is exactly the kind that gets written past.
     vague_phrases:
       - ทำได้ดีมาก
       - ทำได้ดี
       - เก่งมาก
       - ดีขึ้นมาก
+      - กำลังพัฒนาดี
       - ตั้งใจดีมาก
       - เยี่ยมมาก
       - น่ารักมาก
