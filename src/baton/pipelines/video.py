@@ -188,6 +188,35 @@ class VideoJobStore:
             candidate.unlink(missing_ok=True)
         return existed
 
+    def archive(self, job: VideoJob) -> Path:
+        """Move a completed job aside so the next session can start fresh.
+
+        The store keys jobs by folder, one live job per learner — but a folder
+        receives new clips every week. Until 0.4.1 the completed job sat in the
+        path forever and `run`, finding every step done, swallowed the new
+        week's clips in silence; the only way through was `video forget` by
+        hand. Archiving keeps the record (a publish may still read its upload)
+        while giving the new job a clean path.
+
+        Returns:
+            Where the job file landed, under ``<root>/archive/``.
+        """
+        target_dir = self.root / "archive"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        base = f"{_slug(job.learner_folder)}__s{job.session_number or 0}"
+        target = target_dir / f"{base}.json"
+        suffix = 0
+        while target.exists():
+            suffix += 1
+            target = target_dir / f"{base}-{suffix}.json"
+        source = self._path(job.learner_folder)
+        if source.exists():
+            source.replace(target)
+        backup = jsonio.backup_path(source)
+        if backup.exists():
+            backup.unlink(missing_ok=True)
+        return target
+
 
 @dataclass
 class VideoPipeline:
@@ -450,6 +479,12 @@ class VideoPipeline:
     def run(self, *, only: list[str] | None = None) -> list[VideoJob]:
         """Run every learner folder that has clips waiting.
 
+        A completed job no longer ends the story for its folder: clips it
+        already owns are reclaimed (their trash did not take effect on the
+        source), and clips it has never seen belong to a later lesson — the
+        done job is archived and a new job starts for the next session, so
+        `video forget` is no longer part of the weekly loop.
+
         Args:
             only: Restrict to these folder names.
 
@@ -465,7 +500,22 @@ class VideoPipeline:
             wanted = {normalise(name) for name in only}
             grouped = {k: v for k, v in grouped.items() if normalise(k) in wanted}
 
-        return [self.run_one(folder, clips) for folder, clips in sorted(grouped.items())]
+        jobs: list[VideoJob] = []
+        for folder, clips in sorted(grouped.items()):
+            previous = self.jobs.get(folder)
+            if previous is not None and previous.status == "done":
+                known = [clip for clip in clips if clip.id in previous.clip_ids]
+                fresh = [clip for clip in clips if clip.id not in previous.clip_ids]
+                if known:
+                    # Recovery, not re-processing: every step stays done and
+                    # only the trash the source ignored is re-issued.
+                    jobs.append(self.run_one(folder, known))
+                if fresh:
+                    self.jobs.archive(previous)
+                    jobs.append(self.run_one(folder, fresh))
+                continue
+            jobs.append(self.run_one(folder, clips))
+        return jobs
 
     def resume(self) -> list[VideoJob]:
         """Continue every job that did not finish, without collecting new clips."""
