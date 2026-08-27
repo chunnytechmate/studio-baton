@@ -104,3 +104,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Three modules reuse fixtures via `from tests.test_send import ...`, which
+# needs the repository root importable. CI runs `python -m pytest`, and that
+# puts it there for free; the `.venv/bin/pytest` in CLAUDE.md does not, so the
+# documented command failed collection on exactly those three. Say it here and
+# both invocations behave the same.
+pythonpath = ["."]
