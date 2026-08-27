@@ -199,7 +199,9 @@ def build(root: Path) -> dict[str, object]:
     for caller, callee, cmod in edges:
         dmod = cmod.replace("/", ".")
         if dmod.startswith("cli."):
-            layer, group = "cli", dmod.replace("cli.cmd_", "")
+            # ``cli.cmd_calendar`` and ``cli.guard`` are both just "calendar"
+            # and "guard" — the cmd_ prefix is naming convention, not meaning.
+            layer, group = "cli", dmod.removeprefix("cli.").removeprefix("cmd_")
         elif dmod.startswith("pipelines.") or dmod.startswith("core.jobs"):
             layer = "pipe"
             group = dmod.replace("pipelines.", "").replace("core.", "")

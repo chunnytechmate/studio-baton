@@ -53,6 +53,11 @@ tmp/
 # learner names and page links — the reason they never reach this repo.
 /briefs/
 
+# `tools/callgraph.py` writes its graph beside itself. It is a snapshot of the
+# code it was run against, stale the moment anything changes, and regenerated
+# in a second — a build output, not a source file.
+callgraph.json
+
 # Screenshots dropped at the repo root by browser-driven sessions, and the
 # Playwright MCP scratch directory that produces them. Nothing here is a
 # project asset; a real doc image would live under docs/ and stay tracked.
