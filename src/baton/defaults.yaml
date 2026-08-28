@@ -103,6 +103,14 @@ learner:
   # per candidate, instead of reading every session page of every learner.
   in_progress_days: 14
 
+  # `learner add` refuses an --instrument or --tone not on these lists. Empty
+  # means unrestricted: a public package has no business guessing a studio's
+  # own vocabulary, so both start empty and a studio names its own values.
+  instruments: []
+  tones: []
+  # instruments: [guitar, drums]
+  # tones: [standard, child, casual, exam]
+
 # ---------------------------------------------------------------------------
 # Session documents (the per-session page a learner and their family read)
 # ---------------------------------------------------------------------------

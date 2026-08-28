@@ -52,7 +52,7 @@ own speech layer, but the operational CLI is not coupled to one ASR model.
 | `baton doctor` | Check config, credentials, and drivers before anything runs |
 | `baton config` | Show the configuration the tool actually resolved |
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
-| `baton learner` | Look up learners, sessions, pieces, and past work |
+| `baton learner` | Enrol and look up learners, sessions, pieces, and past work |
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
 | `baton send` | Send a lesson summary or a recorded work's links (Drive/YouTube), refusing to send anything incomplete |
 | `baton video` | Collect recordings → encode → publish → link back, resumable |
@@ -344,6 +344,21 @@ progress, and handing it back as free is how a summary overwrites a draft.
 baton learner latest "Ada Whitfield"   # newest done, by document date
 baton learner next   "Ada Whitfield"   # where the next lesson lands
 baton learner in-progress              # who still owes a summary (calendar window)
+```
+
+**Enrolment writes nothing until every input has resolved.** `learner add`
+refuses an exact-name duplicate outright (a near-miss is only ever reported
+alongside a success, never blocking one), checks `learner.instruments` and
+`learner.tones` when the profile restricts them, and rejects a page URL it
+cannot read a Notion page id from before the learner is even created. A
+studio-specific column named on the command line — `--prompt-level`,
+`--master-link` — with no `db.fields` entry to write it to is a configuration
+error raised up front, the same as any other unmapped field:
+
+```bash
+baton learner add "Elin Frost" --instrument guitar --tone child \
+  --page-urls https://notion.site/1-16cf38e8e88b830f8167819ac35a6428 \
+              https://notion.site/2-27df49f9f99c941f9278920bd46b7539
 ```
 
 A status the profile does not describe — a studio adds "Cancelled" — maps to

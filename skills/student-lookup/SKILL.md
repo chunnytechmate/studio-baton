@@ -13,6 +13,7 @@ Every command takes `--json` and prints one document. Read the exit code first.
 - "which sessions are in progress", "what do I teach today"
 - "show me X's recordings", "add a performance for X"
 - "list the pieces", "assign X to piece N"
+- "enrol a new student", "add X as a learner"
 
 ## Commands
 
@@ -29,6 +30,7 @@ Every command takes `--json` and prints one document. Read the exit code first.
 | The piece catalogue | `baton learner pieces --json` |
 | Assign a piece | `baton learner assign "<name>" --piece <id> --json` |
 | Assign and repair published piece sections | `baton learner assign "<name>" --piece <id> --update-published --dry-run --json` |
+| Enrol a new learner | `baton learner add "<name>" --instrument <i> [--tone <t>] [--page-urls <url>...] --json` |
 
 ## Rules
 
@@ -54,11 +56,17 @@ in `published_updates.pages`; the real run replaces only Baton's rendered
 piece heading and resources from the old assignment. It does not rewrite the
 lesson summary, recording, or other preserved callouts.
 
+**`learner add` refuses an exact-name duplicate; a near-miss is only ever
+reported alongside a success.** Nothing is written until every page URL given
+resolves to a Notion page id — an unparseable URL stops the whole enrolment
+before the learner is created, not after.
+
 ## Exit codes
 
 | Code | Do this |
 | --- | --- |
 | `0` | Report the result |
-| `2` | Run `baton doctor`, report what it says, stop |
+| `2` | A column named on the command line has nowhere configured to go; report the setting named in `details` |
 | `3` | Show `details.candidates`, ask, re-run with the exact name |
+| `5` | `learner add` found an exact-name duplicate; report the existing id and stop |
 | `6` | Report; the service is down, re-running later is safe |

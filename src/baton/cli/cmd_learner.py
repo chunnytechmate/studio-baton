@@ -7,17 +7,19 @@ so an ambiguous name exits ``3`` with candidates rather than acting on a guess.
 from __future__ import annotations
 
 import argparse
+import re
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.db import open_store
 from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..adapters.docs.base import PreservePolicy
-from ..domain.models import Work
+from ..domain.models import Learner, Session, Work
+from ..domain.notion_urls import detect_week, parse_page_id
 from ..domain.prep import SectionRules
-from ..domain.resolve import resolve_learner
+from ..domain.resolve import normalise, resolve_learner
 from ..domain.status import StatusVocabulary
 from ..domain.whenever import today_in
-from ..errors import BatonError, GateError, NeedsHumanError, UsageError
+from ..errors import BatonError, ConfigError, GateError, NeedsHumanError, UpstreamError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory, PublishedPieceUpdater, SessionView
 from ..pipelines.recording import attach_work, list_candidates, recording_blocks
@@ -104,6 +106,47 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     works = group.add_parser("works", help="Recorded performances and recordings.")
     works.add_argument("name", metavar="NAME")
     works.set_defaults(handler=handle_works)
+
+    add = group.add_parser(
+        "add",
+        help="Enrol a new learner.",
+        description="Refuses on an exact-name duplicate, and writes nothing "
+        "unless every page URL given resolves.",
+    )
+    add.add_argument("name", metavar="NAME")
+    add.add_argument("--instrument", required=True)
+    add.add_argument("--tone", default="")
+    add.add_argument("--has-instrument", action="store_true")
+    add.add_argument(
+        "--prompt-level", type=int, default=None, metavar="N", help="A studio-specific column."
+    )
+    add.add_argument("--master-link", default="", metavar="URL")
+    add.add_argument(
+        "--db-link",
+        default="",
+        metavar="URL",
+        help="The Notion database the session pages live in.",
+    )
+    add.add_argument(
+        "--page-urls",
+        nargs="*",
+        default=(),
+        metavar="URL",
+        help="Session pages; the week comes from each URL's slug, or counts "
+        "up from 1 when a URL has none.",
+    )
+    add.add_argument(
+        "--pages",
+        nargs="*",
+        default=(),
+        metavar="W<n>-URL",
+        help="Session pages named by week, e.g. W1-https://... Takes "
+        "precedence over --page-urls when both are given.",
+    )
+    add.add_argument(
+        "--dry-run", action="store_true", help="Show what would be enrolled, and stop."
+    )
+    add.set_defaults(handler=handle_add)
 
     add_work = group.add_parser("add-work", help="Record a finished performance.")
     add_work.add_argument("name", metavar="NAME")
@@ -450,6 +493,220 @@ def handle_in_progress(ctx: Context) -> Exit:
         lines = [f"No {label} is in progress in the last {report.window['days']} days."]
     lines.append(f"  window: {report.window['start']} … {report.window['through']}")
     ctx.report.result(payload, human="\n".join(lines))
+    return Exit.OK
+
+
+def _check_mapped(fields: dict[str, Any], extra: dict[str, Any], *, setting: str) -> None:
+    """Refuse before any write when an extra field has no column configured.
+
+    The same check :meth:`~baton.adapters.db.base.FieldMap.extra_columns`
+    makes at write time, run here first so a learner and their first session
+    are not created before the *second* session's extra field turns out to
+    be unmapped.
+    """
+    for key in extra:
+        if key not in fields:
+            raise ConfigError(
+                f"`{setting}.{key}` is not mapped, so `{key}` cannot be written.",
+                remedy=f"Add it under {setting} in baton.yaml, or drop the field.",
+                details={"setting": setting, "field": key},
+            )
+
+
+def _validate_choice(ctx: Context, value: str, *, setting: str, field: str) -> None:
+    """Refuse a value the profile's own list does not name.
+
+    An empty list means the profile has not restricted this field: every
+    value is accepted, because a public tool has no business guessing a
+    studio's vocabulary for it.
+    """
+    allowed = [str(item) for item in (ctx.config.get(setting, []) or [])]
+    if allowed and value not in allowed:
+        raise UsageError(
+            f"`{value}` is not a configured {field}.",
+            remedy=f"Use one of: {', '.join(allowed)}.",
+            details={"setting": setting, "understood": allowed},
+        )
+
+
+def _resolve_pages(args: Any) -> list[tuple[int, str]]:
+    """(week, page id) pairs from --pages or --page-urls, in the order given.
+
+    ``--pages`` wins over ``--page-urls`` when both are given, matching the
+    original script's order. A URL Baton cannot read a page id from is
+    refused rather than skipped — silently dropping a page a person meant to
+    add is worse than stopping to ask about it.
+
+    Raises:
+        UsageError: A ``--pages`` token is not ``W<week>-<url>``, or a URL
+            carries no Notion page id.
+    """
+    entries: list[tuple[int, str]] = []
+    if args.pages:
+        for token in args.pages:
+            match = re.match(r"^[Ww](\d+)-(.+)$", token)
+            if not match:
+                raise UsageError(
+                    f"`{token}` is not `W<week>-<url>`.",
+                    remedy="Each --pages token is a week number, a dash, then the page URL.",
+                )
+            url = match.group(2)
+            page_id = parse_page_id(url)
+            if page_id is None:
+                raise UsageError(
+                    f"No Notion page id could be read from `{url}`.",
+                    remedy="Paste the page's own URL, not a shortened or edited one.",
+                )
+            entries.append((int(match.group(1)), page_id))
+        return entries
+
+    next_week = 1
+    for url in args.page_urls:
+        page_id = parse_page_id(url)
+        if page_id is None:
+            raise UsageError(
+                f"No Notion page id could be read from `{url}`.",
+                remedy="Paste the page's own URL, not a shortened or edited one.",
+            )
+        week = detect_week(url) or next_week
+        entries.append((week, page_id))
+        next_week = week + 1
+    return entries
+
+
+def handle_add(ctx: Context) -> Exit:
+    """Enrol a learner, then their session pages, in that order.
+
+    Nothing is written until every input has resolved: the name is not a
+    duplicate, the instrument and tone (when the profile restricts them) are
+    known values, every page URL carries a page id, and every extra field —
+    a prompt level, a master link, a session's Notion database id — has a
+    place to be written. A studio-specific column named on the command line
+    with nowhere configured to put it is a configuration error, not a
+    silently dropped write.
+    """
+    args = ctx.args
+    _validate_choice(ctx, args.instrument, setting="learner.instruments", field="instrument")
+    if args.tone:
+        _validate_choice(ctx, args.tone, setting="learner.tones", field="tone")
+
+    pages = _resolve_pages(args)
+
+    database_id = ""
+    if args.db_link:
+        parsed = parse_page_id(args.db_link)
+        if parsed is None:
+            raise UsageError(
+                f"No Notion database id could be read from `{args.db_link}`.",
+                remedy="Paste the database's own URL.",
+            )
+        database_id = parsed
+
+    learner_fields = ctx.config.section("db.fields.learner")
+    session_fields = ctx.config.section("db.fields.session")
+    learner_extra: dict[str, Any] = {}
+    if args.prompt_level is not None:
+        learner_extra["prompt_level"] = args.prompt_level
+    if args.master_link:
+        learner_extra["master_link"] = args.master_link
+    session_extra_keys = []
+    if database_id:
+        session_extra_keys.append("database_id")
+        session_extra_keys.append("notion_db_full_link")
+    elif pages and "database_id" in session_fields:
+        # The overlay's own schema has a NOT NULL database_id column: a page
+        # with no database id would fail the whole insert, so this is caught
+        # before the learner is even created rather than mid-way through.
+        raise UsageError(
+            f"{ctx.config.label('session')} pages need --db-link: this "
+            "profile's session table requires a database id.",
+            remedy="Pass --db-link with the pages' Notion database URL.",
+        )
+    _check_mapped(learner_fields, learner_extra, setting="db.fields.learner")
+    _check_mapped(
+        session_fields, dict.fromkeys(session_extra_keys, ""), setting="db.fields.session"
+    )
+
+    store = _store(ctx)
+    try:
+        existing = store.list_learners()
+        wanted = normalise(args.name)
+        duplicate = next((p for p in existing if normalise(p.name) == wanted), None)
+        if duplicate is not None:
+            raise GateError(
+                f"{args.name} is already recorded (id={duplicate.id}).",
+                remedy=f'Use `baton learner show "{args.name}"` to see the '
+                "existing record. Nothing was written.",
+            )
+        # Either direction: a name that extends an existing one ("Elin
+        # Frostberg" against "Elin Frost") or is extended by one, either way
+        # worth a second look without blocking the enrolment over it.
+        similar = [
+            p.name for p in existing if wanted in normalise(p.name) or normalise(p.name) in wanted
+        ]
+
+        proposed = Learner(
+            id="",
+            name=args.name,
+            instrument=args.instrument,
+            tone=args.tone,
+            has_instrument=args.has_instrument,
+        )
+
+        if args.dry_run:
+            ctx.report.result(
+                {
+                    "would_add": proposed.to_dict(),
+                    "would_add_extra": learner_extra,
+                    "would_add_sessions": [
+                        {"number": week, "doc_id": page_id} for week, page_id in pages
+                    ],
+                    "similar": similar,
+                    "dry_run": True,
+                },
+                human=f"Would enrol {args.name} ({args.instrument})"
+                + (f" with {len(pages)} session page(s)." if pages else "."),
+            )
+            return Exit.OK
+
+        created = store.add_learner(proposed, extra=learner_extra or None)
+        created_sessions: list[Session] = []
+        try:
+            for week, page_id in pages:
+                session_extra: dict[str, Any] = {}
+                if database_id:
+                    session_extra["database_id"] = database_id
+                    session_extra["notion_db_full_link"] = args.db_link
+                created_sessions.append(
+                    store.add_session(
+                        Session(id="", learner_id=created.id, number=week, doc_id=page_id),
+                        extra=session_extra or None,
+                    )
+                )
+        except BatonError as exc:
+            raise UpstreamError(
+                f"{created.name} was enrolled, but a session page failed to write: {exc.message}",
+                service="db",
+                remedy="The learner and any listed sessions already exist — "
+                "check what landed before retrying the rest by hand.",
+                details={
+                    "learner": created.to_dict(),
+                    "sessions_written": [s.to_dict() for s in created_sessions],
+                },
+            ) from exc
+    finally:
+        store.close()
+
+    ctx.report.result(
+        {
+            "learner": created.to_dict(),
+            "sessions": [s.to_dict() for s in created_sessions],
+            "similar": similar,
+        },
+        human=f"Enrolled {created.name} ({created.instrument})"
+        + (f" with {len(created_sessions)} session page(s)." if created_sessions else ".")
+        + (f" Similarly named: {', '.join(similar)}." if similar else ""),
+    )
     return Exit.OK
 
 
