@@ -36,7 +36,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     """Attach the ``learner`` command group."""
     parser = subparsers.add_parser(
         "learner",
-        help="Look up learners, sessions, pieces, and recorded work.",
+        help="Enrol a learner, then look up sessions, pieces, and recorded work.",
         description="Read-mostly queries across the database and the session documents.",
     )
     group = parser.add_subparsers(dest="learner_command", metavar="<subcommand>")
@@ -266,6 +266,10 @@ def handle_list(ctx: Context) -> Exit:
     store = _store(ctx)
     try:
         learners = store.list_learners()
+        # One extra read, only when there is a list to annotate: the piece
+        # catalogue is small, and knowing who is on what without a second
+        # command is the whole point of a roster.
+        titles = {p.id: p.title for p in store.list_pieces()} if learners else {}
     finally:
         store.close()
 
@@ -275,10 +279,12 @@ def handle_list(ctx: Context) -> Exit:
         return Exit.OK
 
     width = max(len(item.name) for item in learners)
-    lines = [
-        f"  {item.name:<{width}}  {item.instrument or '-':<10} {item.tone or '-'}"
-        for item in learners
-    ]
+    lines = []
+    for item in learners:
+        line = f"  {item.name:<{width}}  {item.instrument or '-':<10} {item.tone or '-'}"
+        if item.current_piece_id:
+            line += f"  — {titles.get(item.current_piece_id, '?')}"
+        lines.append(line)
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
 

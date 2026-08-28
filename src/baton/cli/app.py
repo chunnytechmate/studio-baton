@@ -246,6 +246,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_notes,
         cmd_prep,
         cmd_send,
+        cmd_song,
         cmd_video,
     )
 
@@ -254,6 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_doctor,
         cmd_config,
         cmd_learner,
+        cmd_song,
         cmd_lesson,
         cmd_send,
         cmd_video,

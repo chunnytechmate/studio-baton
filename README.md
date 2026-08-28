@@ -53,6 +53,7 @@ own speech layer, but the operational CLI is not coupled to one ASR model.
 | `baton config` | Show the configuration the tool actually resolved |
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
 | `baton learner` | Enrol and look up learners, sessions, pieces, and past work |
+| `baton song` | List, search, add, edit, and remove pieces in the shared catalogue |
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
 | `baton send` | Send a lesson summary or a recorded work's links (Drive/YouTube), refusing to send anything incomplete |
 | `baton video` | Collect recordings → encode → publish → link back, resumable |
@@ -364,6 +365,18 @@ baton learner add "Elin Frost" --instrument guitar --tone child \
 A status the profile does not describe — a studio adds "Cancelled" — maps to
 *unknown* rather than being filed as one of the three. Unknown is never offered
 as the next free session.
+
+**The piece catalogue is a shared table, not a learner's property.**
+`baton song` lists, searches, adds, edits, and removes it; `learner assign`
+is what points a learner at one. Removing a piece a learner is still assigned
+to is refused (exit `5`, naming who) rather than orphaning the assignment or
+racing the database's own foreign key. `song update` only changes the fields
+given — an empty value clears one, leaving a flag out leaves it alone:
+
+```bash
+baton song add "Nocturne No. 2" --sheet-link https://example.invalid/nocturne.pdf
+baton song update 3 --practice-track ""   # clears the link, leaves everything else
+```
 
 **Long jobs resume.** Video processing and publishing record each completed step
 atomically, so a crash mid-run is re-runnable without re-uploading a video or

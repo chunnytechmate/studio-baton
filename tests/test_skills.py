@@ -69,6 +69,7 @@ def test_there_is_a_skill_for_each_pipeline():
         "send-recording",
         "student-lookup",
         "studio-calendar",
+        "studio-songs",
         "video-pipeline",
     }
 
