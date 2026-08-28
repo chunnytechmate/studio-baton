@@ -497,9 +497,7 @@ def _strings_with_paths(value: Any, pointer: str = "") -> list[tuple[str, str]]:
     return []
 
 
-def vocabulary_near_misses(
-    payload: dict[str, Any], vocabulary: Iterable[str]
-) -> list[str]:
+def vocabulary_near_misses(payload: dict[str, Any], vocabulary: Iterable[str]) -> list[str]:
     """Name the places a summary nearly used a pool spelling and did not.
 
     The third layer of the vocabulary design, and the only one that looks at

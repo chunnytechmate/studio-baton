@@ -480,8 +480,7 @@ def test_a_near_miss_is_named_with_where_it_sits():
     findings = vocabulary_near_misses(summary, ["Encore"])
 
     assert findings == [
-        "the summary spells it `encour` at /overview/0 where the vocabulary "
-        "pool spells it `Encore`"
+        "the summary spells it `encour` at /overview/0 where the vocabulary pool spells it `Encore`"
     ]
 
 

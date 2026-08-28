@@ -1423,8 +1423,7 @@ def test_ingest_warns_about_a_near_miss_without_refusing_it(studio, capsys):
     captured = capsys.readouterr()
     result = json.loads(captured.out)
     assert result["warnings"] == [
-        "the summary spells it `encour` at /overview/0 where the vocabulary "
-        "pool spells it `Encore`"
+        "the summary spells it `encour` at /overview/0 where the vocabulary pool spells it `Encore`"
     ]
     assert "!" in captured.err
 

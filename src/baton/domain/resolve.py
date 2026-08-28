@@ -153,9 +153,7 @@ def resolve_learner_loose(
             raise
         matches = [p for p in learners if wanted in normalise(p.name)]
         if len(matches) == 1:
-            return matches[0], (
-                f'resolved the partial {label} name "{query}" to {matches[0].name}'
-            )
+            return matches[0], (f'resolved the partial {label} name "{query}" to {matches[0].name}')
         raise
 
 

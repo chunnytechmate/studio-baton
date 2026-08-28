@@ -1128,8 +1128,7 @@ def handle_list(ctx: Context) -> Exit:
     for draft, view in zip(drafts, lessons, strict=True):
         lines.append(
             f"  {draft.learner_name:<{width}}  {label} {draft.session_number:<3} "
-            f"{draft.status}"
-            + ("  summary ✓" if draft.summary else "  summary —")
+            f"{draft.status}" + ("  summary ✓" if draft.summary else "  summary —")
         )
         lines.extend(_target_detail_lines(draft.learner_name, view["targets"], view["recording"]))
     ctx.report.result(payload, human="\n".join(lines))
@@ -1378,10 +1377,8 @@ def handle_clear(ctx: Context) -> Exit:
             for name, status in sorted(item["targets"].items()):
                 lines.append(f"  {item['learner_name']}: {name} target {status}")
         lines.append(
-            "  Finish them with `baton lesson publish \"<name>\"`, or discard "
+            '  Finish them with `baton lesson publish "<name>"`, or discard '
             "them anyway with --force."
         )
-    ctx.report.result(
-        {"removed": len(removed_names), "kept": kept}, human="\n".join(lines)
-    )
+    ctx.report.result({"removed": len(removed_names), "kept": kept}, human="\n".join(lines))
     return Exit.OK

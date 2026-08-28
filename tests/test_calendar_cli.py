@@ -98,9 +98,7 @@ def test_a_unique_partial_name_books_and_announces_the_match(studio, capsys):
     announced match is checkable, a silent one is only a guess that worked."""
     _, docs, calendar = studio
 
-    assert (
-        call(studio, "book", "Ada", "2026-08-20", "17:00", "--session", "3") == Exit.OK
-    )
+    assert call(studio, "book", "Ada", "2026-08-20", "17:00", "--session", "3") == Exit.OK
     payload = out(capsys)
 
     assert "Ada Whitfield" in payload["matched"]
@@ -111,10 +109,7 @@ def test_a_unique_partial_name_books_and_announces_the_match(studio, capsys):
 
 def test_an_exact_name_books_without_a_match_note(studio, capsys):
 
-    assert (
-        call(studio, "book", "Ada Whitfield", "2026-08-20", "17:00", "--session", "3")
-        == Exit.OK
-    )
+    assert call(studio, "book", "Ada Whitfield", "2026-08-20", "17:00", "--session", "3") == Exit.OK
 
     assert "matched" not in out(capsys)
 
@@ -142,10 +137,7 @@ def test_an_ambiguous_partial_still_stops_and_asks(studio, capsys):
 def test_the_relaxation_stops_at_booking(studio, capsys):
     """`cancel` keeps the strict gate on purpose: destroying a booking on a
     relaxed guess is a different act from creating one."""
-    assert (
-        call(studio, "book", "Ada Whitfield", "2026-08-20", "17:00", "--session", "3")
-        == Exit.OK
-    )
+    assert call(studio, "book", "Ada Whitfield", "2026-08-20", "17:00", "--session", "3") == Exit.OK
     capsys.readouterr()
 
     assert call(studio, "cancel", "Ada", "2026-08-20") == Exit.NEEDS_HUMAN
@@ -159,9 +151,7 @@ def test_a_schedule_books_each_line_and_names_relaxed_matches(studio, capsys):
     _, docs, calendar = studio
     text = "17:00 Ada\n19:00 Ada Whitfield\n20:00 Bruno"
 
-    assert (
-        call(studio, "schedule", "2026-08-20", "--text", text) == Exit.NEEDS_HUMAN
-    )
+    assert call(studio, "schedule", "2026-08-20", "--text", text) == Exit.NEEDS_HUMAN
 
     payload = out(capsys)
     assert [item["start"] for item in payload["booked"]] == ["17:00", "20:00"]
@@ -207,10 +197,7 @@ def test_a_slot_with_no_matching_learner_is_blocked_not_fatal(studio, capsys):
 def test_a_dry_run_schedule_touches_nothing(studio, capsys):
     _, docs, calendar = studio
 
-    assert (
-        call(studio, "schedule", "2026-08-20", "--text", "17:00 Ada", "--dry-run")
-        == Exit.OK
-    )
+    assert call(studio, "schedule", "2026-08-20", "--text", "17:00 Ada", "--dry-run") == Exit.OK
 
     payload = out(capsys)
     assert payload["dry_run"] is True

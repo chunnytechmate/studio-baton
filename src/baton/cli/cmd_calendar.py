@@ -316,7 +316,7 @@ def handle_schedule(ctx: Context) -> Exit:
                         "slot": start.strftime("%H:%M"),
                         "name": name,
                         "error": UsageError(
-                            f'This books {learner.name} a second time — the slot '
+                            f"This books {learner.name} a second time — the slot "
                             f'for "{earlier}" already did.',
                             remedy="A learner gets one slot per day; remove the "
                             "duplicate line or fix the name.",
