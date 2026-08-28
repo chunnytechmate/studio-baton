@@ -3,7 +3,7 @@
 Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects.
 
-## Unreleased
+## 0.6.0
 
 Four items from the studio's 2026-08 production-issue list. Exit codes are
 unchanged throughout; two long-standing refusals were narrowed on purpose,
