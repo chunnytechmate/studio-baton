@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from baton.domain.models import Learner
-from baton.domain.resolve import normalise, resolve_learner
+from baton.domain.resolve import normalise, resolve_learner, resolve_learner_loose
 from baton.errors import NeedsHumanError
 from baton.exits import Exit
 
@@ -109,3 +109,45 @@ def test_thai_combining_marks_normalise_before_comparison():
 
     assert resolve_learner(decomposed, people).id == "9"
     assert normalise(decomposed) == normalise(decomposed)
+
+
+# -- the booking relaxation --------------------------------------------------
+
+
+def test_booking_resolves_a_unique_partial_and_says_so():
+    """The relaxation booking gets and nothing else does: one substring match
+    resolves, and the note travels with the booking so the match is announced
+    rather than discovered later."""
+    learner, note = resolve_learner_loose("Bruno", PEOPLE)
+
+    assert learner.id == "2"
+    assert "Bruno Castell" in note
+
+
+def test_booking_still_refuses_an_ambiguous_partial():
+    """Two มานะ. Widening what counts as a match must never widen what counts
+    as one answer."""
+    with pytest.raises(NeedsHumanError):
+        resolve_learner_loose("มานะ", PEOPLE)
+
+
+def test_booking_still_refuses_nobody():
+    with pytest.raises(NeedsHumanError):
+        resolve_learner_loose("Zebedee", PEOPLE)
+
+
+def test_an_exact_or_alias_match_relaxes_nothing():
+    learner, note = resolve_learner_loose("Ada Whitfield", PEOPLE)
+
+    assert (learner.id, note) == ("1", "")
+
+    learner, note = resolve_learner_loose("ada", PEOPLE, aliases={"ada": "Ada Whitfield"})
+
+    assert (learner.id, note) == ("1", "")
+
+
+def test_a_duplicated_recorded_name_still_needs_a_human():
+    twins = [Learner(id="1", name="Sam Reed"), Learner(id="2", name="Sam Reed")]
+
+    with pytest.raises(NeedsHumanError):
+        resolve_learner_loose("Sam", twins)

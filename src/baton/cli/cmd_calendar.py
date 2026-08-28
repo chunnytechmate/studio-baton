@@ -8,7 +8,7 @@ including its ordered gate.
 from __future__ import annotations
 
 import argparse
-from datetime import timedelta
+from datetime import time, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -16,7 +16,8 @@ from ..adapters.cal import open_calendar
 from ..adapters.cal.base import CalendarEvent
 from ..adapters.db import open_store
 from ..adapters.docs import open_docs
-from ..domain.resolve import resolve_learner
+from ..domain.models import Learner
+from ..domain.resolve import resolve_learner, resolve_learner_loose
 from ..domain.status import StatusVocabulary
 from ..domain.whenever import combine, parse_date, parse_schedule, parse_time, today_in
 from ..errors import BatonError, UsageError
@@ -121,6 +122,22 @@ def _resolve(ctx: Context, store, name: str):
     )
 
 
+def _resolve_for_booking(ctx: Context, store, name: str) -> tuple[Learner, str]:
+    """Booking's resolver: the strict gate, plus the one-partial-match relaxation.
+
+    Names on a day's schedule are typed by hand, often shortened to what the
+    family's contact card says. A partial match landing on exactly one person
+    resolves — and is announced, so nobody discovers the guess after the fact.
+    Everything else still stops and asks; see `resolve_learner_loose`.
+    """
+    return resolve_learner_loose(
+        name,
+        store.list_learners(),
+        aliases=ctx.config.get("db.aliases", {}) or {},
+        label=ctx.config.label("learner"),
+    )
+
+
 def _date(ctx: Context, value: str):
     return parse_date(
         value,
@@ -195,7 +212,7 @@ def _pick_session(ctx: Context, store, learner, wanted: int | None):
 def handle_book(ctx: Context) -> Exit:
     store = open_store(ctx.config)
     try:
-        learner = _resolve(ctx, store, ctx.args.name)
+        learner, matched = _resolve_for_booking(ctx, store, ctx.args.name)
         session = _pick_session(ctx, store, learner, ctx.args.session)
         day = _date(ctx, ctx.args.date)
         result = _scheduler(ctx).book(
@@ -206,12 +223,16 @@ def handle_book(ctx: Context) -> Exit:
 
     verb = "Would book" if ctx.args.dry_run else "Booked"
     label = ctx.config.label("session")
+    payload = {**result.to_dict(), "date": day.isoformat(), "dry_run": ctx.args.dry_run}
+    if matched:
+        payload["matched"] = matched
     ctx.report.result(
-        {**result.to_dict(), "date": day.isoformat(), "dry_run": ctx.args.dry_run},
+        payload,
         human=f"{verb} {result.learner_name} — {label} {result.session_number} "
         f"on {day.isoformat()} at {ctx.args.start}\n"
         f"  {result.title}"
-        + ("" if ctx.args.dry_run else f"\n  document marked in progress: {result.doc_updated}"),
+        + ("" if ctx.args.dry_run else f"\n  document marked in progress: {result.doc_updated}")
+        + (f"\n  {matched}" if matched else ""),
     )
     return Exit.OK
 
@@ -265,11 +286,53 @@ def handle_schedule(ctx: Context) -> Exit:
     blocked: list[dict[str, Any]] = []
 
     try:
+        # Every slot is resolved before any of them books. With the partial-
+        # name relaxation two differently-typed names can land on the same
+        # learner ("Pun" and "Pun the younger"), and the duplicate guard above
+        # cannot see that because the strings differ. Booking while resolving
+        # would hand `_pick_session`'s one in-progress session to both slots.
+        resolved: list[tuple[time, time, str, Learner, str]] = []
         for start, end, name in slots:
+            try:
+                learner, matched = _resolve_for_booking(ctx, store, name)
+            except BatonError as err:
+                blocked.append(
+                    {"slot": start.strftime("%H:%M"), "name": name, "error": err.to_dict()}
+                )
+                continue
+            resolved.append((start, end, name, learner, matched))
+
+        # The relaxation also makes a duplicate the *operator's* mistake to
+        # catch rather than a parse error, so it blocks one slot instead of
+        # refusing the day: unlike two identical strings, this is a schedule
+        # that is right except for one line.
+        seen: dict[str, str] = {}
+        pending: list[tuple[time, time, str, Learner, str]] = []
+        for start, end, name, learner, matched in resolved:
+            earlier = seen.get(str(learner.id))
+            if earlier is not None:
+                blocked.append(
+                    {
+                        "slot": start.strftime("%H:%M"),
+                        "name": name,
+                        "error": UsageError(
+                            f'This books {learner.name} a second time — the slot '
+                            f'for "{earlier}" already did.',
+                            remedy="A learner gets one slot per day; remove the "
+                            "duplicate line or fix the name.",
+                        ).to_dict(),
+                    }
+                )
+                continue
+            # The stored line, not just the name: with two Ada-ish lines the
+            # operator has to be told which one to delete.
+            seen[str(learner.id)] = f"{start.strftime('%H:%M')} {name}"
+            pending.append((start, end, name, learner, matched))
+
+        for start, end, _name, learner, matched in pending:
             # One slot failing must not abandon the rest of the day, but the
             # report has to name every one that did not go.
             try:
-                learner = _resolve(ctx, store, name)
                 session = _pick_session(ctx, store, learner, None)
                 result = scheduler.book(
                     learner,
@@ -279,10 +342,13 @@ def handle_schedule(ctx: Context) -> Exit:
                     end.strftime("%H:%M"),
                     dry_run=ctx.args.dry_run,
                 )
-                booked.append({**result.to_dict(), "start": start.strftime("%H:%M")})
+                entry = {**result.to_dict(), "start": start.strftime("%H:%M")}
+                if matched:
+                    entry["matched"] = matched
+                booked.append(entry)
             except BatonError as err:
                 blocked.append(
-                    {"slot": start.strftime("%H:%M"), "name": name, "error": err.to_dict()}
+                    {"slot": start.strftime("%H:%M"), "name": learner.name, "error": err.to_dict()}
                 )
     finally:
         store.close()
@@ -297,6 +363,8 @@ def handle_schedule(ctx: Context) -> Exit:
     lines = [f"{day.isoformat()}: {len(booked)} of {len(slots)} booked"]
     for item in booked:
         lines.append(f"  ✓ {item['start']}  {item['title']}")
+        if item.get("matched"):
+            lines.append(f"      {item['matched']}")
     for item in blocked:
         lines.append(f"  ✗ {item['slot']}  {item['name']}: {item['error']['message']}")
     ctx.report.result(payload, human="\n".join(lines))

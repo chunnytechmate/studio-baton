@@ -3,6 +3,49 @@
 Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects.
 
+## Unreleased
+
+Four items from the studio's 2026-08 production-issue list. Exit codes are
+unchanged throughout; two long-standing refusals were narrowed on purpose,
+and both narrowings are named below.
+
+### Upgrading
+
+- `lesson clear --yes` no longer deletes drafts whose publish left work owed
+  (a target that is not `ok`): the draft is the only record that the work is
+  still owed, and sweeping it away is how an unfinished publish is forgotten.
+  It now reports what it kept; pass `--force` to delete those too. Drafts
+  with nothing owed on them clear as before.
+- `calendar book` and `calendar schedule` accept a unique partial name, where
+  they used to refuse everything but an exact match. If a studio relied on
+  the strict refusal, nothing regresses — an ambiguous partial still exits 3
+  with candidates — but a match the operator did not intend is now possible;
+  the report names it in `matched` every time the relaxation fires, and
+  `cancel` and the `lesson` commands keep the strict gate.
+
+### Calendar
+
+- The relaxation above: one substring match resolves and is announced; zero
+  or several still stop and ask. In `schedule`, a learner named twice under
+  two spellings ("Ada" and "Ada Whitfield") blocks the second slot instead of
+  refusing the whole day, and the block names the slot to remove; a line that
+  matches nobody is likewise a blocked slot, not an abandoned day.
+
+### Lessons
+
+- `lesson list` now carries each draft's full publish state per target —
+  status, last error, attempts, and time — falling back to the published
+  record where a re-staged draft is blind. A heartbeat asking "is this
+  stuck?" no longer has to open the draft by hand.
+- Vocabulary, in three layers that all warn rather than rewrite: a pool under
+  `summary.vocabulary` rides the `lesson contract` payload with an
+  instruction to use those spellings; `lesson stage --corrected/--corrected-file`
+  keeps corrected notes beside the raw ones (the contract serves the
+  corrected text; the raw notes are never overwritten); and `lesson ingest`
+  reports near-miss spellings in `warnings` and on stderr without refusing
+  the summary — a summary rejected over a spelling is a summary that stops
+  being produced.
+
 ## 0.5.0
 
 Four gaps closed from the 2026-08-28 port-gap audit against the studio's

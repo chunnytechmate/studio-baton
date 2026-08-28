@@ -191,6 +191,16 @@ would go wrong silently. Ambiguity exits `3` and returns the candidates:
                             {"id": "5", "name": "Namo (drums)"}]}}
 ```
 
+Booking is the one deliberate exception. `calendar book` and `calendar
+schedule` read names a person typed by hand, often shortened, so a partial
+name that lands on exactly one learner resolves — and the report says so
+(`"matched": "resolved the partial learner name \"Ada\" to Ada Whitfield"`),
+because a booking made under a guess nobody saw is worse than a refusal. Zero
+or several candidates still exits `3`; `cancel` keeps the strict gate, since
+destroying a booking on a relaxed guess is a different act from creating one;
+and in `schedule` a learner named twice under two spellings blocks the second
+slot — naming the slot to remove — rather than refusing the whole day.
+
 **The model returns data, never prose.** A summary is the one thing Baton
 cannot script, so it is the one thing a model writes — as JSON against a schema,
 which Baton then renders itself. The loop is three commands:
@@ -219,6 +229,14 @@ for that learner alone — three columns that had existed since the first
 migration with nothing reading them. The lesson before is handed over in full
 rather than as the message a parent was sent about it, since that is what the
 progress section has to be measured against.
+
+Spellings the studio cares about travel three ways, none of them a rewrite: a
+vocabulary pool (`summary.vocabulary`) rides the contract with an instruction
+to use those spellings; typed notes can carry a corrected copy beside the raw
+one (`lesson stage --corrected`), and the contract serves the corrected text
+while the raw notes stay on the draft; and `ingest` reports a near-miss
+spelling in its `warnings` and on stderr without refusing the summary — a
+summary rejected over a spelling is a summary that stops being produced.
 
 The same layer keeps the sections from collapsing into each other. Each answers
 a different question — how the session went, what changed since last time, what

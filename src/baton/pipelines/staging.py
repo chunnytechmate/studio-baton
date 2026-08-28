@@ -33,6 +33,12 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]")
 
 PieceSnapshotStatus = Literal["captured", "none", "unavailable"]
 
+#: What :meth:`StagingStore.clear` hands back: names deleted, and one entry
+#: per draft deliberately kept, with each unfinished target's status. A module
+#: alias because ``list`` names a method on the class it would otherwise be
+#: annotated inside.
+ClearResult = tuple[list[str], list[dict[str, Any]]]
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -152,6 +158,14 @@ class LessonDraft:
     titles: str = ""
     context: str = ""
     """Raw notes the teacher gave: what the model summarises from."""
+    corrected_context: str = ""
+    """The same notes with spellings fixed, when a studio keeps a vocabulary.
+
+    Served to the model instead of `context` by `lesson contract`. The raw
+    notes are never overwritten by this: a correction the teacher disagrees
+    with has to be checkable against what they actually wrote, and the raw
+    copy is also what a later re-stage should not silently lose.
+    """
     previous_context: str = ""
     """The previous session's summary, for scope rather than for copying."""
     summary: dict[str, Any] | None = None
@@ -173,6 +187,7 @@ class LessonDraft:
             "doc_id": self.doc_id,
             "titles": self.titles,
             "context": self.context,
+            "corrected_context": self.corrected_context,
             "previous_context": self.previous_context,
             "summary": self.summary,
             "status": self.status,
@@ -191,6 +206,7 @@ class LessonDraft:
             doc_id=str(data.get("doc_id", "")),
             titles=str(data.get("titles", "")),
             context=str(data.get("context", "")),
+            corrected_context=str(data.get("corrected_context", "")),
             previous_context=str(data.get("previous_context", "")),
             summary=data.get("summary"),
             status=str(data.get("status", STAGED)),
@@ -296,13 +312,37 @@ class StagingStore:
             candidate.unlink(missing_ok=True)
         return existed
 
-    def clear(self) -> int:
-        """Delete every draft. Returns how many were removed."""
-        removed = 0
+    def clear(self, *, keep_unfinished: bool = False) -> ClearResult:
+        """Delete drafts, naming what was removed and what was deliberately not.
+
+        A publish that did not finish leaves a draft with an unfinished target,
+        and that draft holds the only note that the work is still owed — the
+        next ``stage`` overwrites the file wholesale, and the published record
+        only exists once the summary went out. So with ``keep_unfinished`` a
+        draft in that state survives the sweep and is reported back instead;
+        ``--force`` is what deletes it for real.
+
+        A draft with no targets at all has never been published and has nothing
+        owed on it, so it clears either way.
+
+        Returns:
+            ``(removed, kept)`` — the names deleted, and one entry per kept
+            draft carrying its name and each unfinished target's status.
+        """
+        removed: list[str] = []
+        kept: list[dict[str, Any]] = []
         for draft in self.list():
+            unfinished = {
+                name: state.get("status", "")
+                for name, state in draft.targets.items()
+                if state.get("status") != "ok"
+            }
+            if keep_unfinished and unfinished:
+                kept.append({"learner_name": draft.learner_name, "targets": unfinished})
+                continue
             if self.remove(draft.learner_id):
-                removed += 1
-        return removed
+                removed.append(draft.learner_name)
+        return removed, kept
 
 
 class PublishedRecord:

@@ -120,6 +120,45 @@ def resolve_learner(
     )
 
 
+def resolve_learner_loose(
+    query: str,
+    learners: Iterable[Learner],
+    *,
+    aliases: Mapping[str, str] | None = None,
+    label: str = "learner",
+) -> tuple[Learner, str]:
+    """Resolve like :func:`resolve_learner`, with one deliberate relaxation.
+
+    A partial match that lands on exactly one person resolves — and returns a
+    note saying so, because a booking made under a guess the operator never
+    saw is worse than a refusal. Zero matches, or several, re-raise the strict
+    gate unchanged: its candidates list is already the right answer, and
+    guessing between two learners is not a relaxation anyone asked for. The
+    module docstring above explains why the strict gate exists at all.
+
+    Booking is the only caller. ``calendar book`` and ``calendar schedule``
+    read names a person typed by hand, often shortened; every other command
+    keeps the strict gate, because a message that leaves the studio for the
+    wrong person is not something an exit code can undo.
+
+    Returns:
+        ``(learner, note)`` — the note is empty unless the partial-match
+        relaxation fired, in which case it is a sentence for the operator.
+    """
+    try:
+        return resolve_learner(query, learners, aliases=aliases, label=label), ""
+    except NeedsHumanError:
+        wanted = normalise(query)
+        if not wanted:
+            raise
+        matches = [p for p in learners if wanted in normalise(p.name)]
+        if len(matches) == 1:
+            return matches[0], (
+                f'resolved the partial {label} name "{query}" to {matches[0].name}'
+            )
+        raise
+
+
 def _alias_target(wanted: str, aliases: Mapping[str, str]) -> str | None:
     """The normalised name an alias points at, if any."""
     for alias, target in aliases.items():

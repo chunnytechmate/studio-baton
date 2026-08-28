@@ -15,6 +15,7 @@ from baton.contracts import (
     has_emoji,
     validate_lesson_summary,
     validate_short_summary,
+    vocabulary_near_misses,
 )
 from baton.errors import ContractError
 from baton.exits import Exit
@@ -462,3 +463,56 @@ def test_the_two_wording_rules_give_different_corrections():
     hints = {v["path"]: v["hint"] for v in excinfo.value.violations}
     assert "what was observed" in hints["/overview/0"]
     assert "not what they are like" in hints["/focus/0/issue"]
+
+
+# -- the vocabulary pool (warnings, never a gate) -----------------------------
+
+
+def test_an_exact_pool_spelling_is_never_reported():
+    summary = {"overview": ["We worked on Encore this week."]}
+
+    assert vocabulary_near_misses(summary, ["Encore"]) == []
+
+
+def test_a_near_miss_is_named_with_where_it_sits():
+    summary = {"overview": ["We worked on Encour this week."]}
+
+    findings = vocabulary_near_misses(summary, ["Encore"])
+
+    assert findings == [
+        "the summary spells it `encour` at /overview/0 where the vocabulary "
+        "pool spells it `Encore`"
+    ]
+
+
+def test_the_parent_message_is_searched_too():
+    """A spelling broken in the message that goes to LINE is broken in the
+    message, wherever on the page it sits."""
+    summary = {"short_summary": {"covered": "Encour, bars 1-8"}}
+
+    findings = vocabulary_near_misses(summary, ["Encore"])
+
+    assert findings and "/short_summary/covered" in findings[0]
+
+
+def test_unrelated_text_is_not_a_near_miss():
+    summary = {"overview": ["Clapped rhythms at 80bpm, then counted bars."]}
+
+    assert vocabulary_near_misses(summary, ["Encore"]) == []
+
+
+def test_the_exact_spelling_anywhere_satisfies_the_term():
+    """The check is about consistency, not about naming every place a term
+    appears — so one right spelling settles the term."""
+    summary = {
+        "overview": ["Covered Encore, bars 1-8."],
+        "covered": [{"topic": "Encor intro", "detail": "Bar 1"}],
+    }
+
+    assert vocabulary_near_misses(summary, ["Encore"]) == []
+
+
+def test_an_empty_pool_reports_nothing():
+    summary = {"overview": ["We worked on Encour."]}
+
+    assert vocabulary_near_misses(summary, []) == []

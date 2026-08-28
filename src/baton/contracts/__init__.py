@@ -465,6 +465,96 @@ def validate_lesson_summary(
     return payload
 
 
+#: Similarity band of a *misspelling*: close enough to be the same word,
+#: different enough not to be it. Below it the text is simply about something
+#: else; at 1.0 the spelling is already exact.
+NEAR_MISS_RATIO = 0.75
+
+#: Ceiling on the warnings handed back, so one bad summary cannot bury the
+#: agent's context under a list of every window it almost matched.
+NEAR_MISS_LIMIT = 10
+
+
+def _strings_with_paths(value: Any, pointer: str = "") -> list[tuple[str, str]]:
+    """Every string in the payload, with the JSON Pointer that reached it.
+
+    Unlike :func:`_body_strings` this walks ``short_summary`` too, and goals
+    and callouts alike: a spelling rule broken in the message that goes to
+    LINE is broken in the message, wherever on the page it sits.
+    """
+    if isinstance(value, str):
+        return [(pointer or "/", value)]
+    if isinstance(value, dict):
+        found: list[tuple[str, str]] = []
+        for key, item in value.items():
+            found.extend(_strings_with_paths(item, f"{pointer}/{key}"))
+        return found
+    if isinstance(value, list):
+        found = []
+        for index, item in enumerate(value):
+            found.extend(_strings_with_paths(item, f"{pointer}/{index}"))
+        return found
+    return []
+
+
+def vocabulary_near_misses(
+    payload: dict[str, Any], vocabulary: Iterable[str]
+) -> list[str]:
+    """Name the places a summary nearly used a pool spelling and did not.
+
+    The third layer of the vocabulary design, and the only one that looks at
+    what the model actually wrote. The contract asked for the pool's spellings
+    before the model started; if it invented a near-miss anyway, the teacher
+    should see it before the page is published — but a warning is where this
+    stops. A summary rejected over a spelling is how a pipeline stops being
+    used, and the raw teacher's notes are always what wins an argument about
+    which spelling was right in the first place.
+    """
+    terms = [str(term) for term in vocabulary if str(term).strip()]
+    if not terms:
+        return []
+    strings = _strings_with_paths(payload)
+    folded_strings = [(pointer, _fold(text)) for pointer, text in strings]
+
+    findings: list[str] = []
+    for term in terms:
+        folded_term = _fold(term)
+        if not folded_term:
+            continue
+        if any(folded_term in folded for _pointer, folded in folded_strings):
+            continue
+
+        # The exact spelling is nowhere, so look for what took its place:
+        # a sliding window over each string, at the lengths one inserted,
+        # dropped, or doubled character would produce.
+        examples: list[str] = []
+        for pointer, folded in folded_strings:
+            for size in range(len(folded_term) - 1, len(folded_term) + 2):
+                if size < 2:
+                    continue
+                for start in range(0, max(0, len(folded) - size + 1)):
+                    window = folded[start : start + size]
+                    matcher = difflib.SequenceMatcher(None, window, folded_term)
+                    if matcher.real_quick_ratio() < NEAR_MISS_RATIO:
+                        continue
+                    if NEAR_MISS_RATIO <= matcher.ratio() < 1.0:
+                        examples.append(f"`{window}` at {pointer}")
+                        break
+                else:
+                    continue
+                break
+            if len(examples) >= 2:
+                break
+        if examples:
+            findings.append(
+                f"the summary spells it {', '.join(examples)} where the "
+                f"vocabulary pool spells it `{term}`"
+            )
+        if len(findings) >= NEAR_MISS_LIMIT:
+            break
+    return findings[:NEAR_MISS_LIMIT]
+
+
 __all__ = [
     "LESSON_SUMMARY",
     "has_emoji",
@@ -478,4 +568,5 @@ __all__ = [
     "validate_schema",
     "validate_short_summary",
     "validate_specific_language",
+    "vocabulary_near_misses",
 ]

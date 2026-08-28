@@ -18,6 +18,7 @@ from baton.adapters.docs.base import Block, DocStatus
 from baton.adapters.fakes import FakeDocStore
 from baton.cli.app import run
 from baton.exits import Exit
+from baton.pipelines.staging import LessonDraft, PublishedRecord, StagingStore
 
 MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 
@@ -1321,3 +1322,184 @@ def test_publish_refusing_a_session_writes_nothing(studio, capsys):
     assert call(studio, "publish", "Ada Whitfield", "--session", "2") == Exit.USAGE
 
     assert docs.list_blocks("doc-ada-03") == before
+
+
+# -- corrected notes and the vocabulary pool ---------------------------------
+
+
+def test_stage_keeps_the_corrected_notes_beside_the_raw_ones(studio, capsys):
+    assert (
+        call(
+            studio,
+            "stage",
+            "Ada Whitfield",
+            "--session",
+            "3",
+            "--context",
+            "Encor was hard",
+            "--corrected",
+            "Encore was hard",
+        )
+        == Exit.OK
+    )
+    capsys.readouterr()
+
+    call(studio, "show", "Ada Whitfield")
+    draft = out(capsys)
+    assert draft["context"] == "Encor was hard"
+    assert draft["corrected_context"] == "Encore was hard"
+
+
+def test_stage_refuses_two_corrected_sources(studio, capsys):
+    assert (
+        call(
+            studio,
+            "stage",
+            "Ada Whitfield",
+            "--session",
+            "3",
+            "--corrected",
+            "a",
+            "--corrected-file",
+            "b.txt",
+        )
+        == Exit.USAGE
+    )
+
+
+def _with_vocabulary(studio, terms):
+    """Give the profile a vocabulary pool on top of its own baton.yaml."""
+    profile, _ = studio
+    listed = "\n".join(f"    - {term}" for term in terms)
+    config = (profile / "baton.yaml").read_text(encoding="utf-8")
+    (profile / "baton.yaml").write_text(
+        config + f"summary:\n  vocabulary:\n{listed}\n", encoding="utf-8"
+    )
+
+
+def test_contract_serves_the_corrected_notes_and_the_pool(studio, capsys):
+    _with_vocabulary(studio, ["Encore"])
+    stage_ada(studio, capsys)
+    assert (
+        call(
+            studio,
+            "stage",
+            "Ada Whitfield",
+            "--session",
+            "3",
+            "--context",
+            "Encor was hard",
+            "--corrected",
+            "Encore was hard",
+        )
+        == Exit.OK
+    )
+    capsys.readouterr()
+
+    assert call(studio, "contract", "Ada Whitfield") == Exit.OK
+    payload = out(capsys)
+    assert payload["context"]["lesson_notes"] == "Encore was hard"
+    assert payload["constraints"]["vocabulary"] == ["Encore"]
+    assert any("constraints.vocabulary" in line for line in payload["instructions"])
+
+
+def test_contract_serves_the_raw_notes_when_nothing_was_corrected(studio, capsys):
+    stage_ada(studio, capsys)
+
+    call(studio, "contract", "Ada Whitfield")
+    payload = out(capsys)
+    assert payload["context"]["lesson_notes"] == "notes"
+    assert payload["constraints"]["vocabulary"] == []
+
+
+def test_ingest_warns_about_a_near_miss_without_refusing_it(studio, capsys):
+    """Layer three, and the reason it warns: a summary rejected over a spelling
+    is a summary that stops being produced."""
+    _with_vocabulary(studio, ["Encore"])
+    stage_ada(studio, capsys)
+    near = {**SUMMARY, "overview": ["Held the tempo through the whole Encour."]}
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(near)) == Exit.OK
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
+    assert result["warnings"] == [
+        "the summary spells it `encour` at /overview/0 where the vocabulary "
+        "pool spells it `Encore`"
+    ]
+    assert "!" in captured.err
+
+
+def test_ingest_stays_silent_when_the_spelling_matches_the_pool(studio, capsys):
+    _with_vocabulary(studio, ["the tempo"])
+    stage_ada(studio, capsys)
+
+    assert call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY)) == Exit.OK
+    result = out(capsys)
+    assert result["warnings"] == []
+    assert "!" not in capsys.readouterr().err
+
+
+# -- listing and clearing drafts ---------------------------------------------
+
+
+def _record_target(studio, learner_id, name, status, **extra):
+    """Stamp a publish outcome onto the draft the way `publish` would."""
+    profile, _ = studio
+    store = StagingStore(profile / "state" / "lessons")
+    draft = store.get(learner_id)
+    assert draft is not None
+    draft.record_target(name, status, **extra)
+    store.save(draft)
+
+
+def test_list_carries_the_full_target_state(studio, capsys):
+    """A heartbeat asking "is this stuck?" needs the error, the time, and how
+    many tries were spent — not the one-word status stage returns."""
+    learner_id = stage_ada(studio, capsys)["learner_id"]
+    _record_target(studio, learner_id, "youtube", "error", error="quota exceeded")
+
+    assert call(studio, "list") == Exit.OK
+    targets = out(capsys)["lessons"][0]["targets"]
+    assert targets["youtube"]["status"] == "error"
+    assert targets["youtube"]["error"] == "quota exceeded"
+    assert targets["youtube"]["attempts"] == 1
+    assert targets["youtube"]["at"]
+
+
+def test_list_uses_the_published_record_where_the_draft_is_blind(studio, capsys):
+    """`stage` overwrites the draft wholesale; the published record is what
+    proves the summary already went out. The listing must show the target done
+    even though this fresh draft says nothing about it."""
+    learner_id = stage_ada(studio, capsys)["learner_id"]
+    profile, _ = studio
+    PublishedRecord(profile / "state" / "published").save(
+        LessonDraft(learner_id=learner_id, learner_name="Ada Whitfield", session_number=3),
+        short_message="went out",
+    )
+
+    assert call(studio, "list") == Exit.OK
+    targets = out(capsys)["lessons"][0]["targets"]
+    assert targets["docs"] == {"status": "ok", "source": "published_record"}
+
+
+def test_clear_keeps_a_draft_whose_publish_left_work_owed(studio, capsys):
+    learner_id = stage_ada(studio, capsys)["learner_id"]
+    _record_target(studio, learner_id, "docs", "error", error="notion 502")
+
+    assert call(studio, "clear", "--yes") == Exit.OK
+    payload = out(capsys)
+    assert payload["removed"] == 0
+    assert payload["kept"] == [{"learner_name": "Ada Whitfield", "targets": {"docs": "error"}}]
+
+    call(studio, "list")
+    assert out(capsys)["count"] == 1
+
+
+def test_clear_force_discards_even_the_unfinished_ones(studio, capsys):
+    learner_id = stage_ada(studio, capsys)["learner_id"]
+    _record_target(studio, learner_id, "docs", "error", error="notion 502")
+
+    assert call(studio, "clear", "--yes", "--force") == Exit.OK
+    payload = out(capsys)
+    assert payload["removed"] == 1
+    assert payload["kept"] == []

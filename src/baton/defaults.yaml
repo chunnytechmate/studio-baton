@@ -548,6 +548,17 @@ summary:
     This learner has no instrument at home. Every practice goal must work
     without one — listening, counting, clapping, reading, singing a line back.
 
+  # The spellings the studio has settled on: a piece title, a term, a name as
+  # the family writes it. Three layers, in order of softness — the pool is
+  # handed to the model in `lesson contract` as `constraints.vocabulary` with
+  # an instruction to use exactly these spellings; `lesson stage --corrected`
+  # lets the teacher hand over notes with the spellings already right, which
+  # is what the contract reads; and `lesson ingest` warns about near-misses
+  # and never blocks on one, because a summary rejected over a spelling is a
+  # summary that stops being produced. Empty by default: a studio without a
+  # settled list adds nothing and loses nothing.
+  vocabulary: []
+
   # Constraints on the document body, validated in code for the same reason
   # `short_summary` below is: a small model agrees with a prose rule and then
   # writes past it. These are what keep each section carrying a different kind

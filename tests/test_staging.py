@@ -92,3 +92,65 @@ def test_a_learner_with_no_records_gets_nothing_even_when_a_neighbour_has(tmp_pa
 
     assert records.latest("ada") is None
     assert records.latest("ada-1") is not None
+
+
+# -- clearing drafts ---------------------------------------------------------
+
+
+def _store(tmp_path: Path) -> staging.StagingStore:
+    return staging.StagingStore(tmp_path / "lessons")
+
+
+def test_clear_keeps_a_draft_whose_publish_left_work_owed(tmp_path: Path):
+    """A publish that stopped partway leaves the draft as the only record that
+    the work is still owed: the next `stage` overwrites the file wholesale,
+    and the published record only exists once the summary went out."""
+    store = _store(tmp_path)
+    draft = _draft("ada", "Ada Whitfield", 3)
+    draft.record_target("docs", "error", error="notion 502")
+    store.save(draft)
+
+    removed, kept = store.clear(keep_unfinished=True)
+
+    assert removed == []
+    assert kept == [{"learner_name": "Ada Whitfield", "targets": {"docs": "error"}}]
+    assert store.get("ada") is not None
+
+
+def test_clear_still_sweeps_a_fully_published_draft(tmp_path: Path):
+    """Every target done means nothing is owed, so the selective sweep has no
+    reason to keep the draft around."""
+    store = _store(tmp_path)
+    draft = _draft("ada", "Ada Whitfield", 3)
+    draft.record_target("docs", "ok")
+    draft.record_target("youtube", "ok")
+    store.save(draft)
+
+    removed, kept = store.clear(keep_unfinished=True)
+
+    assert removed == ["Ada Whitfield"]
+    assert kept == []
+    assert store.get("ada") is None
+
+
+def test_a_draft_never_published_clears_either_way(tmp_path: Path):
+    """No targets means no publish ever started and nothing is owed."""
+    store = _store(tmp_path)
+    store.save(_draft("ada", "Ada Whitfield", 3))
+
+    removed, kept = store.clear(keep_unfinished=True)
+
+    assert (removed, kept) == (["Ada Whitfield"], [])
+
+
+def test_clear_without_the_flag_removes_everything(tmp_path: Path):
+    store = _store(tmp_path)
+    draft = _draft("ada", "Ada Whitfield", 3)
+    draft.record_target("docs", "error", error="notion 502")
+    store.save(draft)
+    store.save(_draft("bruno", "Bruno Castell", 1))
+
+    removed, kept = store.clear()
+
+    assert removed == ["Ada Whitfield", "Bruno Castell"]
+    assert kept == []

@@ -100,6 +100,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     stage.add_argument("--context", default="", help="The teacher's notes for this lesson.")
     stage.add_argument("--context-file", default="", metavar="PATH")
     stage.add_argument(
+        "--corrected",
+        default="",
+        help=(
+            "The notes again with spellings fixed, for a profile that keeps a "
+            "vocabulary. What `lesson contract` serves to the model; the raw "
+            "notes are kept alongside and are never overwritten."
+        ),
+    )
+    stage.add_argument("--corrected-file", default="", metavar="PATH")
+    stage.add_argument(
         "--no-previous",
         action="store_true",
         help="Skip fetching the previous session's summary.",
@@ -170,6 +180,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     clear = group.add_parser("clear", help="Discard every draft.")
     clear.add_argument("--yes", action="store_true", help="Required: this deletes drafts.")
+    clear.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Also clear drafts whose publish left unfinished targets — the "
+            "draft file is the only record that the work is still owed."
+        ),
+    )
     clear.set_defaults(handler=handle_clear)
 
 
@@ -298,6 +316,19 @@ def _body_rules(ctx: Context) -> dict[str, Any]:
         "trait_language": [str(item) for item in rules.get("trait_language", [])],
         "goals_not_practicable": [str(item) for item in rules.get("goals_not_practicable", [])],
     }
+
+
+def _vocabulary(ctx: Context) -> list[str]:
+    """The profile's settled spellings, for the contract and for `ingest`.
+
+    The pool exists because a spelling the model is free to reinvent is a
+    spelling it will reinvent: a piece title becomes "Encore", then "Encoure",
+    and the family reading two pages a month apart sees two different songs.
+    An empty pool contributes nothing, so a studio without one keeps today's
+    behaviour exactly.
+    """
+    pool = ctx.config.get("summary.vocabulary", []) or []
+    return [str(term) for term in pool if str(term).strip()]
 
 
 def _voice(ctx: Context, learner: Learner) -> list[str]:
@@ -726,6 +757,18 @@ def handle_stage(ctx: Context) -> Exit:
                 raise UsageError(f"No such file: {path}")
             context = path.read_text(encoding="utf-8")
 
+        corrected = ctx.args.corrected
+        if ctx.args.corrected_file:
+            if corrected:
+                raise UsageError(
+                    "Pass either --corrected or --corrected-file, not both.",
+                    remedy="Point --corrected-file at a file, or pass the text itself.",
+                )
+            path = Path(ctx.args.corrected_file).expanduser()
+            if not path.is_file():
+                raise UsageError(f"No such file: {path}")
+            corrected = path.read_text(encoding="utf-8")
+
         session_number: int
         doc_id: str
         titles = ctx.args.titles
@@ -787,6 +830,7 @@ def handle_stage(ctx: Context) -> Exit:
             doc_id=doc_id,
             titles=titles,
             context=context,
+            corrected_context=corrected,
             previous_context=previous_context,
         )
     finally:
@@ -797,7 +841,13 @@ def handle_stage(ctx: Context) -> Exit:
     ctx.report.result(
         draft.summary_view(),
         human=f"Staged {learner.name} — {label} {draft.session_number}\n"
-        f'  next: baton lesson contract "{learner.name}"',
+        f'  next: baton lesson contract "{learner.name}"'
+        + (
+            "\n  corrected notes recorded: the contract serves these, the raw "
+            "notes are kept on the draft"
+            if corrected
+            else ""
+        ),
     )
     return Exit.OK
 
@@ -815,6 +865,13 @@ def handle_contract(ctx: Context) -> Exit:
     piece = draft.piece_snapshot.piece
     rules = _short_summary_rules(ctx)
     theory = _theory(ctx)
+    vocabulary = _vocabulary(ctx)
+
+    # The corrected copy is what the model reads, so a spelling the teacher
+    # fixed once stays fixed. The raw notes stay on the draft: a correction is
+    # checkable only against what was actually written, and `lesson show`
+    # keeps both for exactly that.
+    lesson_notes = draft.corrected_context or draft.context
 
     payload = {
         "schema": contracts.load_schema(contracts.LESSON_SUMMARY),
@@ -823,7 +880,7 @@ def handle_contract(ctx: Context) -> Exit:
             "session_number": draft.session_number,
             "titles": draft.titles,
             "current_piece": piece.to_dict() if piece else None,
-            "lesson_notes": draft.context,
+            "lesson_notes": lesson_notes,
             "previous_session_summary": draft.previous_context,
         },
         "constraints": {
@@ -831,6 +888,9 @@ def handle_contract(ctx: Context) -> Exit:
             "short_summary": rules,
             "available_callout_ids": sorted(theory),
             "language": ctx.config.locale,
+            # Present even when empty, so a caller can see the pool was
+            # considered rather than wonder whether the key was dropped.
+            "vocabulary": vocabulary,
         },
         "instructions": [
             "Return one JSON object matching `schema`, and nothing else.",
@@ -846,6 +906,14 @@ def handle_contract(ctx: Context) -> Exit:
             "managed, how much help it took, what changed.",
             "Only use callout ids from `available_callout_ids`; never write theory text.",
             f"Write in the language of this profile ({ctx.config.locale}).",
+            *(
+                [
+                    "Spell names and terms exactly as they are spelled in "
+                    "`constraints.vocabulary`; never invent a variant of one."
+                ]
+                if vocabulary
+                else []
+            ),
             *_voice(ctx, learner),
         ],
     }
@@ -885,12 +953,26 @@ def handle_ingest(ctx: Context) -> Exit:
     draft.status = SUMMARISED
     staging.save(draft)
 
+    # Layer three of the vocabulary design: after acceptance, never a gate. A
+    # summary rejected over a spelling is a summary that stops being produced,
+    # so a near-miss is reported to the operator — on stderr, in `--json` mode
+    # too — and the lesson stays on its way to render and publish.
+    vocabulary = _vocabulary(ctx)
+    warnings = contracts.vocabulary_near_misses(summary, vocabulary) if vocabulary else []
+
     ctx.report.result(
-        draft.summary_view(),
+        {**draft.summary_view(), "warnings": warnings},
         human=f"Accepted summary for {learner.name} — "
         f"{ctx.config.label('session')} {draft.session_number}\n"
-        f'  next: baton lesson render "{learner.name}"',
+        f'  next: baton lesson render "{learner.name}"'
+        + "".join(f"\n  note: {text}" for text in warnings),
     )
+    for text in warnings:
+        # Stderr is where an agent is told to look between commands; a person
+        # reading the terminal already has the note inline above, and the
+        # same line twice would look like a bug.
+        if ctx.report.json_mode:
+            ctx.report.warn(text)
     return Exit.OK
 
 
@@ -950,9 +1032,91 @@ def handle_render(ctx: Context) -> Exit:
     return Exit.OK
 
 
+def _list_target_states(ctx: Context, draft: LessonDraft) -> dict[str, dict[str, Any]]:
+    """Full per-target state for a listing, with the two blind spots filled.
+
+    `summary_view` reports the one-word status the publish loop stamps, and a
+    heartbeat asking "is this stuck?" needs the error, the time, and how many
+    tries were spent. Two facts a bare draft cannot see are consulted here:
+
+    * a target never stamped on the draft may still be done. `stage`
+      overwrites the draft wholesale; the published record is the copy that
+      survives it, so its existence is proof the summary went out.
+    * the youtube state is whichever of the two memories is newer. A
+      description retry after a re-stage is newer than the original publish,
+      and trusting the draft alone would show an error the record already
+      resolved (or the reverse). ISO timestamps sort as strings.
+    """
+    states = {name: dict(state) for name, state in draft.targets.items()}
+    published = _published(ctx).get(draft.learner_id, draft.session_number)
+    if published is not None:
+        if "docs" not in states:
+            states["docs"] = {"status": "ok", "source": "published_record"}
+        recorded = published.get("youtube")
+        if isinstance(recorded, dict):
+            known = states.get("youtube")
+            if known is None or str(recorded.get("at", "")) > str(known.get("at", "")):
+                states["youtube"] = {**dict(recorded), "source": "published_record"}
+    return states
+
+
+def _target_remedy(name: str, learner_name: str) -> str:
+    """What to do about a target that did not finish, as one line."""
+    if name == "youtube":
+        return (
+            f're-run `baton lesson publish "{learner_name}"` to retry the '
+            "description update — attempts are capped, so read the error first"
+        )
+    return (
+        f're-run `baton lesson publish "{learner_name}"` — it resumes where it '
+        "stopped and does not append the summary twice"
+    )
+
+
+def _target_detail_lines(
+    learner_name: str, states: dict[str, dict[str, Any]], recording: str
+) -> list[str]:
+    """The indented lines under one draft in `lesson list`."""
+    lines: list[str] = []
+    for name, state in sorted(states.items()):
+        bits = [f"{name}: {state.get('status', 'unknown')}"]
+        if state.get("at"):
+            bits.append(f"at {state['at']}")
+        if state.get("attempts") not in (None, 0):
+            bits.append(f"{state['attempts']} attempt(s)")
+        lines.append(f"      {', '.join(bits)}")
+        if state.get("video_id"):
+            lines.append(f"        video: {state['video_id']}")
+        if state.get("error"):
+            lines.append(f"        error: {state['error']}")
+        if state.get("source") == "published_record":
+            lines.append("        (state came from the published record, not this draft)")
+        if state.get("status") != "ok":
+            lines.append(f"        fix: {_target_remedy(name, learner_name)}")
+    if recording and states.get("youtube", {}).get("status") != "ok":
+        lines.append(f"      recording uploaded, not yet described: {recording}")
+    return lines
+
+
 def handle_list(ctx: Context) -> Exit:
     drafts = _staging(ctx).list()
-    payload = {"lessons": [draft.summary_view() for draft in drafts], "count": len(drafts)}
+    lessons = []
+    for draft in drafts:
+        view = draft.summary_view()
+        states = _list_target_states(ctx, draft)
+        # `targets` here is the full state per target — stage and ingest keep
+        # returning the compact one-word view, but this listing is what a
+        # heartbeat reads to decide whether a lesson is stuck, and one word
+        # cannot carry an error message or a spent retry.
+        view["targets"] = states
+        try:
+            view["recording"] = _uploaded_recording(ctx, draft)
+        except Exception:
+            # A listing must never fail on a side record; no recording line
+            # is a smaller loss than no listing at all.
+            view["recording"] = ""
+        lessons.append(view)
+    payload = {"lessons": lessons, "count": len(drafts)}
 
     if not drafts:
         ctx.report.result(payload, human="No lessons staged.")
@@ -960,11 +1124,14 @@ def handle_list(ctx: Context) -> Exit:
 
     label = ctx.config.label("session")
     width = max(len(draft.learner_name) for draft in drafts)
-    lines = [
-        f"  {draft.learner_name:<{width}}  {label} {draft.session_number:<3} {draft.status}"
-        + ("  summary ✓" if draft.summary else "  summary —")
-        for draft in drafts
-    ]
+    lines = []
+    for draft, view in zip(drafts, lessons, strict=True):
+        lines.append(
+            f"  {draft.learner_name:<{width}}  {label} {draft.session_number:<3} "
+            f"{draft.status}"
+            + ("  summary ✓" if draft.summary else "  summary —")
+        )
+        lines.extend(_target_detail_lines(draft.learner_name, view["targets"], view["recording"]))
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
 
@@ -1199,6 +1366,22 @@ def handle_clear(ctx: Context) -> Exit:
             "`lesson clear` discards every staged draft.",
             remedy="Re-run with --yes if that is what you want.",
         )
-    removed = _staging(ctx).clear()
-    ctx.report.result({"removed": removed}, human=f"Discarded {removed} draft(s).")
+    # A publish that stopped partway leaves the draft as the only record that
+    # the work is still owed, so a sweep that deletes it turns "unfinished"
+    # into "nobody remembers". Kept drafts are reported, not hidden; --force
+    # is the owner saying the debt is written off.
+    removed_names, kept = _staging(ctx).clear(keep_unfinished=not ctx.args.force)
+    lines = [f"Discarded {len(removed_names)} draft(s)."]
+    if kept:
+        lines.append("Kept draft(s) whose publish left unfinished targets:")
+        for item in kept:
+            for name, status in sorted(item["targets"].items()):
+                lines.append(f"  {item['learner_name']}: {name} target {status}")
+        lines.append(
+            "  Finish them with `baton lesson publish \"<name>\"`, or discard "
+            "them anyway with --force."
+        )
+    ctx.report.result(
+        {"removed": len(removed_names), "kept": kept}, human="\n".join(lines)
+    )
     return Exit.OK
