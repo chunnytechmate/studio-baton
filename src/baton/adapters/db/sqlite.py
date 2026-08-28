@@ -14,6 +14,7 @@ bound.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -239,6 +240,33 @@ class SqliteStore:
         )
         self._write(sql, (piece_id, learner_id))
 
+    def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
+        fields = self.schema.learners
+        self._ensure_columns(fields)
+        payload: dict[str, Any] = {fields.column("name"): learner.name}
+        for name, value in (
+            ("instrument", learner.instrument),
+            ("tone", learner.tone),
+            ("has_instrument", learner.has_instrument),
+        ):
+            if fields.has(name) and value:
+                payload[fields.column(name)] = value
+        if extra:
+            payload.update(fields.extra_columns(extra, setting="db.fields.learner"))
+
+        columns = ", ".join(payload)
+        placeholders = ", ".join("?" for _ in payload)
+        sql = f"INSERT INTO {fields.table} ({columns}) VALUES ({placeholders})"  # noqa: S608
+        cursor = self._write(sql, tuple(payload.values()))
+
+        created = self.get_learner(str(cursor.lastrowid))
+        if created is None:  # pragma: no cover - the row was just written
+            raise UpstreamError(
+                "SQLite accepted the learner but the row cannot be read back.",
+                service="sqlite",
+            )
+        return created
+
     # -- sessions ----------------------------------------------------------
 
     def _session(self, row: sqlite3.Row) -> Session:
@@ -271,6 +299,31 @@ class SqliteStore:
         rows = self._query(sql, (learner_id, number))
         return self._session(rows[0]) if rows else None
 
+    def add_session(self, session: Session, extra: Mapping[str, Any] | None = None) -> Session:
+        fields = self.schema.sessions
+        self._ensure_columns(fields)
+        payload: dict[str, Any] = {
+            fields.column("learner_id"): session.learner_id,
+            fields.column("number"): session.number,
+        }
+        if fields.has("doc_id") and session.doc_id:
+            payload[fields.column("doc_id")] = session.doc_id
+        if extra:
+            payload.update(fields.extra_columns(extra, setting="db.fields.session"))
+
+        columns = ", ".join(payload)
+        placeholders = ", ".join("?" for _ in payload)
+        sql = f"INSERT INTO {fields.table} ({columns}) VALUES ({placeholders})"  # noqa: S608
+        self._write(sql, tuple(payload.values()))
+
+        created = self.get_session(session.learner_id, session.number)
+        if created is None:  # pragma: no cover - the row was just written
+            raise UpstreamError(
+                "SQLite accepted the session but the row cannot be read back.",
+                service="sqlite",
+            )
+        return created
+
     # -- pieces ------------------------------------------------------------
 
     def _piece(self, row: sqlite3.Row) -> Piece:
@@ -296,6 +349,54 @@ class SqliteStore:
         sql = self._select(fields, where=f"{fields.column('id')} = ?")
         rows = self._query(sql, (piece_id,))
         return self._piece(rows[0]) if rows else None
+
+    def add_piece(self, piece: Piece) -> Piece:
+        fields = self.schema.pieces
+        self._ensure_columns(fields)
+        payload: dict[str, Any] = {fields.column("title"): piece.title}
+        for name, value in (
+            ("source_link", piece.source_link),
+            ("practice_track", piece.practice_track),
+            ("sheet_link", piece.sheet_link),
+        ):
+            if fields.has(name) and value:
+                payload[fields.column(name)] = value
+
+        columns = ", ".join(payload)
+        placeholders = ", ".join("?" for _ in payload)
+        sql = f"INSERT INTO {fields.table} ({columns}) VALUES ({placeholders})"  # noqa: S608
+        cursor = self._write(sql, tuple(payload.values()))
+
+        created = self.get_piece(str(cursor.lastrowid))
+        if created is None:  # pragma: no cover - the row was just written
+            raise UpstreamError(
+                "SQLite accepted the piece but the row cannot be read back.",
+                service="sqlite",
+            )
+        return created
+
+    def update_piece(self, piece_id: str, changes: Mapping[str, str]) -> Piece | None:
+        fields = self.schema.pieces
+        self._ensure_columns(fields)
+        # `extra_columns` is the mapping step here too: an unmapped field name
+        # is a configuration error, not a silent no-op.
+        payload = fields.extra_columns(changes, setting="db.fields.piece")
+        assignments = ", ".join(f"{column} = ?" for column in payload)
+        sql = (
+            f"UPDATE {fields.table} SET {assignments} "  # noqa: S608
+            f"WHERE {fields.column('id')} = ?"
+        )
+        cursor = self._write(sql, (*payload.values(), piece_id))
+        if cursor.rowcount == 0:
+            return None
+        return self.get_piece(piece_id)
+
+    def delete_piece(self, piece_id: str) -> bool:
+        fields = self.schema.pieces
+        self._ensure_columns(fields)
+        sql = f"DELETE FROM {fields.table} WHERE {fields.column('id')} = ?"  # noqa: S608
+        cursor = self._write(sql, (piece_id,))
+        return cursor.rowcount > 0
 
     # -- works -------------------------------------------------------------
 

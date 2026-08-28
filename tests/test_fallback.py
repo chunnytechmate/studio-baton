@@ -11,7 +11,7 @@ import pytest
 
 from baton.adapters.db.fallback import FallbackStore
 from baton.adapters.fakes import FakeLearnerStore
-from baton.domain.models import Learner, Work
+from baton.domain.models import Learner, Piece, Session, Work
 from baton.errors import ConfigError, UpstreamError
 
 PRIMARY_PEOPLE = [Learner(id="1", name="Ada Whitfield")]
@@ -70,6 +70,40 @@ def test_assignment_writes_also_refuse_to_divert(pair):
         store.set_current_piece("1", "3")
 
     assert secondary.get_learner("1").current_piece_id is None
+
+
+def test_add_learner_never_falls_over(pair):
+    primary, secondary, store = pair
+    primary.fail_with = UpstreamError("down", service="supabase")
+
+    with pytest.raises(UpstreamError):
+        store.add_learner(Learner(id="", name="New Person"))
+
+    assert all(learner.name != "New Person" for learner in secondary.learners)
+
+
+def test_add_session_never_falls_over(pair):
+    primary, secondary, store = pair
+    primary.fail_with = UpstreamError("down", service="supabase")
+
+    with pytest.raises(UpstreamError):
+        store.add_session(Session(id="", learner_id="1", number=1))
+
+    assert secondary.sessions == []
+
+
+def test_piece_writes_never_fall_over(pair):
+    primary, secondary, store = pair
+    primary.fail_with = UpstreamError("down", service="supabase")
+
+    with pytest.raises(UpstreamError):
+        store.add_piece(Piece(id="", title="New Piece"))
+    with pytest.raises(UpstreamError):
+        store.update_piece("1", {"title": "Renamed"})
+    with pytest.raises(UpstreamError):
+        store.delete_piece("1")
+
+    assert secondary.pieces == []
 
 
 def test_a_config_error_is_not_treated_as_an_outage(pair):

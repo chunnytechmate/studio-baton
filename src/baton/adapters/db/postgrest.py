@@ -13,6 +13,7 @@ and 5xx are retried with backoff and a lost connection becomes a typed
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote
 
@@ -210,6 +211,59 @@ class PostgrestStore:
             prefer="return=minimal",
         )
 
+    def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
+        fields = self.schema.learners
+        payload: dict[str, Any] = {fields.column("name"): learner.name}
+        for name, value in (
+            ("instrument", learner.instrument),
+            ("tone", learner.tone),
+            ("has_instrument", learner.has_instrument),
+        ):
+            if fields.has(name) and value:
+                payload[fields.column(name)] = value
+        if extra:
+            payload.update(fields.extra_columns(extra, setting="db.fields.learner"))
+
+        created = self._request(
+            "POST", fields.table, json_body=payload, prefer="return=representation"
+        )
+        return self._represented(created, "learner", self.driver, self._learner)
+
+    def add_session(self, session: Session, extra: Mapping[str, Any] | None = None) -> Session:
+        fields = self.schema.sessions
+        payload: dict[str, Any] = {
+            fields.column("learner_id"): session.learner_id,
+            fields.column("number"): session.number,
+        }
+        if fields.has("doc_id") and session.doc_id:
+            payload[fields.column("doc_id")] = session.doc_id
+        if extra:
+            payload.update(fields.extra_columns(extra, setting="db.fields.session"))
+
+        created = self._request(
+            "POST", fields.table, json_body=payload, prefer="return=representation"
+        )
+        return self._represented(created, "session", self.driver, self._session)
+
+    @staticmethod
+    def _represented(created: Any, what: str, driver: str, build: Any) -> Any:
+        """The row a write returned — or a loud refusal to pretend it has one.
+
+        A server that ignores ``Prefer: return=representation`` may still have
+        written the row. Handing back the caller's object would hide that, and
+        the next add would duplicate it.
+        """
+        rows = created if isinstance(created, list) else [created]
+        if not rows or not isinstance(rows[0], dict):
+            raise UpstreamError(
+                f"{driver} accepted the {what} but returned no representation "
+                f"to read the assigned id from.",
+                service=driver,
+                remedy="The row may exist on the server — check for it before "
+                "retrying, or this add will run twice.",
+            )
+        return build(rows[0])
+
     # -- sessions ----------------------------------------------------------
 
     def _session(self, row: dict[str, Any]) -> Session:
@@ -265,6 +319,48 @@ class PostgrestStore:
         rows = self._rows(fields, filters=f"{fields.column('id')}=eq.{quote(str(piece_id))}")
         return self._piece(rows[0]) if rows else None
 
+    def add_piece(self, piece: Piece) -> Piece:
+        fields = self.schema.pieces
+        payload: dict[str, Any] = {fields.column("title"): piece.title}
+        for name, value in (
+            ("source_link", piece.source_link),
+            ("practice_track", piece.practice_track),
+            ("sheet_link", piece.sheet_link),
+        ):
+            if fields.has(name) and value:
+                payload[fields.column(name)] = value
+
+        created = self._request(
+            "POST", fields.table, json_body=payload, prefer="return=representation"
+        )
+        return self._represented(created, "piece", self.driver, self._piece)
+
+    def update_piece(self, piece_id: str, changes: Mapping[str, str]) -> Piece | None:
+        fields = self.schema.pieces
+        payload = fields.extra_columns(changes, setting="db.fields.piece")
+        updated = self._request(
+            "PATCH",
+            fields.table,
+            params=f"{fields.column('id')}=eq.{quote(str(piece_id))}",
+            json_body=payload,
+            prefer="return=representation",
+        )
+        # PostgREST answers 200 with an empty array when the filter matched
+        # nothing — a silent success the original script reported as an edit.
+        rows = updated if isinstance(updated, list) else [updated]
+        return self._piece(rows[0]) if rows and isinstance(rows[0], dict) else None
+
+    def delete_piece(self, piece_id: str) -> bool:
+        fields = self.schema.pieces
+        deleted = self._request(
+            "DELETE",
+            fields.table,
+            params=f"{fields.column('id')}=eq.{quote(str(piece_id))}",
+            prefer="return=representation",
+        )
+        rows = deleted if isinstance(deleted, list) else [deleted]
+        return bool(rows)
+
     # -- works -------------------------------------------------------------
 
     def _work(self, row: dict[str, Any]) -> Work:
@@ -308,19 +404,7 @@ class PostgrestStore:
         created = self._request(
             "POST", fields.table, json_body=payload, prefer="return=representation"
         )
-        rows = created if isinstance(created, list) else [created]
-        if not rows or not isinstance(rows[0], dict):
-            # The server ignored Prefer: return=representation. The row may
-            # well be written, so handing back the caller's Work (id unset)
-            # would hide that — the next add would duplicate it.
-            raise UpstreamError(
-                f"{self.driver} accepted the work but returned no "
-                f"representation to read the assigned id from.",
-                service=self.driver,
-                remedy="The row may exist on the server — check for it before "
-                "retrying, or this add will run twice.",
-            )
-        return self._work(rows[0])
+        return self._represented(created, "work", self.driver, self._work)
 
     # -- lifecycle ---------------------------------------------------------
 

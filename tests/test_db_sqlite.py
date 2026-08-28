@@ -13,7 +13,7 @@ import baton
 from baton.adapters.db import open_store
 from baton.adapters.db.sqlite import SqliteStore
 from baton.core import config as config_module
-from baton.domain.models import Work
+from baton.domain.models import Learner, Piece, Session, Work
 from baton.errors import ConfigError, UpstreamError
 
 MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
@@ -130,6 +130,79 @@ def test_set_current_piece_round_trips_including_clearing(store):
 
     store.set_current_piece("4", None)
     assert store.get_learner("4").current_piece_id is None
+
+
+def test_add_learner_returns_the_stored_row_with_its_id(store):
+    created = store.add_learner(
+        Learner(id="", name="Elin Frost", instrument="violin", tone="child")
+    )
+
+    assert created.id
+    assert created.name == "Elin Frost"
+    assert store.get_learner(created.id).instrument == "violin"
+
+
+def test_add_session_returns_the_stored_row_with_its_id(store):
+    learner = store.add_learner(Learner(id="", name="Felix Byrne"))
+
+    created = store.add_session(Session(id="", learner_id=learner.id, number=1, doc_id="doc-x"))
+
+    assert created.id
+    assert created.number == 1
+    assert store.get_session(learner.id, 1).doc_id == "doc-x"
+
+
+def test_add_piece_returns_the_stored_row_with_its_id(store):
+    created = store.add_piece(Piece(id="", title="New Étude", sheet_link="https://example/1"))
+
+    assert created.id
+    assert created.title == "New Étude"
+    assert store.get_piece(created.id).sheet_link == "https://example/1"
+
+
+def test_update_piece_changes_only_the_given_fields(store):
+    created = store.add_piece(Piece(id="", title="Old Title", sheet_link="https://example/1"))
+
+    updated = store.update_piece(created.id, {"title": "New Title"})
+
+    assert updated.title == "New Title"
+    assert updated.sheet_link == "https://example/1"
+
+
+def test_update_piece_clears_a_field_set_to_empty_string(store):
+    """Empty string, never NULL: the same "no link" convention the Piece
+    model already uses, and the one baton's own migration's NOT NULL columns
+    require."""
+    created = store.add_piece(Piece(id="", title="Has Link", sheet_link="https://example/1"))
+
+    updated = store.update_piece(created.id, {"sheet_link": ""})
+
+    assert updated.sheet_link == ""
+
+
+def test_update_piece_on_an_unknown_id_returns_none(store):
+    assert store.update_piece("999999", {"title": "Nope"}) is None
+
+
+def test_delete_piece_removes_the_row_and_reports_it(store):
+    created = store.add_piece(Piece(id="", title="Throwaway"))
+
+    assert store.delete_piece(created.id) is True
+    assert store.get_piece(created.id) is None
+
+
+def test_delete_piece_on_an_unknown_id_reports_nothing_deleted(store):
+    assert store.delete_piece("999999") is False
+
+
+def test_an_unmapped_extra_field_is_a_config_error_before_anything_is_written(store):
+    """Silently dropping a column the studio relies on is how a record ends up
+    half-created — the profile has to say where `prompt_level` goes first."""
+    with pytest.raises(ConfigError) as excinfo:
+        store.add_learner(Learner(id="", name="Ghost"), extra={"prompt_level": 2})
+
+    assert "prompt_level" in str(excinfo.value)
+    assert all(learner.name != "Ghost" for learner in store.list_learners())
 
 
 def test_raw_keeps_columns_baton_does_not_model(store):

@@ -12,6 +12,8 @@ thing produces tests that pass while production fails.
 from __future__ import annotations
 
 import itertools
+from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 from ..domain.models import Learner, Piece, Session, Work
@@ -72,6 +74,19 @@ class FakeLearnerStore:
                 return
         raise ConfigError(f"No learner with id {learner_id}.")
 
+    def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
+        self._check()
+        created = Learner(
+            id=str(next(self._ids)),
+            name=learner.name,
+            instrument=learner.instrument,
+            tone=learner.tone,
+            has_instrument=learner.has_instrument,
+            raw=dict(extra or {}),
+        )
+        self.learners.append(created)
+        return created
+
     # -- sessions ----------------------------------------------------------
 
     def list_sessions(self, learner_id: str) -> list[Session]:
@@ -90,6 +105,18 @@ class FakeLearnerStore:
             None,
         )
 
+    def add_session(self, session: Session, extra: Mapping[str, Any] | None = None) -> Session:
+        self._check()
+        created = Session(
+            id=str(next(self._ids)),
+            learner_id=session.learner_id,
+            number=session.number,
+            doc_id=session.doc_id,
+            raw=dict(extra or {}),
+        )
+        self.sessions.append(created)
+        return created
+
     # -- pieces ------------------------------------------------------------
 
     def list_pieces(self) -> list[Piece]:
@@ -99,6 +126,36 @@ class FakeLearnerStore:
     def get_piece(self, piece_id: str) -> Piece | None:
         self._check()
         return next((item for item in self.pieces if item.id == str(piece_id)), None)
+
+    def add_piece(self, piece: Piece) -> Piece:
+        self._check()
+        created = Piece(
+            id=str(next(self._ids)),
+            title=piece.title,
+            source_link=piece.source_link,
+            practice_track=piece.practice_track,
+            sheet_link=piece.sheet_link,
+        )
+        self.pieces.append(created)
+        return created
+
+    def update_piece(self, piece_id: str, changes: Mapping[str, str]) -> Piece | None:
+        self._check()
+        editable = ("title", "source_link", "practice_track", "sheet_link")
+        for index, piece in enumerate(self.pieces):
+            if piece.id != str(piece_id):
+                continue
+            fields: dict[str, Any] = {name: changes[name] for name in editable if name in changes}
+            updated = replace(piece, **fields)
+            self.pieces[index] = updated
+            return updated
+        return None
+
+    def delete_piece(self, piece_id: str) -> bool:
+        self._check()
+        before = len(self.pieces)
+        self.pieces = [item for item in self.pieces if item.id != str(piece_id)]
+        return len(self.pieces) < before
 
     # -- works -------------------------------------------------------------
 

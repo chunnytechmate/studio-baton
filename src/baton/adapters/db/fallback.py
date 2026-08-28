@@ -16,6 +16,7 @@ a second store just produces the same error twice and hides the real cause.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from ...domain.models import Learner, Piece, Session, Work
@@ -75,6 +76,21 @@ class FallbackStore:
 
     def set_current_piece(self, learner_id: str, piece_id: str | None) -> None:
         self._write("set_current_piece", learner_id, piece_id)
+
+    def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
+        return self._write("add_learner", learner, extra)
+
+    def add_session(self, session: Session, extra: Mapping[str, Any] | None = None) -> Session:
+        return self._write("add_session", session, extra)
+
+    def add_piece(self, piece: Piece) -> Piece:
+        return self._write("add_piece", piece)
+
+    def update_piece(self, piece_id: str, changes: Mapping[str, str]) -> Piece | None:
+        return self._write("update_piece", piece_id, changes)
+
+    def delete_piece(self, piece_id: str) -> bool:
+        return self._write("delete_piece", piece_id)
 
     def add_work(self, work: Work) -> Work:
         return self._write("add_work", work)

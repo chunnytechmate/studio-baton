@@ -12,6 +12,7 @@ identifiers are validated before they are ever interpolated into SQL.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
@@ -105,6 +106,34 @@ class FieldMap:
         """
         return name in self.columns
 
+    def extra_columns(self, extra: Mapping[str, Any], *, setting: str) -> dict[str, Any]:
+        """Resolve write-time extras (columns the model has no field for).
+
+        Args:
+            extra: Domain field name to value, from a caller that knows the
+                studio keeps more than the model does.
+            setting: Dotted config path the mapping lives under, for the
+                error message when a key is unmapped.
+
+        Returns:
+            Column name to value, ready for the payload.
+
+        Raises:
+            ConfigError: A key has no mapped column. Raised before anything
+                is written — dropping a column the studio relies on is how a
+                record ends up half-created.
+        """
+        resolved: dict[str, Any] = {}
+        for key, value in extra.items():
+            if not self.has(key):
+                raise ConfigError(
+                    f"`{setting}.{key}` is not mapped, so `{key}` cannot be written.",
+                    remedy=f"Add it under {setting} in baton.yaml, or drop the field.",
+                    details={"setting": setting, "field": key},
+                )
+            resolved[self.column(key)] = value
+        return resolved
+
 
 @runtime_checkable
 class LearnerStore(Protocol):
@@ -130,6 +159,18 @@ class LearnerStore(Protocol):
         """Assign (or clear) the piece a learner is working on."""
         ...
 
+    def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
+        """Enrol a learner. Returns them with the id the store assigned.
+
+        ``extra`` carries studio-specific columns the model has no field for
+        (a prompt level, a master link), keyed by domain name and mapped
+        through ``db.fields`` like every other column. A key the profile does
+        not map is a configuration error raised before anything is written —
+        silently dropping a column the studio relies on is how a record ends
+        up half-created.
+        """
+        ...
+
     # -- sessions ----------------------------------------------------------
 
     def list_sessions(self, learner_id: str) -> list[Session]:
@@ -140,6 +181,14 @@ class LearnerStore(Protocol):
         """One numbered session, or ``None``."""
         ...
 
+    def add_session(self, session: Session, extra: Mapping[str, Any] | None = None) -> Session:
+        """Record one numbered session page. Returns it with its assigned id.
+
+        ``extra`` is :meth:`add_learner`'s, for the columns a studio's session
+        table keeps beyond the model (a Notion database id, say).
+        """
+        ...
+
     # -- pieces ------------------------------------------------------------
 
     def list_pieces(self) -> list[Piece]:
@@ -148,6 +197,33 @@ class LearnerStore(Protocol):
 
     def get_piece(self, piece_id: str) -> Piece | None:
         """One piece by id, or ``None``."""
+        ...
+
+    def add_piece(self, piece: Piece) -> Piece:
+        """Add a piece of music to study. Returns it with its assigned id."""
+        ...
+
+    def update_piece(self, piece_id: str, changes: Mapping[str, str]) -> Piece | None:
+        """Change the mapped fields of one piece.
+
+        Keys are domain field names; an empty string *clears* the field
+        rather than writing a literal empty value — the same convention the
+        :class:`~baton.domain.models.Piece` model already uses for "no link",
+        so a cleared field and a field that was never set read identically
+        everywhere else in Baton. Returns the updated piece, or ``None`` when
+        no piece has that id — the caller decides whether that is an error,
+        and it usually is: a typo in an id should not read as a successful
+        edit.
+        """
+        ...
+
+    def delete_piece(self, piece_id: str) -> bool:
+        """Remove a piece outright. Returns whether a row was actually deleted.
+
+        Callers must refuse while any learner still references the piece;
+        this method does not check, because the guard needs the learners'
+        names to say who is holding on.
+        """
         ...
 
     # -- works -------------------------------------------------------------
