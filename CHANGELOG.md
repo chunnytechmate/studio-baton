@@ -3,6 +3,62 @@
 Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects.
 
+## 0.5.0
+
+Four gaps closed from the 2026-08-28 port-gap audit against the studio's
+legacy scripts. Everything here is additive: no existing command's output
+shape or exit code changed, and every new behaviour is either a new
+subcommand or config-gated off by default.
+
+### Calendar
+
+- Weekday names, time words (`โมง`/`นาฬิกา`/`ทุ่ม`/`ตี`/`เที่ยง`/`เที่ยงคืน`),
+  and day-first dates join the grammar in `whenever.py` — vocabulary is
+  configuration (`calendar.weekdays`, `calendar.time_words`), matching
+  `date_shorthand`'s existing pattern. Day-first parsing is
+  `calendar.accept_dmy`, off by default: day-first is a convention, not a
+  universal, and `YYYY-MM-DD` is never ambiguous. Bare `N โมง` reads
+  literally — `9 โมง` is 09:00, not the traditional Thai count — and a time
+  past 23 hours is refused rather than wrapped.
+- `calendar list --from/--to` shows a whole range, one entry per day, empty
+  days included — a gap is information. The bare `calendar list <date>`
+  form is unchanged.
+
+### Learners
+
+- `learner add` enrols a learner and, optionally, their session pages from
+  Notion URLs (`--page-urls`/`--pages`) — the write path `learner
+  list`/`show` never had. Refuses an exact-name duplicate outright (exit
+  5); a near-miss is only ever reported alongside a success, never
+  blocking one. `learner.instruments`/`learner.tones` restrict
+  `--instrument`/`--tone` when the profile sets them (both empty, and
+  unrestricted, by default). A studio-specific column named on the command
+  line (`--prompt-level`, `--master-link`) with no `db.fields` entry to
+  write it to is a configuration error raised before anything is written,
+  not a silently dropped field.
+- `learner list`'s human line now names the current piece by title, not
+  only its id.
+
+### Songs
+
+- New command group `baton song list|search|show|add|update|remove` — the
+  write path the piece catalogue never had. `remove` is refused while any
+  learner is still assigned (exit 5, naming who), the same guard the
+  legacy song manager used. `update` takes plain strings per field: a flag
+  left out leaves it alone, an explicit empty value clears it — the same
+  convention `Piece` already uses everywhere for "no link". Unknown ids on
+  `update`/`remove` are refused rather than treated as a silent success.
+- New skill `studio-songs`; `student-lookup` gains the `learner add` row.
+
+### Store layer
+
+- `LearnerStore` gains `add_learner`, `add_session`, `add_piece`,
+  `update_piece`, `delete_piece`, implemented for SQLite, PostgREST/
+  Supabase, and the fallback store — writes still never fail over, the
+  fallback store's one rule. `FieldMap.extra_columns()` resolves
+  studio-specific columns the model has no field for, and refuses an
+  unmapped one before any write happens.
+
 ## 0.4.2
 
 Everything here came out of running 0.4.1 through a real teaching day
