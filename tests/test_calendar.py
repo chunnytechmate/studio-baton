@@ -7,7 +7,8 @@ not asking a language model to do arithmetic.
 
 from __future__ import annotations
 
-from datetime import date, time
+import json
+from datetime import date, time, timedelta
 
 import pytest
 
@@ -87,6 +88,140 @@ def test_time_expressions_resolve(value, expected):
 def test_impossible_times_are_rejected(value):
     with pytest.raises(UsageError):
         parse_time(value)
+
+
+# -- weekdays -----------------------------------------------------------------
+# TODAY, 2026-08-16, is a Sunday. A weekday always means its next occurrence,
+# and today itself never counts — the rule the studio's original scripts
+# lived by.
+
+WEEKDAYS = {"จันทร์": 0, "อังคาร": 1, "พุธ": 2, "พฤหัส": 3, "ศุกร์": 4, "เสาร์": 5, "อาทิตย์": 6}
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("วันจันทร์", date(2026, 8, 17)),  # with the วัน- prefix, as people say it
+        ("ศุกร์", date(2026, 8, 21)),
+        ("วันศุกร์", date(2026, 8, 21)),
+        ("เสาร์", date(2026, 8, 22)),
+        ("อาทิตย์", date(2026, 8, 23)),  # today is Sunday; the next one is a week out
+    ],
+)
+def test_weekday_names_mean_the_next_occurrence(expression, expected):
+    assert parse_date(expression, weekdays=WEEKDAYS, reference=TODAY) == expected
+
+
+def test_a_weekday_never_resolves_to_today():
+    """Asked on a Sunday, "วันอาทิตย์" means next Sunday, not the day asked on."""
+    assert parse_date("วันอาทิตย์", weekdays=WEEKDAYS, reference=TODAY) == TODAY + timedelta(days=7)
+
+
+def test_a_weekday_crosses_a_month_boundary():
+    assert parse_date("พฤหัส", weekdays=WEEKDAYS, reference=date(2026, 8, 31)) == date(2026, 9, 3)
+
+
+def test_weekday_configuration_mistakes_are_named():
+    with pytest.raises(UsageError, match="non-numeric"):
+        parse_date("ศุกร์", weekdays={"ศุกร์": "friday"}, reference=TODAY)
+
+    with pytest.raises(UsageError, match="no day of the week"):
+        parse_date("ศุกร์", weekdays={"ศุกร์": 9}, reference=TODAY)
+
+
+def test_an_unknown_expression_lists_the_weekdays_too():
+    with pytest.raises(UsageError) as excinfo:
+        parse_date("sometime", weekdays=WEEKDAYS, reference=TODAY)
+
+    assert "ศุกร์" in excinfo.value.details["understood"]
+
+
+# -- day-first numeric dates ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("12/8/2026", date(2026, 8, 12)),
+        ("12-8-2026", date(2026, 8, 12)),
+        ("1/2/2026", date(2026, 2, 1)),  # day first, never guessed the other way
+        ("12/8", date(2026, 8, 12)),  # no year: the reference's
+    ],
+)
+def test_day_first_dates_resolve_when_the_profile_allows_them(expression, expected):
+    assert parse_date(expression, accept_dmy=True, reference=TODAY) == expected
+
+
+@pytest.mark.parametrize("expression", ["31/2/2026", "12-8/2026", "12/8/26"])
+def test_day_first_dates_refuse_instead_of_guessing(expression):
+    """An impossible date, a mixed separator, and a two-digit year are all
+    rejections — the original scripts silently kept a wrong earlier resolution
+    instead, and nobody noticed until a lesson landed on the wrong day."""
+    with pytest.raises(UsageError):
+        parse_date(expression, accept_dmy=True, reference=TODAY)
+
+
+def test_day_first_dates_are_off_until_the_profile_turns_them_on():
+    with pytest.raises(UsageError):
+        parse_date("12/8/2026", reference=TODAY)
+
+
+# -- the studio's own time words -----------------------------------------------
+# The number is read literally: "9 โมง" is 09:00, not the traditional Thai
+# count. A period word says which half of the day, and it binds to every hour
+# unit alike — the original scripts ignored เย็น on นาฬิกา, booking 18:00 as
+# 06:00.
+
+WORDS = {
+    "hour_units": ["โมง", "นาฬิกา"],
+    "morning": ["เช้า"],
+    "evening": ["เย็น", "บ่าย", "กลางคืน"],
+    "special": {"เที่ยง": 12, "เที่ยงคืน": 0},
+    "evening_count": {"ทุ่ม": 18, "ตี": 0},
+}
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("9 โมง", time(9, 0)),  # bare: literal, morning is the default reading
+        ("6 โมงเช้า", time(6, 0)),
+        ("6 โมงเย็น", time(18, 0)),
+        ("3 โมงบ่าย", time(15, 0)),
+        ("6 โมงกลางคืน", time(18, 0)),
+        ("6:30 โมงเย็น", time(18, 30)),  # minutes ride along, never dropped
+        ("6.30 โมงเย็น", time(18, 30)),
+        ("18 นาฬิกา", time(18, 0)),
+        ("6 นาฬิกาเย็น", time(18, 0)),  # the period binds to นาฬิกา too
+        ("3 ทุ่ม", time(21, 0)),
+        ("ตี 3", time(3, 0)),
+        ("เที่ยง", time(12, 0)),
+        ("เที่ยงคืน", time(0, 0)),  # the longer word wins over เที่ยง
+        ("17:00", time(17, 0)),  # plain digits still work with words configured
+        ("9", time(9, 0)),
+    ],
+)
+def test_time_words_resolve(value, expected):
+    assert parse_time(value, words=WORDS) == expected
+
+
+@pytest.mark.parametrize("value", ["11 ทุ่ม", "6 โมงเช้าเย็น", "โมงเย็น"])
+def test_time_words_refuse_rather_than_wrap_or_guess(value):
+    """Past 23 hours is a typo, not 05:00; contradictory words are a question
+    for the person, not a coin flip; a bare unit with no number is not a time."""
+    with pytest.raises(UsageError):
+        parse_time(value, words=WORDS)
+
+
+def test_time_words_are_configuration():
+    with pytest.raises(UsageError):
+        parse_time("6 โมงเย็น")
+
+
+def test_a_day_list_may_be_written_the_studios_way():
+    rows = parse_schedule("6 โมงเช้า น้องจี\n7 โมง -", words=WORDS, default_minutes=60)
+
+    assert rows == [(time(6, 0), time(7, 0), "น้องจี")]
 
 
 # -- schedule parsing --------------------------------------------------------
@@ -603,3 +738,76 @@ def test_an_icon_prefixed_title_still_names_its_learner():
     report = scheduler.in_progress(store, today=date(2026, 8, 16))
 
     assert [(learner.name, view.number) for learner, view in report.found] == [("Ada Whitfield", 3)]
+
+
+# -- listing a range ------------------------------------------------------------
+
+
+@pytest.fixture
+def listed(monkeypatch, profile):
+    """`calendar list` against a fake calendar, via the real CLI."""
+    calendar = FakeCalendar(
+        [
+            _event("Ada Whitfield (lesson 3)", "2026-08-14T17:00:00+07:00"),
+            _event("Bruno Castell (lesson 9)", "2026-08-15T10:00:00+07:00"),
+            _event("Ada Whitfield (lesson 4)", "2026-08-16T17:00:00+07:00"),
+        ]
+    )
+    monkeypatch.setattr("baton.cli.cmd_calendar.open_calendar", lambda _config: calendar)
+    return calendar
+
+
+def _run_list(profile, capsys, *args):
+    from baton.cli.app import run
+
+    assert run(["--profile", str(profile), "--json", "calendar", "list", *args]) == Exit.OK
+    return json.loads(capsys.readouterr().out)
+
+
+def test_a_single_day_keeps_its_shape(listed, profile, capsys):
+    payload = _run_list(profile, capsys, "2026-08-14")
+
+    assert payload["date"] == "2026-08-14"
+    assert [event["title"] for event in payload["events"]] == ["Ada Whitfield (lesson 3)"]
+
+
+def test_a_range_groups_by_day_and_shows_the_empty_ones(listed, profile, capsys):
+    payload = _run_list(profile, capsys, "--from", "2026-08-14", "--to", "2026-08-17")
+
+    assert payload["from"] == "2026-08-14"
+    assert payload["to"] == "2026-08-17"
+    assert [day["date"] for day in payload["days"]] == [
+        "2026-08-14",
+        "2026-08-15",
+        "2026-08-16",
+        "2026-08-17",
+    ]
+    # The 17th has nothing on it and still appears: a gap is information.
+    assert payload["days"][3]["events"] == []
+    assert payload["days"][0]["events"][0]["title"] == "Ada Whitfield (lesson 3)"
+
+
+def test_a_range_accepts_the_full_date_grammar(listed, profile, capsys):
+    """--from and --to go through the same resolution as every other date."""
+    payload = _run_list(profile, capsys, "--from", "+0", "--to", "+1")
+
+    today = date.today().isoformat()
+    assert payload["from"] == today
+    assert payload["to"] == (date.today() + timedelta(days=1)).isoformat()
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("2026-08-14", "--from", "2026-08-14", "--to", "2026-08-15"),
+        (
+            "--from",
+            "2026-08-14",
+        ),
+        ("--from", "2026-08-15", "--to", "2026-08-14"),
+    ],
+)
+def test_range_argument_mistakes_are_refused(listed, profile, args):
+    from baton.cli.app import run
+
+    assert run(["--profile", str(profile), "--json", "calendar", "list", *args]) == Exit.USAGE

@@ -19,6 +19,7 @@ the two records cannot disagree.
 ```bash
 baton calendar date "<expression>" --json        # resolve a date, always
 baton calendar list <date> --json
+baton calendar list --from <date> --to <date> --json
 baton calendar book "<name>" <date> <start> [end] --json
 baton calendar cancel "<name>" <date> --json
 
@@ -29,10 +30,12 @@ baton calendar schedule <date> --text "17:00 Ada Whitfield
 
 ## Rules
 
-**Never compute a date yourself.** Pass what the user said straight through —
-`today`, `tomorrow`, `+2`, an ISO date, or a shorthand the profile configures.
-`baton calendar date` resolves it. An off-by-one books a lesson on the wrong day
-and nobody finds out until a family arrives to an empty room.
+**Never compute a date or a time yourself.** Pass what the user said straight
+through — `today`, `tomorrow`, `+2`, an ISO date, a weekday name, or a
+shorthand the profile configures. `baton calendar date` resolves it. Times
+understand the profile's own words too (`6 โมงเย็น`, `3 ทุ่ม`, `เที่ยง`).
+An off-by-one books a lesson on the wrong day and nobody finds out until a
+family arrives to an empty room.
 
 **A whole day goes through `calendar schedule`, in one command.** One line per
 slot, time first. `-` marks a free period: it is skipped, but it still ends the

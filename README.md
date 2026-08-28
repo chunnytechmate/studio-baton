@@ -296,9 +296,22 @@ on the wrong day and nobody finds out until a family arrives to an empty room:
 ```bash
 $ baton calendar date พน      # shorthand tokens are configuration
 2026-08-17
+$ baton calendar date วันศุกร์   # a weekday means its next occurrence, never today
+2026-08-21
 $ baton calendar date "next tuesday"
 ✗ `next tuesday` is not a date Baton understands.
-  Use YYYY-MM-DD, a signed offset like +2, or one of: today, tomorrow, yesterday, พน, มร, วน, สน.
+  Use YYYY-MM-DD, a signed offset like +2, or one of: today, tomorrow, yesterday, พน, วันจันทร์, วันอังคาร, …
+```
+
+Weekday names (`calendar.weekdays`) and day-first `12/8/2026`
+(`calendar.accept_dmy`, off by default) are configuration too. Times carry
+their own vocabulary (`calendar.time_words`): `6 โมงเย็น` books 18:00, `9 โมง`
+reads the number literally as 09:00, `3 ทุ่ม` is 21:00, `ตี 3` is 03:00, and a
+time past 23 hours is refused rather than wrapped around. A whole range shows
+at once, empty days included — a gap is information:
+
+```bash
+baton calendar list --from 2026-08-14 --to 2026-08-20
 ```
 
 A whole day is booked from the list a teacher actually writes. A slot ends

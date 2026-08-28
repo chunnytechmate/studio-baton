@@ -365,6 +365,45 @@ calendar:
   #   วน: 0        # today
   #   มร: 2        # the day after tomorrow
 
+  # Weekday names, mapped to their day (0 = Monday). A name typed anywhere in
+  # a date expression means that weekday's NEXT occurrence — today never
+  # counts, so "วันศุกร์" said on a Friday means the Friday after. The Thai
+  # names ship as defaults because that is who this package is for; a studio
+  # that types other names replaces the whole map with its own.
+  weekdays:
+    จันทร์: 0
+    อังคาร: 1
+    พุธ: 2
+    พฤหัส: 3
+    ศุกร์: 4
+    เสาร์: 5
+    อาทิตย์: 6
+
+  # How a studio says a time of day. `hour_units` name the counting words
+  # ("6 โมง", "6 นาฬิกา"); the number is read literally, so "9 โมง" is 09:00.
+  # A word from `morning` keeps the hour; a word from `evening` adds twelve
+  # below noon — either applies to every hour unit. `special` words are a
+  # time by themselves, and `evening_count` words count from an evening hour
+  # ("3 ทุ่ม" = 21:00 with ทุ่ม: 18; "ตี 3" = 03:00 with ตี: 0). A time past
+  # 23 hours is refused, never wrapped around. Clearing a section turns its
+  # forms off; a studio that only ever types 17:00 can ignore all of this.
+  time_words:
+    hour_units: [โมง, นาฬิกา]
+    morning: [เช้า]
+    evening: [เย็น, บ่าย, กลางคืน]
+    special:
+      เที่ยง: 12
+      เที่ยงคืน: 0
+    evening_count:
+      ทุ่ม: 18
+      ตี: 0
+
+  # Accept `12/8/2026` and yearless `12/8` as day-month-year, one separator
+  # throughout. Off by default: day-first is a convention, not a universal,
+  # and YYYY-MM-DD is never ambiguous. Turn it on when the studio's people
+  # type dates the Thai way and the agent should not have to rewrite them.
+  accept_dmy: false
+
   # How far from today a cancel may reach. Rewriting a past week's records is
   # usually a mistake rather than an intention, so it is refused past this.
   rollback_window_days: 1

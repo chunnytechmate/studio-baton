@@ -77,8 +77,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     cancel.add_argument("--dry-run", action="store_true")
     cancel.set_defaults(handler=handle_cancel)
 
-    listing = group.add_parser("list", help="Show a day's events.")
-    listing.add_argument("date", metavar="DATE", nargs="?", default="today")
+    listing = group.add_parser(
+        "list",
+        help="Show a day's events, or a whole range with --from/--to.",
+        description=(
+            "One day by default. `--from` and `--to` together show every day "
+            "in the range, empty days included — a gap is information."
+        ),
+    )
+    listing.add_argument("date", metavar="DATE", nargs="?", default=None)
+    listing.add_argument("--from", dest="from_date", metavar="DATE", help="First day of a range.")
+    listing.add_argument("--to", dest="to_date", metavar="DATE", help="Last day of a range.")
     listing.set_defaults(handler=handle_list)
 
     when = group.add_parser(
@@ -117,7 +126,19 @@ def _date(ctx: Context, value: str):
         value,
         timezone=ctx.config.timezone,
         shorthand=ctx.config.section("calendar.date_shorthand"),
+        weekdays=ctx.config.section("calendar.weekdays"),
+        accept_dmy=bool(ctx.config.get("calendar.accept_dmy", False)),
     )
+
+
+def _time_words(ctx: Context):
+    """The profile's time vocabulary, or ``None`` when it has none."""
+    words = ctx.config.section("calendar.time_words")
+    return words or None
+
+
+def _time(ctx: Context, value: str):
+    return parse_time(value, words=_time_words(ctx))
 
 
 def _scheduler(ctx: Context) -> Scheduler:
@@ -131,6 +152,7 @@ def _scheduler(ctx: Context) -> Scheduler:
         event_emoji=ctx.config.section("calendar.event_emoji"),
         default_emoji=str(ctx.config.get("calendar.default_event_emoji", "")),
         default_minutes=int(ctx.config.get("calendar.default_minutes", 60)),
+        time_words=_time_words(ctx),
     )
 
 
@@ -211,7 +233,9 @@ def handle_schedule(ctx: Context) -> Exit:
 
     day = _date(ctx, ctx.args.date)
     slots = parse_schedule(
-        text, default_minutes=int(ctx.config.get("calendar.default_minutes", 60))
+        text,
+        default_minutes=int(ctx.config.get("calendar.default_minutes", 60)),
+        words=_time_words(ctx),
     )
 
     # The same guard the send batch already has: a name twice in one day would
@@ -324,8 +348,12 @@ def _clock_of(start: str) -> str:
 
 
 def handle_list(ctx: Context) -> Exit:
-    day = _date(ctx, ctx.args.date)
     calendar = open_calendar(ctx.config)
+
+    if ctx.args.from_date is not None or ctx.args.to_date is not None:
+        return _list_range(ctx, calendar)
+
+    day = _date(ctx, ctx.args.date or "today")
     start = combine(day, parse_time("00:00"), ctx.config.timezone).isoformat()
     end = combine(day + timedelta(days=1), parse_time("00:00"), ctx.config.timezone).isoformat()
     events: list[CalendarEvent] = calendar.list_between(start, end)
@@ -339,6 +367,56 @@ def handle_list(ctx: Context) -> Exit:
     for event in events:
         lines.append(f"  {_clock_of(event.start)}  {event.title}")
     ctx.report.result(payload, human="\n".join(lines))
+    return Exit.OK
+
+
+def _list_range(ctx: Context, calendar) -> Exit:
+    """Every day from --from to --to, empty days included."""
+    if ctx.args.date is not None:
+        raise UsageError(
+            "Pass either a single date or --from/--to, not both.",
+            remedy="A date lists that day; --from and --to together list a range.",
+        )
+    if ctx.args.from_date is None or ctx.args.to_date is None:
+        raise UsageError(
+            "A range needs both --from and --to.",
+            remedy="Pass both, or drop them and pass a single date.",
+        )
+    first = _date(ctx, ctx.args.from_date)
+    last = _date(ctx, ctx.args.to_date)
+    if last < first:
+        raise UsageError(
+            f"The range ends ({last.isoformat()}) before it begins ({first.isoformat()}).",
+            remedy="Pass --from as the earlier day, --to as the later one.",
+        )
+
+    midnight = parse_time("00:00")
+    start = combine(first, midnight, ctx.config.timezone).isoformat()
+    end = combine(last + timedelta(days=1), midnight, ctx.config.timezone).isoformat()
+    events: list[CalendarEvent] = calendar.list_between(start, end)
+
+    # Every day in the range appears, empty or not: "nothing booked Thursday"
+    # is a fact worth seeing in a week view, not a hole to skip over.
+    buckets: dict[str, list[CalendarEvent]] = {}
+    for offset in range((last - first).days + 1):
+        buckets[(first + timedelta(days=offset)).isoformat()] = []
+    for event in events:
+        buckets.setdefault(event.start[:10], []).append(event)
+
+    days = [
+        {"date": iso, "events": [event.to_dict() for event in day_events]}
+        for iso, day_events in buckets.items()
+    ]
+    lines: list[str] = []
+    for iso, day_events in buckets.items():
+        lines.append(iso)
+        lines += [f"  {_clock_of(event.start)}  {event.title}" for event in day_events] or [
+            "  nothing"
+        ]
+    ctx.report.result(
+        {"from": first.isoformat(), "to": last.isoformat(), "days": days},
+        human="\n".join(lines),
+    )
     return Exit.OK
 
 

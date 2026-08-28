@@ -21,6 +21,7 @@ opposite inconsistency.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -106,6 +107,7 @@ class Scheduler:
         event_emoji: dict[str, Any] | None = None,
         default_emoji: str = "",
         default_minutes: int = 60,
+        time_words: Mapping[str, object] | None = None,
     ) -> None:
         self.calendar = calendar
         self.docs = docs
@@ -116,6 +118,9 @@ class Scheduler:
         self.event_emoji = event_emoji or {}
         self.default_emoji = default_emoji
         self.default_minutes = default_minutes
+        #: The profile's own time vocabulary, so a booking may say ``6 โมงเย็น``
+        #: wherever it may say ``18:00``. Reaches every parse_time below.
+        self.time_words = time_words
 
     # -- booking -----------------------------------------------------------
 
@@ -138,9 +143,9 @@ class Scheduler:
         """
         # Datetimes, not times: a 23:30 start with a 60-minute default ends at
         # 00:30 *the next day*, and only datetime arithmetic knows that.
-        start_dt = combine(day, parse_time(start), self.timezone)
+        start_dt = combine(day, parse_time(start, words=self.time_words), self.timezone)
         if end:
-            end_dt = combine(day, parse_time(end), self.timezone)
+            end_dt = combine(day, parse_time(end, words=self.time_words), self.timezone)
             if end_dt <= start_dt:
                 raise UsageError(
                     f"The lesson cannot end at {end} when it starts at {start}.",
