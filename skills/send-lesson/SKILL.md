@@ -22,9 +22,32 @@ baton send lesson "<name>" --to <contact> --json
 # Several learners: ONE invocation, never a loop
 baton send batch --to <contact> \
   --learner "<name>" --learner "<name>" --learner "<name>" --json
+
+# Reports, not gates: exit 0 whatever they find
+baton send readiness --date today --json   # before the sends: who is booked, what blocks them
+baton send aftermath --date today --json   # after: what the day left behind
 ```
 
 ## Rules
+
+**Start the day with `send readiness`.** It lists everyone booked that day and,
+per learner, what the gate would still refuse on — the same verdict `send
+lesson` computes, not a second opinion. Fix in the order the report separates:
+*ยังไม่ publish* means publishing comes first, a missing summary means going
+back to `lesson ingest`, and only a missing video block is fixed on the
+document. It exits `0` no matter how bad the news is; read the payload, not the
+code.
+
+**Finish the day with `send aftermath`.** It names drafts that never reached
+publish, draft files whose learner no longer exists, and published lessons with
+no send receipt. A missing receipt is the *absence of evidence* inside the
+duplicate window — report it as "no receipt found", never as "the message was
+not sent", and never re-send on that basis alone without asking.
+
+**Both reports say which roster they read.** `source` / `roster_source` is
+`calendar` or `documents`; the documents fallback is a weaker claim, and an
+event that matched no learner is listed in `unmatched` rather than guessed at.
+Report those unmatched entries — they are usually a learner nobody sent for.
 
 **Run `--dry-run` first when sending for the first time that day.** It runs the
 same gate and shows the exact message, without sending.

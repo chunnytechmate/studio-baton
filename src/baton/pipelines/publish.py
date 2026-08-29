@@ -21,7 +21,7 @@ would be gone with no way to tell what had been there.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -29,6 +29,7 @@ from ..adapters.docs.base import Block, DocStore, PreservePolicy
 from ..domain.footer import Footer
 from ..domain.status import DONE
 from ..domain.whenever import now_in
+from ..errors import BatonError
 from ..render import piece as render_piece
 from ..render import summary as render_summary
 from .staging import PieceSnapshot
@@ -57,6 +58,16 @@ class PublishResult:
     preserved: int
     replaced: bool
     doc_url: str = ""
+    blocks: list[dict[str, Any]] = field(default_factory=list)
+    """What this publish put on the page: ``[{"id", "type", "text"}, ...]``.
+
+    The ids are learned by diffing the page before and after, because the
+    document protocol's ``append_blocks`` returns nothing — and they are what
+    a later `lesson unpublish` matches on, so it deletes by evidence rather
+    than by re-deriving what the renderer would say today. Empty when the
+    after-read failed: the page was still written, and unpublish simply falls
+    back to matching the stored summary's rendering.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -66,6 +77,7 @@ class PublishResult:
             "deleted": self.deleted,
             "preserved": self.preserved,
             "replaced": self.replaced,
+            "blocks": self.blocks,
         }
 
 
@@ -175,6 +187,20 @@ class SummaryPublisher:
         if replaceable:
             deleted = self.docs.delete_blocks([block.id for block in replaceable])
 
+        # What this publish created, read back rather than assumed: the ids
+        # are the evidence `lesson unpublish` will act on. Degrades to an
+        # empty list rather than failing the publish — the page is already
+        # written, and the fallback path (matching the stored rendering)
+        # still works without the ids.
+        created: list[Block] = []
+        if doc_id:
+            try:
+                after = self.docs.list_blocks(doc_id)
+            except BatonError:
+                after = []
+            known = {block.id for block in existing}
+            created = [block for block in after if block.id not in known]
+
         status = self.docs.get_status(doc_id)
         return PublishResult(
             doc_id=doc_id,
@@ -183,6 +209,7 @@ class SummaryPublisher:
             preserved=len(preserved),
             replaced=replace,
             doc_url=status.url,
+            blocks=[{"id": block.id, "type": block.type, "text": block.text} for block in created],
         )
 
     def complete(self, doc_id: str, *, date: str = "", titles: str = "") -> dict[str, str]:

@@ -34,9 +34,16 @@ from ..adapters.media.google import extract_video_id
 from ..domain.footer import Footer
 from ..domain.models import Learner
 from ..domain.resolve import normalise, resolve_learner
-from ..domain.status import StatusVocabulary
+from ..domain.status import IN_PROGRESS, StatusVocabulary
 from ..domain.whenever import now_in, today_in
-from ..errors import BatonError, ConfigError, UpstreamError, UsageError
+from ..errors import (
+    BatonError,
+    ConfigError,
+    NeedsHumanError,
+    StateError,
+    UpstreamError,
+    UsageError,
+)
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
 from ..pipelines.publish import SummaryPublisher
@@ -48,6 +55,7 @@ from ..pipelines.staging import (
     PublishedRecord,
     StagingStore,
 )
+from ..pipelines.unpublish import apply_plan, plan_legacy, plan_recorded, plan_whole_page
 from ..render import piece as render_piece
 from ..render import summary as render
 from ..render import youtube as render_youtube
@@ -173,6 +181,60 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Publish again even if this document was already published to.",
     )
     publish.set_defaults(handler=handle_publish)
+
+    unpublish = group.add_parser(
+        "unpublish",
+        help="Take a published summary back off the session document.",
+        description=(
+            "Removes only the blocks there is evidence Baton wrote — those the "
+            "publish recorded, or an exact match of the stored rendering. A block "
+            "edited or added by hand stops the command (exit 3) rather than being "
+            "deleted. The session returns to in-progress and the draft comes back, "
+            "so the lesson can be corrected and published again. A message already "
+            "sent is not retracted."
+        ),
+    )
+    _name_argument(unpublish)
+    unpublish.add_argument(
+        "--session",
+        type=int,
+        default=None,
+        help="Which published session. Defaults to the most recent.",
+    )
+    unpublish.add_argument("--dry-run", action="store_true", help="Report what would be removed.")
+    unpublish.add_argument(
+        "--whole-page",
+        action="store_true",
+        help="Remove every block on the page, including ones the teacher wrote.",
+    )
+    unpublish.add_argument(
+        "--force",
+        action="store_true",
+        help="Required with --whole-page: confirms deleting blocks that are not Baton's.",
+    )
+    unpublish.set_defaults(handler=handle_unpublish)
+
+    stage_set = group.add_parser(
+        "stage-set",
+        help="Amend one field of a staged lesson.",
+        description=(
+            "For correcting a typo or a title after staging without re-running "
+            "the stage step. Only the fields that are plain text can be set — "
+            "the summary itself is only accepted through `lesson ingest`."
+        ),
+    )
+    _name_argument(stage_set)
+    stage_set.add_argument(
+        "--field",
+        choices=("titles", "context", "corrected_context"),
+        required=True,
+    )
+    stage_set.add_argument(
+        "--value",
+        required=True,
+        help="The new value. Use the empty string to clear a field.",
+    )
+    stage_set.set_defaults(handler=handle_stage_set)
 
     remove = group.add_parser("remove", help="Discard a draft.")
     _name_argument(remove)
@@ -1298,7 +1360,7 @@ def handle_publish(ctx: Context) -> Exit:
         bullet=str(ctx.config.get("summary.short_summary.bullet", "•")),
         labels=ctx.config.get("summary.short_summary.labels", {}),
     )
-    published_store.save(draft, short_message=message, doc_url=result.doc_url)
+    published_store.save(draft, short_message=message, doc_url=result.doc_url, blocks=result.blocks)
 
     # After the blocks, never before: a publish deletes everything the
     # preserve policy does not protect, and a recording linked first would be
@@ -1338,6 +1400,191 @@ def handle_publish(ctx: Context) -> Exit:
         f"  marked the {label} done"
         f"{_recording_line(recording)}"
         f"{youtube_line}",
+    )
+    return Exit.OK
+
+
+@guarded("lesson")
+def handle_unpublish(ctx: Context) -> Exit:
+    store = open_store(ctx.config)
+    try:
+        learner = _resolve(ctx, store, _named(ctx))
+    finally:
+        store.close()
+
+    label = ctx.config.label("session")
+    records = _published(ctx)
+    if ctx.args.session is not None:
+        # Unlike `publish`, where --session asserts which draft is meant, a
+        # learner has many published sessions and this is a selector — same
+        # meaning it carries in `send lesson --session`.
+        session = int(ctx.args.session)
+        record = records.get(learner.id, session)
+        if record is None:
+            raise StateError(
+                f"No published {label} {session} for {learner.name}.",
+                remedy="Drop --session to take the latest, or check the session number.",
+            )
+    else:
+        record = records.latest(learner.id)
+        if record is None:
+            raise StateError(
+                f"Nothing has been published for {learner.name}.",
+                remedy="Unpublishing undoes a publish; there is no record of one.",
+            )
+        session = int(record.get("session_number", 0) or 0)
+
+    if ctx.args.whole_page and not ctx.args.force:
+        raise UsageError(
+            "`lesson unpublish --whole-page` removes every block on the page.",
+            remedy="Re-run with --force once you have checked what else is on it.",
+        )
+
+    doc_id = str(record.get("doc_id", ""))
+    if not doc_id:
+        raise StateError(
+            f"The record for {learner.name}'s {label} {session} has no document id.",
+            remedy="Nothing can be taken off a page that cannot be named.",
+        )
+
+    docs = open_docs(ctx.config)
+    recorded = [item for item in (record.get("blocks") or []) if isinstance(item, Mapping)]
+    if ctx.args.whole_page:
+        plan = plan_whole_page(docs, doc_id)
+    elif recorded:
+        plan = plan_recorded(docs, doc_id, recorded)
+    else:
+        # A record written before block ids were kept: attribute the page by
+        # re-rendering the summary the record still holds, with the same
+        # renderer configuration the publish used.
+        publisher = SummaryPublisher(
+            docs,
+            PreservePolicy.from_config(ctx.config.get("docs.preserve", [])),
+            sections=ctx.config.get("summary.sections", {}),
+            callout_icon=str(ctx.config.get("summary.callout_icon", "")),
+            footer=_footer(ctx),
+            timezone=ctx.config.timezone,
+        )
+        plan = plan_legacy(
+            publisher,
+            doc_id,
+            summary=record.get("summary") or {},
+            piece_snapshot=PieceSnapshot.from_record(record),
+            callout_texts=_theory(ctx),
+        )
+
+    if ctx.args.dry_run:
+        ctx.report.result(
+            {**plan.to_dict(), "dry_run": True, "learner": learner.name, "session": session},
+            human=f"Would remove {len(plan.delete_blocks)} block(s) from {doc_id} "
+            f"({plan.mode} attribution), keep {len(plan.keep_blocks)}."
+            + (
+                f" {len(plan.edited)} edited, {len(plan.ambiguous)} ambiguous — "
+                "those would stop the unpublish."
+                if plan.needs_human
+                else ""
+            ),
+        )
+        return Exit.OK
+
+    if plan.needs_human:
+        raise NeedsHumanError(
+            f"Refusing to unpublish {learner.name}'s {label} {session}: "
+            "blocks on the page no longer match what was published.",
+            candidates=[{"kind": "edited", **entry} for entry in plan.edited]
+            + [{"kind": "ambiguous", **entry} for entry in plan.ambiguous],
+            remedy="Nothing was removed. Fix the document by hand, or take the "
+            "whole page down with --whole-page --force.",
+        )
+
+    ctx.report.step(f"unpublishing {learner.name} — {label} {session}")
+    removed = apply_plan(docs, plan)
+    # The inverse of the publish's completion write, so `prep` and `next` see
+    # a lesson still in progress rather than finished history.
+    docs.set_status(doc_id, IN_PROGRESS)
+
+    # The draft only comes back when it is this lesson's own draft, mid-cycle
+    # as it was before publishing: re-staging has usually overwritten it with
+    # the next lesson by now, and that draft must not be rewound.
+    staging = _staging(ctx)
+    draft = staging.get(learner.id)
+    restored = False
+    if draft is not None and draft.session_number == session and draft.status == PUBLISHED:
+        draft.status = SUMMARISED
+        draft.targets.pop("docs", None)
+        staging.save(draft)
+        restored = True
+
+    record_removed = records.remove(learner.id, session)
+
+    lines = [
+        f"Unpublished {learner.name} — {label} {session}",
+        f"  removed {removed} block(s), kept {len(plan.keep_blocks)}",
+    ]
+    if plan.missing:
+        lines.append(f"  {len(plan.missing)} recorded block(s) were already gone")
+    if plan.mode == "legacy":
+        lines.append("  attributed by re-rendering the stored summary (record has no block ids)")
+    lines.append(f"  the {label} is in progress again")
+    lines.append("  draft restored to summarised" if restored else "  no staged draft to restore")
+    lines.append("  a message already sent is not retracted")
+    ctx.report.result(
+        {
+            **plan.to_dict(),
+            "removed": removed,
+            "draft_restored": restored,
+            "record_removed": record_removed,
+        },
+        human="\n".join(lines),
+    )
+    return Exit.OK
+
+
+@guarded("lesson")
+def handle_stage_set(ctx: Context) -> Exit:
+    store = open_store(ctx.config)
+    try:
+        learner = _resolve(ctx, store, _named(ctx))
+    finally:
+        store.close()
+
+    staging = _staging(ctx)
+    draft = staging.require(learner.id, learner.name)
+    if draft.status == PUBLISHED:
+        # Amending a published draft would fork it from the published record —
+        # the record, not the draft, is what the next lesson is compared
+        # against, so the change would be silently irrelevant anyway.
+        raise UsageError(
+            f"{learner.name}'s {ctx.config.label('session')} {draft.session_number} "
+            "is already published.",
+            remedy="Unpublish it first (`baton lesson unpublish`), then amend and publish again.",
+        )
+
+    field = str(ctx.args.field)
+    new_value = str(ctx.args.value)
+    old_value = str(getattr(draft, field))
+    if old_value == new_value:
+        ctx.report.result(
+            {"learner": learner.name, "field": field, "unchanged": True},
+            human=f"Nothing to do: `{field}` already holds that value.",
+        )
+        return Exit.OK
+
+    setattr(draft, field, new_value)
+    staging.save(draft)
+
+    old_display = old_value if old_value else "(ว่าง)"
+    new_display = new_value if new_value else "(ว่าง)"
+    ctx.report.result(
+        {
+            "learner": learner.name,
+            "session_number": draft.session_number,
+            "field": field,
+            "from": old_value,
+            "to": new_value,
+        },
+        human=f"{learner.name} — {ctx.config.label('session')} {draft.session_number}: "
+        f"{field}\n  เดิม: {old_display}\n  ใหม่: {new_display}",
     )
     return Exit.OK
 

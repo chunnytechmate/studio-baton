@@ -12,37 +12,36 @@ document itself, and never a Notion block.
 
 - "summarise the lesson with X", "write up X's session"
 - "publish X's summary", "push the summary"
+- "take that summary back down", "I published it on the wrong page"
 
 ## The loop
 
 ```bash
-# 1. Start a draft with the teacher's notes
-baton lesson stage "<name>" --context "<what happened>" --json
-
-# 2. Get the schema and everything you need to write against
-baton lesson contract "<name>" --json
-
-# 3. Write JSON matching `schema`, then submit it
-baton lesson ingest "<name>" --file summary.json --json
-
-# 4. Show the rendered result to the teacher
-baton lesson render "<name>"
-
-# 5. Publish once they are happy
-baton lesson publish "<name>" --json
+baton lesson stage    "<name>" --context "<what happened>" --json  # 1. start a draft
+baton lesson contract "<name>" --json                              # 2. schema + context
+baton lesson ingest   "<name>" --file summary.json --json          # 3. submit your JSON
+baton lesson render   "<name>"                                     # 4. show the teacher
+baton lesson publish  "<name>" --json                              # 5. once they are happy
 ```
 
-`baton lesson list`, `show`, `remove` inspect and discard drafts.
+`baton lesson list`, `show`, `remove` inspect and discard drafts. Each command
+takes the learner positionally or as `--learner "<name>"`, never two names.
+`publish --session N` does not choose a lesson — a learner has one draft at a
+time — it refuses if the draft is for another one.
 
-Each takes the learner positionally or as `--learner "<name>"`, but not two
-different names at once. `publish --session N` does not choose a lesson — a
-learner has one draft at a time — it refuses if the draft is for another one.
+```bash
+baton lesson stage-set "<name>" --field context --value "<fixed notes>" --json
+baton lesson unpublish "<name>" --dry-run --json   # then again without --dry-run
+```
+
+`stage-set` amends `titles`, `context`, or `corrected_context` without
+re-staging; the summary itself is only ever accepted through `ingest`.
 
 ## Writing the summary
 
-`contract` gives you the schema, the lesson notes, the teaching profile, and the
+`contract` gives you the schema, the notes, the teaching profile, and the
 callout ids that exist. Return **one JSON object and nothing else** — no prose
-around it, no markdown fence.
+around it, no fence.
 
 - Base every statement on `lesson_notes`; invent no progress it does not
   describe. Use `previous_session_summary` to judge what is new, not to repeat.
@@ -70,11 +69,9 @@ Things the validator rejects by name:
 - **A rating where an observation belongs.** "Did very well" survives any
   lesson, so it describes none. Say what they managed and how much help it took.
 - **A word about the child rather than the playing.** "A weak point" is
-  something someone *is*; "still slow from the page" is something a lesson
-  changes. Families keep these pages.
-- **A goal nobody can practise at home.** What can only happen in the next
-  lesson belongs in `focus`; "be more open to reading" is an attitude, not an
-  action. Say what to do, and how long or how many times.
+  something someone *is*; "still slow from the page" is what a lesson changes.
+- **A goal nobody can practise at home.** What only the next lesson can do
+  belongs in `focus`. Say what to practise, and how long or how many times.
 
 The last instruction in `contract` is written for *this* learner — their tone,
 and whether they own an instrument. Follow it over your own instincts about
@@ -82,29 +79,33 @@ register: it comes from their record, not from the notes.
 
 ## Rules
 
-**Never publish without showing the render first**, unless asked to run the
-whole thing unattended.
+**Never publish without showing the render first**, unless asked to run it
+unattended. **Publishing twice is refused** — two summaries would end up on the
+page; `--force` replaces, and only if the user asks for it.
 
-**Publishing twice is refused** — a second publish would leave two summaries on
-the page. Use `--force` only if the user explicitly asks to replace it.
+**Publishing ends the session** — the page is marked done and the date and
+repertoire columns filled if empty, so the next summary goes to the next
+session. **Exit 6 there means the summary landed but the session did not
+close.** Re-run publish: it appends nothing the second time and only closes the
+session. Say that, rather than reporting the summary as lost.
 
-**Publishing ends the session.** It marks the page done and fills the date and
-repertoire columns if empty, so the next summary goes to the next session and
-`prep` can brief this one.
+**Unpublish removes only what Baton can prove it wrote** — the blocks the
+publish recorded. It then sets the session back to in progress, rewinds the
+draft to `summarised`, and drops the record so the lesson can be published
+again. Show `--dry-run` first.
 
-**Exit 6 after a publish means the summary landed but the session is not
-closed.** Re-run `baton lesson publish`: it appends nothing the second time and
-only finishes the session. Say so rather than reporting the summary as lost.
+**Exit 3 from unpublish means someone edited the page: nothing was removed.**
+`details.candidates` names each block, `edited` or `ambiguous`. Show them and
+ask. `--whole-page --force` takes down *everything* on the page, recordings
+included — only when the user asks for it, never to get past that exit 3.
 
-**Publish repairs a recording the pipeline uploaded but never linked.** A run
-that dies after uploading leaves the video on YouTube and the page without it,
-and `send` then refuses. Publish appends the block itself — a re-run of an
-already-published lesson included. Report `recording` (`linked` with the URL,
-or `error`); never add the block by hand.
+**Unpublishing does not un-send.** If the message went out, say so: the family
+has read it, and re-publishing does not change that.
 
-**A song on the page is not the lesson's recording.** The piece being learnt
-sits on the same page as a bookmark and an embed, and publish skips those. A
-`null` `youtube` beside a visible YouTube link means that link is the song.
+**Publish repairs a recording the pipeline uploaded but never linked**, and
+skips the song's own bookmark and embed. Report `recording` (`linked` with the
+URL, or `error`); never add the block by hand. A `null` `youtube` beside a
+visible YouTube link means that link is the song, not the lesson.
 
 ## Exit codes
 
@@ -112,6 +113,7 @@ sits on the same page as a bookmark and an embed, and publish skips those. A
 | --- | --- |
 | `0` | Continue to the next step |
 | `1` | A draft is missing — `baton lesson stage` first |
-| `3` | Show `details.candidates`, ask, re-run with the exact name |
+| `3` | Show `details.candidates`, ask, re-run with the exact name. From `unpublish` they are edited or ambiguous blocks and **nothing was removed** |
 | `4` | Your JSON, not a Baton fault. Fix every `details.violations` entry — each carries a pointer — and resubmit changed content |
 | `6` | Report; the draft and summary are kept, so a retry resumes |
+| `7` | Nothing published to take back (`unpublish`). Report and stop |

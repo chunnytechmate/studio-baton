@@ -360,7 +360,22 @@ class PublishedRecord:
     def _path(self, learner_id: str, session_number: int) -> Path:
         return self.root / f"{_slug(learner_id)}-{int(session_number)}.json"
 
-    def save(self, draft: LessonDraft, *, short_message: str, doc_url: str = "") -> None:
+    def save(
+        self,
+        draft: LessonDraft,
+        *,
+        short_message: str,
+        doc_url: str = "",
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Write the record, including the blocks the publish put on the page.
+
+        ``blocks`` (``[{"id", "type", "text"}, ...]``) is what makes a later
+        `lesson unpublish` able to name exactly what it owns: matched by id,
+        not by re-deriving what the renderer would say today. Records written
+        before the list existed simply carry none, and unpublish falls back to
+        matching the stored summary's rendering instead.
+        """
         jsonio.write_json(
             self._path(draft.learner_id, draft.session_number),
             {
@@ -379,9 +394,23 @@ class PublishedRecord:
                 # is overwritten by the next `stage`, and the document can be
                 # edited by hand, so this is the only durable copy.
                 "summary": draft.summary,
+                "blocks": blocks or [],
                 "published_at": _now(),
             },
         )
+
+    def remove(self, learner_id: str, session_number: int) -> bool:
+        """Delete one published record. Returns whether there was one.
+
+        Called by `lesson unpublish` after the page and the draft have been
+        settled; removing it first would leave a crash mid-way looking like a
+        publish that never happened.
+        """
+        path = self._path(learner_id, session_number)
+        existed = path.exists()
+        for candidate in (path, jsonio.backup_path(path)):
+            candidate.unlink(missing_ok=True)
+        return existed
 
     def get(self, learner_id: str, session_number: int) -> dict[str, Any] | None:
         data = jsonio.read_json(self._path(learner_id, session_number), None)

@@ -91,6 +91,27 @@ class Footer:
         except DateFormatError as exc:
             raise FooterError(f"`summary.footer.date_format` is unusable: {exc}") from exc
 
+    def line_patterns(self) -> list[re.Pattern[str]]:
+        """One pattern per footer line, each matching whatever the clock wrote.
+
+        The footer renders as one paragraph block per line, so taking a page
+        apart block by block (as `lesson unpublish` does) has to match one
+        line at a time. :meth:`pattern` is these, joined, for callers that
+        read the footer as one blob of text instead.
+        """
+        if not self.lines:
+            return []
+        return [self._line_pattern(line) for line in self.lines]
+
+    def _line_pattern(self, line: str) -> re.Pattern[str]:
+        literal = line.replace("*", "")
+        escaped = re.escape(literal)
+        # re.escape leaves the braces alone, so the placeholders survive
+        # escaping intact and can be swapped for wildcards afterwards.
+        escaped = escaped.replace(re.escape("{date}"), ".+?")
+        escaped = escaped.replace(re.escape("{time}"), ".+?")
+        return re.compile(escaped, re.DOTALL)
+
     def pattern(self) -> re.Pattern[str] | None:
         """A regex matching what :meth:`render` writes, whatever the clock said.
 
@@ -106,16 +127,7 @@ class Footer:
         """
         if not self.lines:
             return None
-        parts = []
-        for line in self.lines:
-            literal = line.replace("*", "")
-            escaped = re.escape(literal)
-            # re.escape leaves the braces alone, so the placeholders survive
-            # escaping intact and can be swapped for wildcards afterwards.
-            escaped = escaped.replace(re.escape("{date}"), ".+?")
-            escaped = escaped.replace(re.escape("{time}"), ".+?")
-            parts.append(escaped)
-        return re.compile(r"\s*".join(parts), re.DOTALL)
+        return re.compile(r"\s*".join(part.pattern for part in self.line_patterns()), re.DOTALL)
 
     def render(self, moment: datetime) -> list[str]:
         """The footer lines as of ``moment``, ready to append."""

@@ -90,8 +90,9 @@ wrong name.
 ## Rules
 
 **Only when asked.** These commands are destructive and are never a repair
-step. Do not reach for `clear` to undo a bad summary — that is what the lesson
-tools are for.
+step. Do not reach for `clear` to undo a bad summary — `baton lesson unpublish
+"<name>"` takes one summary back off its page, leaving the rest of the course
+alone.
 
 **Clear checks.** It refuses (exit `5`) unless a complete copy of the course
 is filed — re-read at clear time, not remembered from step 4. There is no

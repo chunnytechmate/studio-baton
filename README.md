@@ -179,6 +179,37 @@ the rest, and the exit code plus the report say exactly which did not go:
 baton send batch --to me --learner "Ada" --learner "Bruno" --learner "Clara"
 ```
 
+**A teaching day is bracketed by two reports.** Before the sends, `send
+readiness` lists who is booked and what would still block each message; after
+them, `send aftermath` reports what the day left behind. Both exit `0`
+whatever they find — a report that refuses is a report that stops being run.
+
+```bash
+baton send readiness --date today    # read before the sends start
+baton send aftermath --date today    # read after they finish
+```
+
+Readiness's last column is the send gate's own verdict, recomputed from the
+published record through the same `evaluate` the refusal goes through, so what
+the report names as missing is exactly what `send lesson` would refuse on. It
+keeps the layers apart on purpose: a missing video block is fixed on the
+document, a missing summary means going back to `lesson ingest`, and *ยังไม่
+publish* means the send is premature — which is the order the fixes have to be
+attempted in, and the reason a video block was once hunted for on a lesson that
+had never been published.
+
+Aftermath names three different leftovers — drafts that never reached publish,
+draft files whose learner no longer exists, and published lessons with no send
+receipt — because each has a different remedy. The receipt check is honest
+about its own limits: it reports the *absence of evidence* within the duplicate
+window, never the certainty that nothing went out.
+
+Both read the day's roster from the calendar when one is configured, and fall
+back to the sessions whose documents carry that date when there is not. The
+fallback is a weaker claim — a document's date can be blank or mistyped — so
+the report says which source it used (`อ่านจากปฏิทิน` or `อ่านจากวันที่บนเอกสาร`).
+A calendar event naming no learner is listed, never guessed at.
+
 The same stance applies to names. A typed name resolves only on an exact match
 or a configured alias — a partial match never resolves, *even when it is the
 only one*, because the second person with that name is exactly the case that
@@ -215,6 +246,18 @@ baton lesson publish  "Ada Whitfield"
 Each of these takes the learner positionally or as `--learner "<name>"`.
 `publish --session N` does not choose a lesson — a learner has one draft at a
 time — it refuses if the staged draft is for a different one.
+
+A typo in the notes, or a title that came off the page wrong, is amended in
+place rather than by staging again and losing what the stage step gathered:
+
+```bash
+baton lesson stage-set "Ada Whitfield" --field context --value "what really happened"
+```
+
+Only the plain-text fields (`titles`, `context`, `corrected_context`) can be
+set this way — the summary itself is still only accepted through `ingest`, and
+a draft that has already been published refuses the amendment, since the record
+rather than the draft is what the next lesson is compared against.
 
 Rules a JSON Schema cannot express are checked in code, because they are exactly
 the ones a small model ignores when they are written as prose — no emoji in the
@@ -298,6 +341,38 @@ dies afterwards leaves the recording published and the page with no link to
 it — and the send gate then refuses a lesson whose video exists. `lesson
 publish` looks for such an upload and appends the block itself, reporting it
 as `recording`, so the repair is not a hand-written Notion block.
+
+**A publish can be taken back — but only what Baton can prove it wrote.**
+A summary that went onto the wrong page, or one the teacher wants rewritten
+before anyone reads it, used to mean deleting blocks in Notion by hand.
+`lesson unpublish` is the mirror of publish and holds the same discipline with
+the sign flipped: it removes the blocks it has evidence for, restores the
+session to in progress, rewinds the draft to `summarised`, and drops the
+published record so the lesson can be published again.
+
+```bash
+baton lesson unpublish "Ada Whitfield" --dry-run   # what would go, before anything goes
+baton lesson unpublish "Ada Whitfield"
+baton lesson unpublish "Ada Whitfield" --session 3
+```
+
+Evidence has three grades, and less trust means less removed. A publish records
+the ids of the blocks it appended, so the usual case deletes exactly those; a
+recorded block whose text or type has changed was edited by a person and stops
+the whole unpublish (exit `3`, naming it) rather than being deleted anyway, and
+a block no record names is simply kept. Records written before those ids
+existed are attributed by re-rendering the stored summary with the publish's
+own configuration — the footer by pattern, since it carries the moment it was
+written — and anything replaceable that matches nothing is *ambiguous*, which
+also stops the command. Only `--whole-page --force` removes what Baton cannot
+attribute, and it is the deliberate recovery for a page that went to the wrong
+recipient.
+
+Two things it does not do. A message already sent is not retracted — nothing
+can un-send it, and the report says so rather than leaving the impression that
+the family never saw it. And the draft comes back only when it is still that
+lesson's own draft: by the time a mistake is noticed the next lesson has
+usually been staged over it, and rewinding *that* would lose the newer work.
 
 **Booking happens in an order that cannot leave two records disagreeing.**
 A lesson is marked in progress on its document *first*; the calendar event is

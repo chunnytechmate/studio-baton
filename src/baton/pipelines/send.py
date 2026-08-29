@@ -171,23 +171,15 @@ def gather_context(
     )
 
 
-def gate_check(
+def evaluate(
     context: SendContext, *, required: list[str], optional: list[str]
-) -> tuple[list, list]:
-    """Evaluate the send gate.
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The gate's verdict as data: every gap, each paired with how to fix it.
 
-    Args:
-        context: The gathered context.
-        required: Fields that must be present. Any gap blocks the send.
-        optional: Fields that only warrant a warning when absent.
-
-    Returns:
-        ``(missing, warnings)``. An empty ``missing`` means the send may go.
-
-    Raises:
-        GateError: With every gap, each paired with how to supply it. Raised
-            here rather than returned so the exit code is bound to the verdict
-            at the only place the verdict is made.
+    This is the one place the gate's logic lives. ``gate_check`` turns the
+    verdict into a refusal; `baton send readiness` turns the same verdict
+    into a report — so what the report names as missing is exactly what the
+    send would refuse on, never a second opinion that could drift.
     """
     fields = context.fields()
 
@@ -209,6 +201,29 @@ def gate_check(
         for name in optional
         if not fields.get(name, "").strip()
     ]
+
+    return missing, warnings
+
+
+def gate_check(
+    context: SendContext, *, required: list[str], optional: list[str]
+) -> tuple[list, list]:
+    """Evaluate the send gate and refuse the send when it fails.
+
+    Args:
+        context: The gathered context.
+        required: Fields that must be present. Any gap blocks the send.
+        optional: Fields that only warrant a warning when absent.
+
+    Returns:
+        ``(missing, warnings)``. An empty ``missing`` means the send may go.
+
+    Raises:
+        GateError: With every gap, each paired with how to supply it. Raised
+            here rather than returned so the exit code is bound to the verdict
+            at the only place the verdict is made.
+    """
+    missing, warnings = evaluate(context, required=required, optional=optional)
 
     if missing:
         names = ", ".join(item["field"] for item in missing)

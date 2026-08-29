@@ -10,10 +10,13 @@ from __future__ import annotations
 import argparse
 import contextlib
 from collections.abc import Mapping
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from .. import contracts
+from ..adapters.cal import open_calendar
 from ..adapters.chat import open_chat
-from ..adapters.chat.base import Messenger
+from ..adapters.chat.base import Messenger, resolve_contact
 from ..adapters.chat.guard import GuardedMessenger
 from ..adapters.db import open_store
 from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
@@ -22,12 +25,23 @@ from ..domain.localdate import DateFormat
 from ..domain.models import Learner
 from ..domain.prep import SectionRules
 from ..domain.resolve import resolve_learner
-from ..errors import BatonError, GateError, NeedsHumanError, UsageError
+from ..domain.status import StatusVocabulary
+from ..domain.whenever import parse_date
+from ..errors import BatonError, ConfigError, GateError, NeedsHumanError, UsageError
 from ..exits import Exit
+from ..pipelines.learner import LearnerHistory
 from ..pipelines.lesson_video import send_video
 from ..pipelines.recording import list_candidates, send_recording
-from ..pipelines.send import send_lesson
-from ..pipelines.staging import PieceSnapshot, PublishedRecord
+from ..pipelines.schedule import Scheduler
+from ..pipelines.send import evaluate, gather_context, send_lesson
+from ..pipelines.staging import (
+    PUBLISHED,
+    STAGED,
+    SUMMARISED,
+    PieceSnapshot,
+    PublishedRecord,
+    StagingStore,
+)
 from .guard import guarded
 
 if TYPE_CHECKING:
@@ -140,6 +154,37 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     video.set_defaults(handler=handle_video)
 
+    readiness = group.add_parser(
+        "readiness",
+        help="Who is booked today, and what would still block their message.",
+        description=(
+            "One row per learner with a lesson on DATE, read before the sends "
+            "start. The last column is the send gate's own verdict, recomputed "
+            "from the published record — what it names as missing is exactly "
+            "what `send lesson` would refuse on."
+        ),
+    )
+    readiness.add_argument(
+        "--date", metavar="DATE", default="today", help="YYYY-MM-DD, today, tomorrow, +2, …"
+    )
+    readiness.set_defaults(handler=handle_readiness)
+
+    aftermath = group.add_parser(
+        "aftermath",
+        help="What a teaching day left behind: stuck drafts, orphans, unsent messages.",
+        description=(
+            "Run after the sends. Reports three kinds of leftovers: drafts that "
+            "never reached publish, draft files whose learner no longer exists, "
+            "and published lessons with no send receipt. A receipt only proves a "
+            "send within its window — beyond that this reports the absence of "
+            "evidence, never the certainty that nothing went out."
+        ),
+    )
+    aftermath.add_argument(
+        "--date", metavar="DATE", default="today", help="YYYY-MM-DD, today, tomorrow, +2, …"
+    )
+    aftermath.set_defaults(handler=handle_aftermath)
+
     contacts = group.add_parser("contacts", help="List configured contacts.")
     contacts.set_defaults(handler=handle_contacts)
 
@@ -251,6 +296,67 @@ def _messenger(ctx: Context, *, what: str, key: str) -> Messenger:
     )
 
 
+def _lesson_receipt_key(learner_id: str, session_number: Any) -> str:
+    """The identity of one learner's one-session lesson message.
+
+    Shared by `send lesson` and `send aftermath`, because the question
+    aftermath asks of the receipts — did this message go out? — is only
+    answerable if it is spelled exactly the way the send spelled it. Two
+    spellings here would quietly mean two different messages, and aftermath
+    would report sends as missing that went out.
+    """
+    return f"lesson|{learner_id}|{session_number}"
+
+
+def _day(ctx: Context, value: str) -> date:
+    """A day argument, in the same grammar `calendar book` accepts."""
+    return parse_date(
+        value,
+        timezone=ctx.config.timezone,
+        shorthand=ctx.config.section("calendar.date_shorthand"),
+        weekdays=ctx.config.section("calendar.weekdays"),
+        accept_dmy=bool(ctx.config.get("calendar.accept_dmy", False)),
+    )
+
+
+def _roster_for_day(
+    ctx: Context, store, docs, day: date
+) -> tuple[list[Learner], list[dict[str, Any]], str]:
+    """Who had a lesson on ``day`` — the calendar's roster, or the documents'.
+
+    The calendar is the source when there is one: its events were typed by a
+    person and name the day directly. Without a calendar configured, the
+    roster falls back to the sessions whose documents carry the day's date —
+    a weaker claim (a document's date can be blank or mistyped) and labelled
+    as such in the report, because a fallback nobody knows is a fallback that
+    gets trusted past its worth.
+
+    Returns:
+        ``(learners, unmatched_events, source)`` where source is
+        ``"calendar"`` or ``"documents"``.
+    """
+    vocabulary = StatusVocabulary.from_config(ctx.config.section("docs.statuses"))
+    try:
+        scheduler = Scheduler(
+            open_calendar(ctx.config),
+            docs,
+            vocabulary,
+            timezone=ctx.config.timezone,
+            session_label=ctx.config.label("session"),
+        )
+        learners, unmatched = scheduler.who_is_booked(store, day)
+        return learners, unmatched, "calendar"
+    except ConfigError:
+        history = LearnerHistory(store, docs, vocabulary)
+        learners = []
+        for learner in store.list_learners():
+            for view in history.sessions(learner):
+                if str(view.doc.date or "")[:10] == day.isoformat():
+                    learners.append(learner)
+                    break
+        return learners, [], "documents"
+
+
 def _send_one(
     ctx: Context,
     name: str,
@@ -294,7 +400,7 @@ def _send_one(
         messenger = _messenger(
             ctx,
             what=f"{learner.name}'s {label} {session_number} summary",
-            key=f"lesson|{learner.id}|{session_number}",
+            key=_lesson_receipt_key(learner.id, session_number),
         )
         recipient_id = messenger.resolve(ctx.args.to)
         docs = open_docs(ctx.config)
@@ -623,3 +729,286 @@ def handle_contacts(ctx: Context) -> Exit:
         lines.append(f"  {entry['name']:<16} {aliases}")
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
+
+
+_STAGING_STATES = {
+    STAGED: "ยังไม่มีสรุป",
+    SUMMARISED: "สรุปแล้ว รอ publish",
+    PUBLISHED: "พร้อม (published)",
+}
+
+
+@guarded("send")
+def handle_readiness(ctx: Context) -> Exit:
+    """The day's sends, read before any of them start.
+
+    The point of running this first is the order of the fixes it suggests:
+    a missing video block is fixed on the document, a missing summary means
+    going back to `lesson ingest`, and "ยังไม่ publish" means the whole send
+    is premature. A report that mixed those layers together would have the
+    operator fixing the wrong one first, exactly as happened the day a video
+    block was hunted for on a lesson that had never been published.
+    """
+    day = _day(ctx, str(ctx.args.date))
+    store = open_store(ctx.config)
+    docs = open_docs(ctx.config)
+    try:
+        learners, unmatched, source = _roster_for_day(ctx, store, docs, day)
+        records = PublishedRecord(ctx.config.state_dir / "published")
+        staging = StagingStore(ctx.config.state_dir / "lessons")
+        required, optional = _required_optional(ctx)
+        video_blocks = tuple(
+            str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+        )
+        # The same pool `lesson ingest` warned over, recomputed from the
+        # summary as stored — so the vocabulary column means "as published",
+        # not "as the model first wrote it".
+        vocabulary = [
+            str(term)
+            for term in ctx.config.get("summary.vocabulary", []) or []
+            if str(term).strip()
+        ]
+
+        rows: list[dict[str, Any]] = []
+        for learner in learners:
+            draft = staging.get(learner.id)
+            if draft is not None:
+                staging_state = _STAGING_STATES.get(draft.status, draft.status)
+                record = records.get(learner.id, draft.session_number)
+            else:
+                staging_state = "ไม่มี draft"
+                record = None
+            if record is None:
+                record = records.latest(learner.id)
+
+            missing: list[dict[str, Any]] = [{"field": "ยังไม่ publish"}]
+            warnings: list[dict[str, Any]] = []
+            video = ""
+            near_misses: list[str] = []
+            if record is not None:
+                video = find_video_link(
+                    docs,
+                    str(record.get("doc_id", "")),
+                    blocks=video_blocks,
+                    exclude=_piece_sources(store, learner, record),
+                )
+                summary = record.get("summary") or {}
+                if vocabulary and isinstance(summary, dict) and summary:
+                    near_misses = contracts.vocabulary_near_misses(summary, vocabulary)
+                # The gate's own verdict, from the same `evaluate` the send
+                # refuses through — never a second opinion that could drift.
+                context = gather_context(store, learner.id, record, video_link=video)
+                missing, warnings = evaluate(context, required=required, optional=optional)
+
+            rows.append(
+                {
+                    "learner": learner.name,
+                    "staging": staging_state,
+                    "video_block": bool(video),
+                    "vocabulary": (
+                        "—"
+                        if not vocabulary or record is None
+                        else ("ผ่าน" if not near_misses else "ไม่ผ่าน: " + ", ".join(near_misses))
+                    ),
+                    "missing": [str(item.get("field", "")) for item in missing],
+                    "optional_missing": [str(item.get("field", "")) for item in warnings],
+                }
+            )
+
+        ready = sum(1 for row in rows if not row["missing"])
+        payload = {
+            "date": day.isoformat(),
+            "source": source,
+            "learners": rows,
+            "ready": ready,
+            "total": len(rows),
+            "unmatched": unmatched,
+        }
+
+        source_label = "ปฏิทิน" if source == "calendar" else "วันที่บนเอกสาร"
+        lines = [f"คนที่มีคาบวันที่ {day.isoformat()} (อ่านจาก{source_label}) — {len(rows)} คน"]
+        for row in rows:
+            gap = ", ".join(row["missing"]) or "—"
+            if not row["missing"] and row["optional_missing"]:
+                gap = "ไม่บล็อก: " + ", ".join(row["optional_missing"])
+            lines.append(
+                f"  {row['learner']}: staging {row['staging']} | "
+                f"video {'มี' if row['video_block'] else 'ไม่มี'} | "
+                f"vocab {row['vocabulary']} | ขาด {gap}"
+            )
+        lines.append(f"พร้อมส่ง {ready}/{len(rows)} คน")
+        for event in unmatched:
+            lines.append(
+                f"  คิวที่จับคู่ชื่อไม่ได้ (ไม่เดา): {event.get('title', '')} {event.get('start', '')}"
+            )
+        ctx.report.result(payload, human="\n".join(lines))
+        return Exit.OK
+    finally:
+        store.close()
+
+
+@guarded("send")
+def handle_aftermath(ctx: Context) -> Exit:
+    """What a teaching day left behind, after the sends were supposed to run.
+
+    Exit 0 whatever it finds: this is a report, not a gate. The findings name
+    their own remedies elsewhere in Baton (publish, send), so refusing here
+    would only teach the operator to stop running it.
+    """
+    day = _day(ctx, str(ctx.args.date))
+    store = open_store(ctx.config)
+    docs = open_docs(ctx.config)
+    try:
+        staging = StagingStore(ctx.config.state_dir / "lessons")
+        records = PublishedRecord(ctx.config.state_dir / "published")
+
+        stuck: list[dict[str, Any]] = []
+        orphans: list[dict[str, Any]] = []
+        for draft in staging.list():
+            learner = store.get_learner(draft.learner_id)
+            if learner is None:
+                orphans.append(
+                    {
+                        "learner_name": draft.learner_name,
+                        "learner_id": draft.learner_id,
+                        "session_number": draft.session_number,
+                        "status": draft.status,
+                    }
+                )
+                continue
+            if draft.status != PUBLISHED:
+                stuck.append(
+                    {
+                        "learner": learner.name,
+                        "session_number": draft.session_number,
+                        "state": "ยังไม่มีสรุป" if draft.summary is None else "สรุปแล้ว ยังไม่ publish",
+                    }
+                )
+                continue
+            unfinished = {
+                name: state.get("status", "")
+                for name, state in draft.targets.items()
+                if state.get("status") != "ok"
+            }
+            if unfinished:
+                stuck.append(
+                    {
+                        "learner": learner.name,
+                        "session_number": draft.session_number,
+                        "state": "publish แล้ว target ค้าง: "
+                        + ", ".join(f"{name}={state}" for name, state in unfinished.items()),
+                    }
+                )
+
+        learners, unmatched, source = _roster_for_day(ctx, store, docs, day)
+
+        window = float(ctx.config.get("chat.duplicate_window_hours", DEFAULT_WINDOW_HOURS))
+        receipts = Receipts.for_state(ctx.config.state_dir, window)
+        contacts = {
+            str(key): entry
+            for key, entry in ctx.config.section("chat.contacts").items()
+            if isinstance(entry, dict)
+        }
+
+        service = ""
+        chat_unavailable = ""
+        try:
+            service = str(getattr(open_chat(ctx.config), "service", "chat"))
+        except ConfigError as exc:
+            chat_unavailable = str(exc)
+
+        unsent: list[dict[str, Any]] = []
+        unrecorded: list[str] = []
+        checked = 0
+        found = 0
+        for learner in learners:
+            record = records.latest(learner.id)
+            if record is None:
+                if staging.get(learner.id) is None:
+                    unrecorded.append(learner.name)
+                continue
+            session_number = record.get("session_number")
+            if not service:
+                continue
+            for name in contacts:
+                try:
+                    _, recipient_id = resolve_contact(ctx.config, name)
+                except BatonError as exc:
+                    unsent.append(
+                        {
+                            "learner": learner.name,
+                            "session_number": session_number,
+                            "contact": name,
+                            "state": f"ตรวจไม่ได้: {exc}",
+                        }
+                    )
+                    continue
+                key = receipts.digest(
+                    service, recipient_id, _lesson_receipt_key(learner.id, session_number)
+                )
+                checked += 1
+                if receipts.find(key) is None:
+                    unsent.append(
+                        {
+                            "learner": learner.name,
+                            "session_number": session_number,
+                            "contact": name,
+                            "state": f"ไม่พบหลักฐานการส่ง (ตรวจภายใน {window:g} ชม.)",
+                        }
+                    )
+                else:
+                    found += 1
+
+        payload = {
+            "date": day.isoformat(),
+            "roster_source": source,
+            "stuck_drafts": stuck,
+            "orphan_drafts": orphans,
+            "no_record": unrecorded,
+            "send_checks": {
+                "checked": checked,
+                "receipts_found": found,
+                "window_hours": window,
+                "chat_unavailable": chat_unavailable,
+            },
+            "unsent": unsent,
+            "unmatched": unmatched,
+        }
+
+        source_label = "ปฏิทิน" if source == "calendar" else "วันที่บนเอกสาร"
+        lines = [f"สรุปหลังวันสอน {day.isoformat()} (คนในคิวอ่านจาก{source_label})"]
+
+        lines.append(f"staging ค้าง: {len(stuck)}")
+        for item in stuck:
+            lines.append(
+                f"  {item['learner']} ({ctx.config.label('session')} "
+                f"{item['session_number']}): {item['state']}"
+            )
+        lines.append(f"ไฟล์ตกค้าง (ไม่มีคนนี้ในฐานข้อมูล): {len(orphans)}")
+        for item in orphans:
+            lines.append(
+                f"  {item['learner_name']} ({item['learner_id']}, "
+                f"{ctx.config.label('session')} {item['session_number']})"
+            )
+        lines.append(f"ยังไม่ publish เลย: {len(unrecorded)}")
+        for name in unrecorded:
+            lines.append(f"  {name}")
+        if chat_unavailable:
+            lines.append(f"ตรวจการส่งไม่ได้: {chat_unavailable}")
+        else:
+            lines.append(
+                f"publish แล้วยังไม่ส่ง: {len(unsent)} (ตรวจแล้ว {checked} คู่, เจอใบเสร็จ {found})"
+            )
+        for item in unsent:
+            lines.append(
+                f"  {item['learner']} ({ctx.config.label('session')} {item['session_number']}) "
+                f"→ {item['contact']}: {item['state']}"
+            )
+        for event in unmatched:
+            lines.append(
+                f"  คิวที่จับคู่ชื่อไม่ได้ (ไม่เดา): {event.get('title', '')} {event.get('start', '')}"
+            )
+        ctx.report.result(payload, human="\n".join(lines))
+        return Exit.OK
+    finally:
+        store.close()
