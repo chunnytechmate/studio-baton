@@ -60,6 +60,30 @@ re-checked against the live page on every pass, but when the step is already
 recorded and the page cannot be reached, the record stands — so a `done` job
 does not read as `failed` because Notion was briefly down.
 
+**A job is finished when two things agree.** `baton job status <id>` saying
+`done` means the process exited 0 — not that the recording landed. Check the
+work itself in `baton video status --json`: that learner's entry `status:
+"done"`, `error: null`, and a `video_id` and `video_url` present. A `done` job
+whose entry is missing a step is *incomplete*, and reporting it as finished is
+how a lesson with no recording gets closed. The steps, in order:
+
+```
+downloaded → combined → session_resolved → uploaded → doc_linked → cleaned → source_trashed
+```
+
+`video status` names the first unfinished one as `next step` for any job that
+is not done, which is the question worth asking when a job stops.
+
+**An empty log during encoding is normal.** ffmpeg runs at `-loglevel error`
+and the `combined` step is recorded only once it finishes, so a job that is
+`running` with a live heartbeat and ffmpeg using CPU is working, not stuck.
+Do not delete `.baton-encode-*`, a source clip, or the job state while a job
+is `running` — see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for the rest.
+
+**Terminal job statuses are `done`, `failed`, `stopped`, `orphaned`.** Only
+`done` says the process finished cleanly; the other three all end with
+`baton video resume --detach`, after reading the logs and the state.
+
 **Never use `baton video forget`** unless the user explicitly asks and
 understands it: if the upload already happened, starting over publishes a
 second copy.

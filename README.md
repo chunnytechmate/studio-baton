@@ -98,7 +98,9 @@ injects credentials without the file being present at all.
 `baton doctor` reports every problem at once rather than one per re-run, and
 exits `2` while anything is unresolved. It checks the schema mapping too — a
 column named in `baton.yaml` that does not exist is caught here rather than at
-2am inside a pipeline. Add `--offline` to skip the checks that need a network.
+2am inside a pipeline — and it checks that the profile does not expect Baton to
+call a model, since a profile naming an `llm.provider` is waiting for a call
+that never comes. Add `--offline` to skip the checks that need a network.
 
 Already have a database? Do **not** run the migration. Point `db.tables` and
 `db.fields` at your own names and let `baton doctor` confirm the mapping — see
@@ -432,9 +434,11 @@ baton calendar schedule tomorrow --text "17:00 Ada Whitfield
 ```
 
 **Reads fall over; writes never do.** With `db.fallback` set, a read served
-during an outage comes from the secondary store. A write does not: a write that
-lands only in a replica is a permanent divergence that nothing reconciles, so
-it fails loudly instead.
+during an outage comes from the secondary store, and says so on stderr — an
+answer that may be out of date should not look identical to a current one. A
+write does not fall over: a write that lands only in a replica is a permanent
+divergence that nothing reconciles, so it fails loudly instead. `baton doctor`
+reports the primary's health only, for the same reason.
 
 **"Latest" means the newest session that happened, never the highest number.**
 Sessions get skipped — illness, cancellations, pages created in advance — so
