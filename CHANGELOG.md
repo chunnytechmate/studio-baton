@@ -3,6 +3,87 @@
 Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects.
 
+## 0.7.0
+
+The 2026-08-29 logic audit, in the recovery direction: what to do when
+something has already gone out wrong, and the per-learner differences the
+database had been carrying with nothing reading them.
+
+### Upgrading
+
+- A learner with `has_instrument` false now gets the `goals` section renamed
+  on the page and in the parent's message — `summary.no_instrument.section`
+  and `.message_label`. **A profile that publishes in a language other than
+  the package default must set both**, or the section keeps its usual
+  wording; nothing substitutes English into a translated page. The older
+  `summary.no_instrument_at_home` still supplies the model instruction.
+- `summary.body.goals_not_practicable` is now applied only to learners who
+  have an instrument at home, and the phrases that ask for an attitude rather
+  than an action move to the new `summary.body.goals_attitude`, which applies
+  to everyone. A studio that customised the first list should split it the
+  same way; leaving it alone means those phrases stop being refused for
+  learners with nothing at home to practise on, which is the intended change.
+- `DocStore.get_status` takes `with_blocks` (default `True`, so existing
+  implementations keep working). Declining returns `block_count=None` rather
+  than `0`: zero decides whether a summary may be written onto a not-started
+  page, so an uncounted page must not report it.
+- `media.youtube.max_parallel_uploads` is removed; nothing read it.
+- `baton doctor` now fails a profile whose `llm.provider` names anything but
+  `none`. Baton has no model client, and a profile expecting one is waiting
+  for a call that never comes.
+
+### Lessons
+
+- `baton lesson unpublish` takes a published summary back off its page: the
+  blocks the publish recorded, then the session back to in progress, the
+  draft rewound to `summarised`, and the record removed so the lesson can be
+  published again. A recorded block whose text was edited by hand stops the
+  command (exit `3`) rather than being deleted anyway; a block no record
+  names is kept. Records written before block ids existed are attributed by
+  re-rendering the stored summary, and anything unaccounted for is reported
+  as ambiguous instead of guessed at. `--whole-page --force` is the explicit
+  recovery for a page that went to the wrong recipient. Nothing un-sends a
+  message that already went out, and the report says so.
+- `baton lesson stage-set --field titles|context|corrected_context` amends a
+  staged lesson without re-staging and losing what `stage` gathered. A
+  published draft refuses the amendment.
+- A publish now records the ids of the blocks it appended, which is what lets
+  `unpublish` name exactly what it owns.
+- Per-learner voice, completed: a studio's own prompt level reaches the model
+  through `summary.prompt_levels` (mapped by `db.fields.learner.prompt_level`),
+  and a level the profile does not describe adds nothing rather than being
+  guessed at — the same stance `tone` and `instrument` already took.
+
+### Sending
+
+- `baton send readiness --date DATE` lists who is booked that day and what
+  would still block each message, recomputed through the same `evaluate` the
+  send refuses through, so the report and the refusal cannot drift. It keeps
+  the layers apart: not yet published, no summary, and no video block are
+  three different fixes in a fixed order.
+- `baton send aftermath --date DATE` reports what the day left behind —
+  drafts that never reached publish, draft files whose learner no longer
+  exists, and published lessons with no send receipt. The receipt check
+  shares one key with `send lesson`, so a receipt written by one is found by
+  the other, and a miss is reported as the absence of evidence inside the
+  duplicate window rather than as proof nothing was sent.
+- Both reports exit `0` whatever they find, and both name whether the day's
+  roster came from the calendar or from the dates on the documents.
+
+### Correctness
+
+- `set_current_piece` no longer succeeds silently when it matched no row:
+  SQLite checks the row count and PostgREST asks for `return=representation`,
+  both raising `StateError`. `learner assign` printed "is now working on"
+  straight after a write that had done nothing.
+- The fake document store now tolerates deleting a block that is already
+  gone, as the real one always did — a resume path that production handles
+  was failing only in tests.
+- A read served by `db.fallback` says so on stderr. The flag recording it had
+  been set on every failover and read by nothing.
+- `get_status` no longer lists a whole page to count blocks for the six
+  callers that only wanted a status word or a date.
+
 ## 0.6.0
 
 Four items from the studio's 2026-08 production-issue list. Exit codes are
