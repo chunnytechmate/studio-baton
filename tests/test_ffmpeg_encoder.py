@@ -98,6 +98,11 @@ def _graph(args: list[str]) -> str:
     return args[args.index("-filter_complex") + 1]
 
 
+def _maps(args: list[str]) -> list[str]:
+    """The -map values in order — what ffmpeg will actually be told to keep."""
+    return [arg for i, arg in enumerate(args) if i and args[i - 1] == "-map"]
+
+
 def test_a_quarter_turn_is_applied_to_the_probed_size():
     """The failure this whole path exists for: ffprobe says 1920x1080, the
     display matrix says -90, and the filter graph gets 1080x1920."""
@@ -270,6 +275,23 @@ def test_a_single_clip_that_needs_work_gets_a_graph_not_a_dangling_map():
         + "[v0]"
     )
     assert args[args.index("-map") + 1] == "[v0]"
+    # The audio of a lone clip has no graph label, so it must be mapped as a
+    # stream specifier — a bracketed raw pad here is the whole bug (below).
+    assert _maps(args) == ["[v0]", "0:a:0"]
+
+
+def test_a_forced_frame_rate_on_a_lone_clip_maps_audio_as_a_stream_specifier():
+    """2026-08-29 (น้องณตุล): forcing media.encode.fps gave a lone, otherwise
+    uniform clip a video chain for the first time, and the audio map then
+    read `[0:a:0]` — which -map only accepts as a graph label, so ffmpeg
+    refused the command outright ("Output with label '0:a:0' does not exist
+    in any defined filter graph"). The unbracketed specifier beside a graph
+    output was verified against real ffmpeg 5.1.9 and 8.1.2 before landing.
+    """
+    args = ENCODER._args([CLIP], OUT, EncodeProfile(fps=60), [LANDSCAPE])
+
+    assert "fps=60" in _graph(args)
+    assert _maps(args) == ["[v0]", "0:a:0"]
 
 
 # --------------------------------------------------------------------------

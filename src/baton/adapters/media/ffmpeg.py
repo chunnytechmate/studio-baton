@@ -349,7 +349,23 @@ class FfmpegEncoder:
             args += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
         elif chains:
             graph = ";".join(chains)
-            args += ["-filter_complex", graph, "-map", video_labels[0], "-map", audio_labels[0]]
+            # A lone input's audio never earns a real label — there is nothing
+            # to reconcile it with — so what `_segment_chains` handed back is
+            # the raw input pad spelled `[0:a:0]`. Inside a filter graph that
+            # spelling means "audio stream 0 of input 0"; in `-map`, brackets
+            # mean "a label the graph defined", and no graph defines one
+            # called `0:a:0` — mapping it verbatim fails the whole command
+            # with "Output with label '0:a:0' does not exist in any defined
+            # filter graph". This is dormant until a lone clip grows a video
+            # chain (a forced fps, the 1080p profile, tone-mapping), which is
+            # exactly what media.encode.fps:60 did to every single-clip
+            # session on 2026-08-29. Unbracketed, `0:a:0` is a plain stream
+            # specifier, which -map accepts beside a graph output; verified
+            # against real ffmpeg 5.1.9 and 8.1.2.
+            audio_map = audio_labels[0]
+            if ":" in audio_map:  # a raw input pad like [0:a:0], not a label like [a0]
+                audio_map = audio_map[1:-1]
+            args += ["-filter_complex", graph, "-map", video_labels[0], "-map", audio_map]
 
         codec_args = _CODEC_ARGS.get(profile.codec)
         if codec_args is None:
