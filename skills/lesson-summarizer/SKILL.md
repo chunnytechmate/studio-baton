@@ -34,8 +34,8 @@ baton lesson stage-set "<name>" --field context --value "<fixed notes>" --json
 baton lesson unpublish "<name>" --dry-run --json   # then again without --dry-run
 ```
 
-`stage-set` amends `titles`, `context`, or `corrected_context` without
-re-staging; the summary itself is only ever accepted through `ingest`.
+`stage-set` amends `titles`, `context`, or `corrected_context`; the summary
+itself is only ever accepted through `ingest`.
 
 ## Writing the summary
 
@@ -58,7 +58,7 @@ fact stated in more than two of them is rejected with a pointer to the third.
 | `progress` | What is different from last time? |
 | `covered` | What was worked on? |
 | `focus` | What is still hard, and what will be done about it? |
-| `goals` | What should they practise at home? |
+| `goals` | What to practise at home — or, for a learner with no instrument there, what the next lesson works towards |
 
 `progress` is a change, not a rating: `before` and `after` — "needed the count
 called out" → "counts through unaided". Required once a lesson has a previous
@@ -73,9 +73,10 @@ Things the validator rejects by name:
 - **A goal nobody can practise at home.** What only the next lesson can do
   belongs in `focus`. Say what to practise, and how long or how many times.
 
-The last instruction in `contract` is written for *this* learner — their tone,
-and whether they own an instrument. Follow it over your own instincts about
-register: it comes from their record, not from the notes.
+The last instructions in `contract` are written for *this* learner — tone,
+instrument, prompt level, and whether they own one at home (which also renames
+the goals section). Follow them over your instincts about register: they come
+from that learner's record, not from the notes.
 
 ## Rules
 
@@ -90,9 +91,8 @@ close.** Re-run publish: it appends nothing the second time and only closes the
 session. Say that, rather than reporting the summary as lost.
 
 **Unpublish removes only what Baton can prove it wrote** — the blocks the
-publish recorded. It then sets the session back to in progress, rewinds the
-draft to `summarised`, and drops the record so the lesson can be published
-again. Show `--dry-run` first.
+publish recorded — then sets the session back to in progress, rewinds the draft
+to `summarised`, and drops the record. Show `--dry-run` first.
 
 **Exit 3 from unpublish means someone edited the page: nothing was removed.**
 `details.candidates` names each block, `edited` or `ambiguous`. Show them and

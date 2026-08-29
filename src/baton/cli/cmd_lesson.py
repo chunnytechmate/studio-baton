@@ -369,15 +369,62 @@ def _short_summary_rules(ctx: Context) -> dict[str, Any]:
     }
 
 
-def _body_rules(ctx: Context) -> dict[str, Any]:
-    """The document-body rules, as `validate_lesson_summary` takes them."""
+def _body_rules(ctx: Context, learner: Learner) -> dict[str, Any]:
+    """The document-body rules, as `validate_lesson_summary` takes them.
+
+    Learner-aware in one place only: the phrases that put a goal inside the
+    next lesson are refused for someone who can practise at home and accepted
+    for someone who cannot, because for them the next lesson is where the
+    goals honestly belong. The attitude phrases are refused either way —
+    nobody can tick off "be more open".
+    """
     rules = ctx.config.section("summary.body")
+    goals = [str(item) for item in rules.get("goals_attitude", [])]
+    if learner.has_instrument:
+        goals += [str(item) for item in rules.get("goals_not_practicable", [])]
     return {
         "max_repeats": int(rules.get("max_repeats", 2)),
         "vague_phrases": [str(item) for item in rules.get("vague_phrases", [])],
         "trait_language": [str(item) for item in rules.get("trait_language", [])],
-        "goals_not_practicable": [str(item) for item in rules.get("goals_not_practicable", [])],
+        "goals_not_practicable": goals,
     }
+
+
+def _no_instrument(ctx: Context, key: str) -> str:
+    """One piece of the no-instrument-at-home wording, from config.
+
+    ``instruction`` falls back to the older `summary.no_instrument_at_home`
+    key, which is what deployed profiles set before this block existed.
+    """
+    value = str(ctx.config.get(f"summary.no_instrument.{key}", "")).strip()
+    if not value and key == "instruction":
+        value = str(ctx.config.get("summary.no_instrument_at_home", "")).strip()
+    return value
+
+
+def _sections(ctx: Context, learner: Learner) -> dict[str, Any]:
+    """Section headings for this learner's page.
+
+    A learner with no instrument at home gets a different heading over
+    `goals`: calling it homework when there is nothing at home to do it on is
+    the heading contradicting the lesson underneath it.
+    """
+    sections = dict(ctx.config.get("summary.sections", {}) or {})
+    if not learner.has_instrument:
+        heading = _no_instrument(ctx, "section")
+        if heading:
+            sections["goals"] = heading
+    return sections
+
+
+def _message_labels(ctx: Context, learner: Learner) -> dict[str, Any]:
+    """Labels for the parent's message, with the same substitution."""
+    labels = dict(ctx.config.get("summary.short_summary.labels", {}) or {})
+    if not learner.has_instrument:
+        label = _no_instrument(ctx, "message_label")
+        if label:
+            labels["homework"] = label
+    return labels
 
 
 def _vocabulary(ctx: Context) -> list[str]:
@@ -414,10 +461,35 @@ def _voice(ctx: Context, learner: Learner) -> list[str]:
     if notation:
         lines.append(notation)
     if not learner.has_instrument:
-        without = str(ctx.config.get("summary.no_instrument_at_home", "")).strip()
+        without = _no_instrument(ctx, "instruction")
         if without:
             lines.append(without)
+        heading = _no_instrument(ctx, "section")
+        if heading:
+            # The model is told what the section it is filling will be called.
+            # Writing "practise at home" under a heading that says "next
+            # lesson" is the same contradiction from the other direction.
+            lines.append(f'The `goals` section is published under the heading "{heading}".')
+    level = _prompt_level(ctx, learner)
+    guidance = str(ctx.config.section("summary.prompt_levels").get(level, "")).strip()
+    if guidance:
+        lines.append(guidance)
     return lines
+
+
+def _prompt_level(ctx: Context, learner: Learner) -> str:
+    """This learner's prompt level, as the studio's own column spells it.
+
+    A studio-specific column, so it is read through `db.fields` like every
+    other one and comes back as text: the level is a key into
+    `summary.prompt_levels`, not a number anything does arithmetic on.
+    """
+    column = str(ctx.config.get("db.fields.learner.prompt_level", "prompt_level"))
+    raw = learner.raw or {}
+    value = raw.get(column, raw.get("prompt_level"))
+    if value is None or isinstance(value, bool):
+        return ""
+    return str(value).strip()
 
 
 def _footer(ctx: Context) -> Footer:
@@ -946,7 +1018,7 @@ def handle_contract(ctx: Context) -> Exit:
             "previous_session_summary": draft.previous_context,
         },
         "constraints": {
-            "body": _body_rules(ctx),
+            "body": _body_rules(ctx, learner),
             "short_summary": rules,
             "available_callout_ids": sorted(theory),
             "language": ctx.config.locale,
@@ -1007,7 +1079,7 @@ def handle_ingest(ctx: Context) -> Exit:
         # The first lesson of a course has nothing to compare against and is
         # not asked to invent a comparison; every lesson after it is.
         expect_progress=bool(draft.previous_context.strip()),
-        **_body_rules(ctx),
+        **_body_rules(ctx, learner),
         **_short_summary_rules(ctx),
     )
 
@@ -1052,7 +1124,7 @@ def handle_render(ctx: Context) -> Exit:
             remedy=f'Run `baton lesson contract "{learner.name}"`, then `ingest`.',
         )
 
-    sections = ctx.config.get("summary.sections", {})
+    sections = _sections(ctx, learner)
     theory = _theory(ctx)
 
     if ctx.args.format == "blocks":
@@ -1072,7 +1144,7 @@ def handle_render(ctx: Context) -> Exit:
         message = render.short_message(
             draft.summary,
             bullet=str(ctx.config.get("summary.short_summary.bullet", "•")),
-            labels=ctx.config.get("summary.short_summary.labels", {}),
+            labels=_message_labels(ctx, learner),
         )
         ctx.report.result({"message": message}, human=message)
         return Exit.OK
@@ -1262,7 +1334,7 @@ def handle_publish(ctx: Context) -> Exit:
     publisher = SummaryPublisher(
         open_docs(ctx.config),
         PreservePolicy.from_config(ctx.config.get("docs.preserve", [])),
-        sections=ctx.config.get("summary.sections", {}),
+        sections=_sections(ctx, learner),
         callout_icon=str(ctx.config.get("summary.callout_icon", "")),
         footer=_footer(ctx),
         timezone=ctx.config.timezone,
@@ -1358,7 +1430,7 @@ def handle_publish(ctx: Context) -> Exit:
     message = render.short_message(
         draft.summary,
         bullet=str(ctx.config.get("summary.short_summary.bullet", "•")),
-        labels=ctx.config.get("summary.short_summary.labels", {}),
+        labels=_message_labels(ctx, learner),
     )
     published_store.save(draft, short_message=message, doc_url=result.doc_url, blocks=result.blocks)
 

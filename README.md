@@ -266,12 +266,25 @@ referenced by an id that exists. A rejection is total: nothing is stored, and
 every violation comes back at once with a pointer to it.
 
 One studio voice still has to meet a six-year-old and an exam candidate
-differently, so a learner's `tone`, their `instrument`, and whether they own one
-at home are turned into wording and notation guidance and handed to the model
-for that learner alone — three columns that had existed since the first
-migration with nothing reading them. The lesson before is handed over in full
-rather than as the message a parent was sent about it, since that is what the
-progress section has to be measured against.
+differently, so a learner's `tone`, their `instrument`, whether they own one at
+home, and a studio's own per-learner prompt level (`summary.prompt_levels`,
+read through `db.fields.learner.prompt_level`) are turned into wording and
+notation guidance and handed to the model for that learner alone — columns that
+had existed since the first migration with nothing reading them. A value the
+profile does not describe adds nothing rather than being guessed at. The lesson
+before is handed over in full rather than as the message a parent was sent
+about it, since that is what the progress section has to be measured against.
+
+**A learner with no instrument at home is not given homework.** For them the
+`goals` section is renamed on the page and in the parent's message
+(`summary.no_instrument.section` and `.message_label`) to what the next lesson
+works towards, and the phrase list that refuses a goal belonging to the next
+lesson is not applied — for someone with nothing at home to practise on, the
+next lesson is where the goals honestly belong. The phrases that ask for an
+attitude rather than an action (`summary.body.goals_attitude`) are still
+refused for everyone: nobody can tick off "be more open". Before this, such a
+learner got a section headed "practice goals" and a message line labelled
+"practice", which is the heading contradicting the lesson underneath it.
 
 Spellings the studio cares about travel three ways, none of them a rewrite: a
 vocabulary pool (`summary.vocabulary`) rides the contract with an instruction

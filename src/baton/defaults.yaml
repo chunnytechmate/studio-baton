@@ -541,12 +541,39 @@ summary:
       voice (HH, SD, BD). Describe technique as ordinary sentences instead:
       no drawn arrows, which do not survive a monospace block.
 
-  # Added to the instructions when the learner has no instrument at home. A
-  # practice goal they cannot possibly do is the fastest way to teach a family
-  # that the goals are not meant seriously.
-  no_instrument_at_home: >-
-    This learner has no instrument at home. Every practice goal must work
-    without one — listening, counting, clapping, reading, singing a line back.
+  # What changes for a learner with no instrument at home (`has_instrument`
+  # false). A practice goal they cannot possibly do is the fastest way to teach
+  # a family that the goals are not meant seriously — and calling the section
+  # "homework" when there is nothing at home to do it on says the same thing
+  # from the heading down. So the section is renamed as well as reworded: for
+  # these learners `goals` is what the next lesson aims at, plus whatever can
+  # genuinely be done without an instrument.
+  #
+  # `section` replaces `summary.sections.goals` on the document and
+  # `message_label` replaces `short_summary.labels.homework` in the parent's
+  # message, for this learner only. Blank either one to keep the usual wording.
+  no_instrument:
+    instruction: >-
+      This learner has no instrument at home. Do not ask for practice that
+      needs one. Write `goals` as what the next lesson will work towards,
+      together with anything that can be done without an instrument —
+      listening, counting, clapping, reading, singing a line back.
+    section: Goals for next lesson
+    message_label: Next lesson
+
+  # The instruction as it was named before `no_instrument` existed. Still read
+  # when `no_instrument.instruction` is blank, so a profile that set this keeps
+  # working unchanged.
+  no_instrument_at_home: ""
+
+  # How to write for one learner rather than for all of them, part two: a
+  # studio that keeps a per-learner prompt level in its own column maps it
+  # through `db.fields.learner.prompt_level` and gives each level a line here.
+  # Keyed by the value as written (`1`, `2`, …). Empty by default, and a level
+  # with no entry adds nothing — the same stance as `tones`: a studio that
+  # invented a scale has not yet said what its numbers mean, and a guess would
+  # be this tool inventing a teaching voice for someone else's studio.
+  prompt_levels: {}
 
   # The spellings the studio has settled on: a piece title, a term, a name as
   # the family writes it. Three layers, in order of softness — the pool is
@@ -613,14 +640,23 @@ summary:
     # as the checklist a family works through between lessons: anything that
     # can only happen in the next lesson, or that asks for an attitude rather
     # than an action, cannot be ticked off.
+    # Phrases that put the goal inside the next lesson, where the family
+    # cannot act on it. Applied only to a learner who has an instrument at
+    # home: for one who does not, the next lesson is exactly where the goals
+    # belong, and this list would reject the only honest thing to write.
     goals_not_practicable:
       - คาบถัดไป
       - คาบหน้า
       - ในคาบ
-      - เปิดใจ
-      - พยายามให้มากขึ้น
       - next lesson
       - in class
+
+    # Phrases that ask for an attitude rather than an action. Nobody can tick
+    # off "be more open", instrument at home or not, so these are refused for
+    # every learner.
+    goals_attitude:
+      - เปิดใจ
+      - พยายามให้มากขึ้น
       - try harder
       - be more
 
