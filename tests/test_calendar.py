@@ -702,10 +702,10 @@ def test_one_unreadable_page_does_not_take_the_report_down():
     that learner's line, not the end of the morning check."""
 
     class OneBadPage(FakeDocStore):
-        def get_status(self, doc_id):
+        def get_status(self, doc_id, *, with_blocks=True):
             if doc_id == "doc-9":
                 raise UpstreamError("page is gone", service="notion")
-            return super().get_status(doc_id)
+            return super().get_status(doc_id, with_blocks=with_blocks)
 
     calendar = FakeCalendar(
         [

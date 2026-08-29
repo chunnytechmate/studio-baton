@@ -25,7 +25,14 @@ class DocStatus:
     status: str = ""
     date: str = ""
     titles: str = ""
-    block_count: int = 0
+    block_count: int | None = 0
+    """How many blocks are on the page — ``None`` when nobody counted.
+
+    Counting means listing the page, which is a request the caller pays for,
+    so `get_status(with_blocks=False)` skips it and says so here rather than
+    reporting a zero that reads as "the page is empty".
+    """
+
     url: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -265,8 +272,13 @@ class TableRow:
 class DocStore(Protocol):
     """Read and update session documents."""
 
-    def get_status(self, doc_id: str) -> DocStatus:
-        """Status, date, titles, and block count for one document."""
+    def get_status(self, doc_id: str, *, with_blocks: bool = True) -> DocStatus:
+        """Status, date, titles, and (unless declined) block count.
+
+        Counting the blocks means listing the page — a second request, and one
+        more again per hundred blocks. Callers that only want the status word
+        or the date pass ``with_blocks=False`` and get ``block_count=None``.
+        """
         ...
 
     def get_page(self, doc_id: str) -> DocPage:

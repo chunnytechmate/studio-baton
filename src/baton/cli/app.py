@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any, NoReturn
 
 from .. import __version__
+from ..adapters.db.fallback import degradation_notices
 from ..core import config as config_module
 from ..core.i18n import Translator, translator
 from ..core.output import Reporter, format_error
@@ -391,7 +392,7 @@ def run(argv: Sequence[str] | None = None) -> int:
     context = Context(args=args, report=report)
 
     try:
-        with _terminate_as_exception():
+        with _terminate_as_exception(), degradation_notices(report.warn):
             return int(handler(context))
     except BatonError as err:
         payload = err.to_dict()

@@ -210,7 +210,7 @@ class NotionDocStore:
             return str(value)
         return ""
 
-    def get_status(self, doc_id: str) -> DocStatus:
+    def get_status(self, doc_id: str, *, with_blocks: bool = True) -> DocStatus:
         page = self._request("GET", f"/pages/{doc_id}")
         properties = page.get("properties", {}) or {}
 
@@ -220,13 +220,17 @@ class NotionDocStore:
                 return ""
             return self._read_property(properties[name])
 
-        blocks = self.list_blocks(doc_id)
+        # Listing the page is a request of its own, and one more per hundred
+        # blocks after that. Every caller used to pay it, including the ones
+        # that wanted a single status word — which, over a day's roster, is
+        # twice the calls for a number nobody read.
+        blocks = self.list_blocks(doc_id) if with_blocks else None
         return DocStatus(
             doc_id=doc_id,
             status=read("status"),
             date=read("date"),
             titles=read("titles"),
-            block_count=len(blocks),
+            block_count=len(blocks) if blocks is not None else None,
             url=str(page.get("url", "")),
         )
 

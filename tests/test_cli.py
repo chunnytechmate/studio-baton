@@ -100,6 +100,24 @@ def test_doctor_json_lists_every_check(profile, monkeypatch, capsys):
     assert all("name" in check for check in payload["checks"])
 
 
+def test_doctor_refuses_a_profile_that_expects_baton_to_call_a_model(profile, monkeypatch, capsys):
+    """`llm.provider` is a claim about the design, not a setting that selects
+    anything — there is no client to select. A profile that names a provider
+    is waiting for a call that never comes, and finding that out at the first
+    missing summary is worse than being told at setup."""
+    monkeypatch.setenv("NOTION_API_TOKEN", "t")
+    monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
+    monkeypatch.setenv("BATON__LLM__PROVIDER", "openai")
+
+    code = run(["--profile", str(profile), "--json", "doctor", "--offline"])
+
+    assert code == Exit.CONFIG
+    payload = json.loads(capsys.readouterr().out)
+    failed = [check for check in payload["checks"] if not check["passed"]]
+    assert [check["detail"] for check in failed] == ["openai"]
+    assert "lesson ingest" in failed[0]["remedy"]
+
+
 def test_doctor_checks_the_schema_mapping_without_a_network(profile, monkeypatch, capsys):
     """The most common misconfiguration — a column that does not exist — is
     caught offline, so it can be checked on a laptop before a deploy."""

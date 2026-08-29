@@ -59,7 +59,12 @@ class SessionView:
 
     @property
     def is_empty(self) -> bool:
-        """Whether the document has no content on it yet."""
+        """Whether the document has no content on it yet.
+
+        A count nobody took (``None``) is not emptiness: this decides whether
+        a not-started page is free to write a summary onto, and answering
+        "empty" for a page nobody looked at is how a draft gets overwritten.
+        """
         return self.doc.block_count == 0
 
     def to_dict(self, vocabulary: StatusVocabulary) -> dict[str, Any]:

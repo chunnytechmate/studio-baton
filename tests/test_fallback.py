@@ -7,9 +7,11 @@ to a replica is two stores that disagree forever with nothing to reconcile them.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from baton.adapters.db.fallback import FallbackStore
+from baton.adapters.db.fallback import FallbackStore, degradation_notices
 from baton.adapters.fakes import FakeLearnerStore
 from baton.domain.models import Learner, Piece, Session, Work
 from baton.errors import ConfigError, UpstreamError
@@ -147,3 +149,54 @@ def test_close_releases_both_stores(pair):
     store.close()
 
     assert primary.closed and secondary.closed
+
+
+def test_a_failover_says_so_where_the_operator_can_see_it(pair):
+    """The flag existed and nothing read it, so an answer served from the
+    replica looked exactly like a current one. The CLI lends the store a way
+    to speak for the length of a command; this is the store's half."""
+    primary, _, store = pair
+    primary.fail_with = UpstreamError("down", service="supabase")
+    said: list[str] = []
+
+    with degradation_notices(said.append):
+        store.list_learners()
+        store.list_learners()
+
+    # Once per store, not once per read: a fan-out would otherwise bury the
+    # command's own output under one identical line per row.
+    assert len(said) == 1
+    assert "db.fallback" in said[0]
+
+
+def test_notices_stop_at_the_end_of_the_command(pair):
+    """The hook is scoped, so a later command cannot inherit the previous
+    one's reporter and write to a stream nobody is reading."""
+    primary, _, store = pair
+    primary.fail_with = UpstreamError("down", service="supabase")
+    said: list[str] = []
+
+    with degradation_notices(said.append):
+        pass
+    store.list_learners()
+
+    assert said == []
+    assert store.degraded is True
+
+
+def test_a_degraded_read_reaches_stderr_through_the_cli(profile, monkeypatch, capsys):
+    """The wiring itself: `run` installs the reporter's warn for the length of
+    one command, so the notice lands on stderr while `--json` stdout stays a
+    single parseable document."""
+    from baton.cli.app import run
+
+    primary = FakeLearnerStore(learners=list(PRIMARY_PEOPLE))
+    primary.fail_with = UpstreamError("down", service="supabase")
+    store = FallbackStore(primary, FakeLearnerStore(learners=list(REPLICA_PEOPLE)))
+    monkeypatch.setattr("baton.cli.cmd_learner.open_store", lambda _config: store)
+
+    assert run(["--profile", str(profile), "--json", "learner", "list"]) == 0
+    captured = capsys.readouterr()
+
+    assert "db.fallback" in captured.err
+    assert json.loads(captured.out)["count"] == 2

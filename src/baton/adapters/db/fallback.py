@@ -16,12 +16,39 @@ a second store just produces the same error twice and hides the real cause.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from typing import Any
 
 from ...domain.models import Learner, Piece, Session, Work
 from ...errors import UpstreamError
 from .base import LearnerStore
+
+_notify: Callable[[str], None] | None = None
+
+NOTICE = (
+    "Answered from `db.fallback`: the primary store is unreachable, so this "
+    "may be out of date. Writes are still refused until it is back."
+)
+
+
+@contextmanager
+def degradation_notices(notify: Callable[[str], None]) -> Iterator[None]:
+    """Route "this came from the replica" notices somewhere for one command.
+
+    The store cannot print — an adapter that writes to a stream is an adapter
+    that cannot be used from anything but a terminal — and the flag it sets
+    instead was read by nothing for as long as it existed. So the CLI lends it
+    a way to speak for the length of one command, and a read served by the
+    secondary says so on stderr while the operator is still looking at it.
+    """
+    global _notify
+    previous = _notify
+    _notify = notify
+    try:
+        yield
+    finally:
+        _notify = previous
 
 
 class FallbackStore:
@@ -32,9 +59,8 @@ class FallbackStore:
     def __init__(self, primary: LearnerStore, secondary: LearnerStore) -> None:
         self.primary = primary
         self.secondary = secondary
-        #: Set once a read has been served by the secondary, so callers (and
-        #: `doctor`) can say the data may be stale rather than implying it is
-        #: current.
+        #: Set once a read has been served by the secondary, so callers can
+        #: say the data may be stale rather than implying it is current.
         self.degraded = False
 
     def _read(self, method: str, *args: Any) -> Any:
@@ -42,7 +68,13 @@ class FallbackStore:
             return getattr(self.primary, method)(*args)
         except UpstreamError:
             result = getattr(self.secondary, method)(*args)
-            self.degraded = True
+            if not self.degraded:
+                # Once per store, not once per read: a listing that fans out
+                # into a read per learner would otherwise bury the command's
+                # own output under one identical line per row.
+                self.degraded = True
+                if _notify is not None:
+                    _notify(NOTICE)
             return result
 
     def _write(self, method: str, *args: Any) -> Any:

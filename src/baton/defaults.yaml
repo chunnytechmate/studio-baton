@@ -308,7 +308,6 @@ media:
     # Per upload chunk, not per video: an 8 MB chunk that has not moved in five
     # minutes is a stalled connection, not a slow one.
     timeout_seconds: 300
-    max_parallel_uploads: 3
   encode:
     driver: ffmpeg
     binary: ffmpeg
@@ -461,6 +460,12 @@ llm:
   # Baton does not call a model. Summaries are written by whichever agent is
   # driving the CLI and submitted as JSON validated against a schema. Leaving
   # this as "none" is what lets a local model of any size drive Baton safely.
+  #
+  # Nothing in the code reads this to decide anything — there is no client to
+  # select. It is a claim about the design, and `baton doctor` checks it: a
+  # profile that names a provider is a profile expecting Baton to call one,
+  # which it will never do, and finding that out at the first missing summary
+  # is worse than being told at setup.
   provider: none
 
 summary:

@@ -234,7 +234,7 @@ def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
     if not doc_id:
         return "", ""
     try:
-        status = docs.get_status(doc_id)
+        status = docs.get_status(doc_id, with_blocks=False)
     except BatonError:
         return "", ""
     return status.date, status.titles

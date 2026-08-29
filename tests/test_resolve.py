@@ -103,12 +103,19 @@ def test_gate_always_maps_to_the_needs_human_exit_code():
 
 def test_thai_combining_marks_normalise_before_comparison():
     """The same visible name can arrive as different code points depending on
-    the keyboard; without NFC folding an exact match becomes an ambiguity."""
-    decomposed = "น้อง"  # NFC already
-    people = [Learner(id="9", name=decomposed)]
+    the keyboard; without NFC folding an exact match becomes an ambiguity.
 
-    assert resolve_learner(decomposed, people).id == "9"
-    assert normalise(decomposed) == normalise(decomposed)
+    Thai stacks a vowel below and a tone mark above the same base letter, and
+    the two can be typed in either order. They look identical on screen and
+    compare unequal as strings — which is a name resolving on one keyboard and
+    raising an ambiguity prompt on another.
+    """
+    stored = "ปุ่ม"  # vowel below, then tone mark: canonical order
+    typed = "ปุ่ม"  # tone mark first, as another keyboard sends it
+
+    assert typed != stored, "the two spellings must really differ, or this proves nothing"
+    assert normalise(typed) == normalise(stored)
+    assert resolve_learner(typed, [Learner(id="9", name=stored)]).id == "9"
 
 
 # -- the booking relaxation --------------------------------------------------

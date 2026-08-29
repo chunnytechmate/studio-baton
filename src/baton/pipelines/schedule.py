@@ -296,7 +296,9 @@ class Scheduler:
         # up as a sharing problem.
         current = ""
         if session.doc_id:
-            current = self.vocabulary.canonical(self.docs.get_status(session.doc_id).status)
+            current = self.vocabulary.canonical(
+                self.docs.get_status(session.doc_id, with_blocks=False).status
+            )
         if current == DONE:
             raise GateError(
                 f"{learner.name}'s {self.session_label} {session.number} is already done.",
@@ -399,7 +401,7 @@ class Scheduler:
                 )
                 continue
             try:
-                doc = self.docs.get_status(session.doc_id)
+                doc = self.docs.get_status(session.doc_id, with_blocks=False)
             except BatonError as exc:
                 unreadable.append({"learner": learner.name, "number": number, "why": exc.message})
                 continue

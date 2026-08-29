@@ -227,3 +227,32 @@ def test_deleting_a_block_that_is_already_gone_counts_as_deleted(monkeypatch):
     monkeypatch.setattr(notion_module, "http_request", gone)
 
     assert store.delete_blocks(["b1", "b2"]) == 2
+
+
+def test_a_status_read_can_decline_to_count_the_blocks(monkeypatch):
+    """Counting means listing the page — a request of its own, and one more
+    per hundred blocks. Every caller used to pay it, including the ones that
+    wanted a single status word."""
+    import baton.adapters.docs.notion as notion_module
+
+    store = NotionDocStore(token="t", properties={})
+    paths: list[str] = []
+
+    def record(_method, url, **_kwargs):
+        paths.append(url)
+        if "/children" in url:
+            return _Reply(200, {"results": [], "has_more": False})
+        return _Reply(200, {"properties": {}, "url": "https://notion.invalid/p"})
+
+    monkeypatch.setattr(notion_module, "http_request", record)
+
+    lean = store.get_status("abc123", with_blocks=False)
+    assert len(paths) == 1
+    # Not zero: nobody looked, and a zero here reads as "the page is empty",
+    # which is what decides whether a summary may be written onto it.
+    assert lean.block_count is None
+
+    paths.clear()
+    full = store.get_status("abc123")
+    assert len(paths) == 2
+    assert full.block_count == 0

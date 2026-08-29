@@ -304,6 +304,19 @@ def handle(ctx: Context) -> Exit:
             remedy="Grant write access, or point BATON_STATE_DIR somewhere writable.",
         )
 
+    # A claim about the design rather than a setting: there is no client to
+    # select, so a profile naming a provider is a profile waiting for a call
+    # that never comes. Better said here than discovered at the first summary.
+    provider = str(config.get("llm.provider", "none")).strip().lower()
+    report.add(
+        t("doctor.check.llm"),
+        passed=provider in ("", "none"),
+        detail=provider or "none",
+        remedy="Baton has no model client: summaries are written by whichever "
+        "agent drives the CLI and submitted through `lesson ingest`. Set "
+        "`llm.provider: none`.",
+    )
+
     db_driver = _check_driver(ctx, report, t, "db.driver", KNOWN_DB_DRIVERS, "database")
     doc_driver = _check_driver(ctx, report, t, "docs.driver", KNOWN_DOC_DRIVERS, "documents")
     chat_driver = _check_driver(ctx, report, t, "chat.driver", KNOWN_CHAT_DRIVERS, "chat")

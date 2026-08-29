@@ -281,7 +281,7 @@ class FakeDocStore:
         if self.fail_with is not None:
             raise self.fail_with
 
-    def get_status(self, doc_id: str) -> DocStatus:
+    def get_status(self, doc_id: str, *, with_blocks: bool = True) -> DocStatus:
         self._check()
         current = self.statuses.get(doc_id, DocStatus(doc_id=doc_id))
         return DocStatus(
@@ -289,7 +289,10 @@ class FakeDocStore:
             status=current.status,
             date=current.date,
             titles=current.titles,
-            block_count=len(self.blocks.get(doc_id, [])),
+            # `None` when declined, exactly as the real store answers: a fake
+            # that counted anyway would hide a caller reading a count it never
+            # asked for.
+            block_count=len(self.blocks.get(doc_id, [])) if with_blocks else None,
             url=current.url,
         )
 

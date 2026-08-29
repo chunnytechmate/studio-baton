@@ -584,7 +584,7 @@ def _update_youtube_description(
 
     date = ""
     with contextlib.suppress(BatonError):  # cosmetic; the description renders without it
-        date = docs.get_status(doc_id).date
+        date = docs.get_status(doc_id, with_blocks=False).date
 
     description = render_youtube.format_description(
         draft.summary or {},

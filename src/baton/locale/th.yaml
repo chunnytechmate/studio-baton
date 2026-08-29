@@ -12,6 +12,7 @@ doctor.check.timezone: "เขตเวลาเป็นชื่อ IANA ท�
 doctor.check.state_dir: "เขียนไดเรกทอรี state ได้"
 doctor.check.secret: "ตั้งค่า {env} แล้ว"
 doctor.check.driver: "ไดรเวอร์ {kind} ชื่อ `{driver}` รู้จัก"
+doctor.check.llm: "ไม่มีการตั้งให้ baton เรียกโมเดลเอง"
 
 config.effective: "การตั้งค่าที่ใช้จริง"
 config.source: "โหลดจาก {path}"

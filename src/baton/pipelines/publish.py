@@ -201,7 +201,8 @@ class SummaryPublisher:
             known = {block.id for block in existing}
             created = [block for block in after if block.id not in known]
 
-        status = self.docs.get_status(doc_id)
+        # The URL only; the page was just listed above where it mattered.
+        status = self.docs.get_status(doc_id, with_blocks=False)
         return PublishResult(
             doc_id=doc_id,
             appended=len(blocks),
@@ -231,7 +232,7 @@ class SummaryPublisher:
         Returns:
             The properties actually written, keyed as in ``docs.properties``.
         """
-        current = self.docs.get_status(doc_id)
+        current = self.docs.get_status(doc_id, with_blocks=False)
         values = {"status": DONE}
         if date and not current.date:
             values["date"] = date
