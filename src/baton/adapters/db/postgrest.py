@@ -20,7 +20,7 @@ from urllib.parse import quote
 from ...core.config import Config
 from ...core.retry import http_request
 from ...domain.models import Learner, Piece, Session, Work
-from ...errors import ConfigError, UpstreamError
+from ...errors import ConfigError, StateError, UpstreamError
 from .base import FieldMap
 from .mapping import Schema
 
@@ -203,13 +203,23 @@ class PostgrestStore:
                 "This profile does not map a current piece column.",
                 remedy="Add db.fields.learner.current_piece_id to baton.yaml.",
             )
-        self._request(
+        updated = self._request(
             "PATCH",
             fields.table,
             params=f"{fields.column('id')}=eq.{quote(str(learner_id))}",
             json_body={fields.column("current_piece_id"): piece_id},
-            prefer="return=minimal",
+            prefer="return=representation",
         )
+        # Representation rather than minimal for the same reason `update_piece`
+        # asks for it: PostgREST answers 200 with an empty array when the
+        # filter matched nothing, and `learner assign` would report a change
+        # that was never written.
+        rows = updated if isinstance(updated, list) else [updated]
+        if not rows:
+            raise StateError(
+                f"No learner with id {learner_id}; the assignment was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
 
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         fields = self.schema.learners

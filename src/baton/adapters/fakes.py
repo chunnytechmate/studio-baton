@@ -17,7 +17,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..domain.models import Learner, Piece, Session, Work
-from ..errors import ConfigError, UpstreamError
+from ..errors import ConfigError, StateError
 from .db.base import LearnerStore
 from .docs.base import Block, DocChild, DocPage, DocStatus, PreservePolicy, TableRow
 
@@ -72,7 +72,13 @@ class FakeLearnerStore:
                     raw=learner.raw,
                 )
                 return
-        raise ConfigError(f"No learner with id {learner_id}.")
+        # The same refusal the real stores make: a write that matched no row
+        # is not a success, and `learner assign` printed "is now working on"
+        # over one for as long as this was silent anywhere.
+        raise StateError(
+            f"No learner with id {learner_id}; the assignment was not written.",
+            remedy="Re-read the learner (`baton learner list`) and try again.",
+        )
 
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         self._check()
@@ -227,6 +233,8 @@ class FakeDocStore:
         self.fail_on_properties = False
         """Fail property writes only. Appending a summary and finishing the
         session are separate requests, and only the second one is retryable."""
+        self.deleted_missing: list[str] = []
+        """Ids the last `delete_blocks` was asked for that were already gone."""
 
     # -- filing ------------------------------------------------------------
 
@@ -359,13 +367,20 @@ class FakeDocStore:
         return status
 
     def delete_blocks(self, block_ids: list[str]) -> int:
+        """Delete, tolerating ids that are already gone — as Notion does.
+
+        The real store treats a 404 on a block delete as the outcome the
+        delete wanted: a publish that died mid-delete, or a person who removed
+        the block by hand, must not wedge the re-run. This fake used to raise
+        instead, which meant a resume path could pass every test here and
+        still be the one production behaviour nobody had exercised.
+
+        Unknown ids are recorded in `deleted_missing` so a test can assert the
+        tolerance rather than merely benefit from it.
+        """
         self._check()
         known = {block.id for blocks in self.blocks.values() for block in blocks}
-        unknown = [block_id for block_id in block_ids if block_id not in known]
-        if unknown:
-            raise UpstreamError(
-                f"Cannot delete unknown block(s): {', '.join(unknown)}", service="fake"
-            )
+        self.deleted_missing = [block_id for block_id in block_ids if block_id not in known]
         removing = set(block_ids)
         for doc_id, blocks in self.blocks.items():
             self.blocks[doc_id] = [block for block in blocks if block.id not in removing]

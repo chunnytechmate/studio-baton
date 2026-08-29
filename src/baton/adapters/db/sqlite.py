@@ -20,7 +20,7 @@ from typing import Any
 
 from ...core.config import Config
 from ...domain.models import Learner, Piece, Session, Work
-from ...errors import ConfigError, UpstreamError
+from ...errors import ConfigError, StateError, UpstreamError
 from .base import FieldMap
 from .mapping import Schema
 
@@ -238,7 +238,16 @@ class SqliteStore:
             f"UPDATE {fields.table} SET {fields.column('current_piece_id')} = ? "  # noqa: S608
             f"WHERE {fields.column('id')} = ?"
         )
-        self._write(sql, (piece_id, learner_id))
+        cursor = self._write(sql, (piece_id, learner_id))
+        # An UPDATE that matched nothing is a silent success — the same shape
+        # of bug `update_piece` already guards against on the PostgREST side.
+        # `learner assign` reports "is now working on" straight after this
+        # returns, so a no-op here reads to the teacher as a completed change.
+        if cursor.rowcount == 0:
+            raise StateError(
+                f"No learner with id {learner_id}; the assignment was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
 
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         fields = self.schema.learners
