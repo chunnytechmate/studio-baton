@@ -562,6 +562,19 @@ evening of encoding does not stop the day's messages. Read-only commands and
 as a Claude Code session and an OpenClaw container do: neither knows the other
 exists, and exit `8` is how they find out.
 
+**Baton never notifies anyone, and that is deliberate.** It is pull-based: a
+command runs, prints one document, and exits. It has no way to push a message
+into a chat when a long job finishes, and adding one would put a notification
+channel — with its own credentials, retries, and failure modes — inside a tool
+whose whole point is that it is scriptable and side-effect-free until asked.
+Knowing when a job finished is the caller's job. `baton job wait` blocks for as
+long as the caller can afford, exits with the job's own code, and exit `8` means
+it is still going. An agent harness that cannot block that long wraps the wait
+in whatever it uses to schedule work and reports the result itself — the studio
+this was built for wraps `baton job wait <id>` in an on-exit cron entry under
+its gateway supervisor, which wakes the agent with the exit code when the job
+ends. So: do not wait on Baton to tell you something. Ask it.
+
 **A message is not sent twice.** Every delivery leaves a receipt — a digest, not
 the message — and an identical send inside the next 12 hours is refused with
 exit `5` naming the time of the first. This is aimed squarely at what a harness

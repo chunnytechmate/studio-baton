@@ -28,6 +28,14 @@ baton video resume --detach --json      # continue whatever did not finish
 
 ## Rules
 
+**Baton will not tell you when it finishes.** It is pull-based by design and has
+no way to push into a conversation, so a run that outlives your turn has to be
+checked on, never waited for. Report the job id, then either wait in short turns
+(`baton job wait <id> --timeout 90`) or schedule the wait outside the turn — an
+on-exit cron entry wrapping `baton job wait <id>` wakes the agent with the exit
+code when the job ends. Never leave a `job wait` running in the background of a
+turn: the turn's process group goes away with the turn and nothing wakes up.
+
 **Always `--detach`.** A foreground run outlives no session. Report the job id
 and the two follow-up commands to the user.
 
