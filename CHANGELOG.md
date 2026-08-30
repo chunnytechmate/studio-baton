@@ -1,7 +1,49 @@
 # Changelog
 
 Notable changes per release. Anything that changes what a studio has to do is
-under **Upgrading**; the rest is grouped by what it affects.
+under **Upgrading**; the rest is grouped by what it affects. Every release back
+to 0.1.0 has an entry, and every tag carries a GitHub release.
+
+## 1.0.0
+
+The version the project was working towards: the whole cycle — booking,
+video, summaries, delivery — has now run end to end on real teaching days, so
+the package declares itself production/stable instead of alpha.
+
+### Upgrading
+
+- `baton send lesson` no longer refuses outright when a session has no
+  recording link: it stops with exit 3 and asks a person, and
+  `--without-video` — that person's confirmed answer — sends the message with
+  no video section. An agent or script that treated exit 5 as the only
+  outcome for a missing `video_link` should now expect exit 3 carrying
+  `candidates`. Every other required field keeps the hard, unoverridable
+  block, and a session that does have a recording keeps it, flag or no flag.
+- `media.encode.fps` is now safe to set on every session shape. On 0.7.0 and
+  earlier it broke the encode of a single-clip session (below), so studios
+  hitting "Too many packets buffered for output stream 0:0" on VFR iPhone
+  clips had to leave it unset; they may now set `media.encode.fps: 60`.
+
+### Video
+
+- A session with one clip no longer fails its encode when a video filter
+  chain is in play: the lone clip's audio is mapped as a stream specifier
+  (`0:a`), not as a filter-complex label — which is what `media.encode.fps`
+  used to trip over.
+
+### Sends
+
+- A lesson that was never filmed is a decision, not a data gap. `send
+  lesson` and `send batch` stop on exit 3 carrying the two real choices
+  (send now with no video section, or put the recording on the document
+  first); `--without-video` delivers the confirmed answer, applied the same
+  way a studio relaxes its own gate in config, so the result still warns
+  about the gap it sent without.
+
+### Packaging
+
+- The trove classifier moves from `Development Status :: 3 - Alpha` to
+  `:: 5 - Production/Stable`.
 
 ## 0.7.0
 
@@ -254,9 +296,102 @@ page published before this release lacks the heading, and prep is fail-closed.
   song's title. `--dry-run` shows the plan. Note that the replaced section is
   appended, so it moves to the end of the page.
 
-## 0.4.1 and earlier
+## 0.4.1 (2026-08-27)
 
-Not recorded here; see the git history. The audit of what the move from the
-studio's previous scripts left behind lived in `docs/migration-audit.md` until
-0.4.2 — its fourteen fixed findings are explained in the code they changed, and
-its six open ones are issues #74-#79.
+Carries the 308 fix: a resumable YouTube upload's HTTP 308 is a success
+shape, not a redirect to follow. The release itself taught two things the
+repo kept — `pyproject.toml`'s version is static, so it must be bumped before
+the tag is minted or PyPI refuses the wheel as the previous version; and the
+documented pytest command must collect the whole suite.
+
+## 0.4.0 (2026-08-27)
+
+- Two publishes inside one second now order by session number, not by
+  whichever the filesystem's glob yielded first — `send lesson` with no
+  `--session` asks for the latest record, and the arbitrary winner could
+  send last week's message to this week's family.
+- Harness-compatibility gaps HR1–HR8 closed.
+
+## 0.3.5 (2026-08-27)
+
+- `send video`, `learner add-work`, and send readiness/aftermath's ancestor
+  (findings F13, F17, F20 from the migration audit).
+- `send` recognises bookmarked recordings and links the lesson page (F16,
+  F18); `lesson publish` retries the YouTube description it owes (F5); F6,
+  F7, F10, and F15 closed.
+
+## 0.3.1 (2026-08-27)
+
+- The practice track belongs to the lesson, not to today (#29): the piece is
+  snapshotted when the lesson is staged, so a summary published Monday and
+  sent Friday carries Monday's track.
+- Mixed-orientation encodes, calendar retries, and the AI footer.
+
+## 0.3.0 (2026-08-27)
+
+The migration-audit release: the audit of what the move from the studio's
+previous scripts left behind lived in `docs/migration-audit.md` until 0.4.2 —
+its fourteen fixed findings are explained in the code they changed, and its
+six open ones are issues #74-#79. This release landed the audit lanes for
+prep, notes, LINE send, video, calendar, lesson, and retired skills.
+
+## 0.2.7 (2026-08-23)
+
+A GPU encoder option: `media.encode.codec: h264_nvenc` moves the final
+encode to NVIDIA NVENC. Decode and the concat filter stay on CPU — clips
+come from phones and rarely share a codec or resolution.
+
+## 0.2.6 (2026-08-23)
+
+`baton lesson publish` updates the YouTube description, refusing to touch a
+video the configured account does not own (a real incident, 2026-08-09: a
+page's YouTube link pointed at an unrelated channel's tutorial).
+
+## 0.2.5 (2026-08-23)
+
+Three fixes found chasing a real report of a learner's video missing from a
+`baton video` run: `_slug()` collapsed any non-ASCII (Thai) name to
+"unknown", so such learners' job records aliased onto one file and a second
+run silently inherited the first's completed state; two Drive clips sharing
+a filename clobbered each other on disk before combining; and the lesson
+message was recomposed to match the studio's existing LINE format after a
+side-by-side comparison showed parents would notice the difference.
+
+## 0.2.4 (2026-08-23)
+
+Google credentials no longer rewrite the scopes of an authorized-user
+refresh token — replacing them can make Google reject a valid token with
+`invalid_scope` before any API call is attempted.
+
+## 0.2.3 (2026-08-22)
+
+- Google-backed media services read their credentials from one place:
+  `media.google.credentials_file`, or the shared `*_env` trio, so Drive and
+  YouTube no longer have to be configured separately.
+- An argparse parse failure is raised as a typed error so the CLI keeps its
+  exit-code and JSON envelope contract on a bad invocation, instead of
+  argparse's own exit path; vendor exceptions from Google calls get the same
+  treatment.
+
+## 0.2.2 (2026-08-22)
+
+- A refusal still reports `ok: false` with its JSON envelope; publishing
+  finishes the session it wrote; a fence tag Notion does not know no longer
+  costs the page.
+- Docs: `learner latest` returns the page as sections, so "what did we do
+  last time" needs no second command.
+
+## 0.2.1 (2026-08-22)
+
+`baton prep` (the day's lesson briefing, behind a hard gate) and `baton
+course` (archive a finished course before emptying it — clear refuses an
+unarchived course). Docs explain Baton's lineage and working cycle; the
+call-graph extractor the published diagram is drawn from ships.
+
+## 0.1.0 (2026-08-18)
+
+First public release: learners, lesson summaries, messaging, video, and
+calendar behind one fail-closed CLI. The release run caught that a
+mis-scoped `include` in `pyproject.toml` produced a wheel of data files with
+no Python in it — nothing was published, and the wheel check that caught it
+now runs on every release.

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "studio-baton"
-version = "0.7.0"
+version = "1.0.0"
 description = "Scripted, fail-closed operations toolkit for one-to-one teaching studios: learners, lesson summaries, messaging, video, and calendar."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "Studio Baton contributors" }]
 keywords = ["teaching", "notion", "pipeline", "cli", "agent-skills"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Education",
   "License :: OSI Approved :: MIT License",
