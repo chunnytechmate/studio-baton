@@ -63,3 +63,11 @@ callgraph.json
 # project asset; a real doc image would live under docs/ and stay tracked.
 .playwright-mcp/
 /*.png
+
+# Test-fixture media. Real lesson clips (~1 GB, real learner names) never
+# belong in a public repo. The bytes live outside this repo, under the
+# OpenClaw data mount; `tests/fixtures-staging-videos` and `tests/fixtures/`
+# are only doorways to it (symlink / future copies) — ignored here so a
+# stray `git add -A` can never stage them.
+tests/fixtures/
+tests/fixtures-staging-videos
