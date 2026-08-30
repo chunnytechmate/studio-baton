@@ -56,8 +56,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Sends the message that was published — never a re-derived one. A "
             "missing required field blocks the send with exit 5 and there is no "
-            "override. A message that already went out is refused the same way, "
-            "and that one a person can override with --again."
+            "override, with one exception: a session with no recording link "
+            "stops on exit 3 and asks, and --without-video — a person's "
+            "confirmed answer — sends it with no video section. A message that "
+            "already went out is refused the same way, and that one a person "
+            "can override with --again."
         ),
     )
     group = parser.add_subparsers(dest="send_command", metavar="<subcommand>")
@@ -70,6 +73,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--session", type=int, default=None, help="Defaults to the latest published session."
     )
     lesson.add_argument("--dry-run", action="store_true", help="Run the gate and stop.")
+    lesson.add_argument(
+        "--without-video",
+        action="store_true",
+        help="Send the message with no video section when the session has no "
+        "recording link. Only after a person has confirmed this lesson should "
+        "go out without one; a session that does have a recording keeps it.",
+    )
     lesson.add_argument(
         "--again",
         action="store_true",
@@ -122,6 +132,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="One learner per flag. Pass the same command once for a whole day.",
     )
     batch.add_argument("--dry-run", action="store_true")
+    batch.add_argument(
+        "--without-video",
+        action="store_true",
+        help="Send with no video section for every learner in this batch whose "
+        "session has no recording link. One flag covers the whole batch, so "
+        "pass it only with the learners a person confirmed.",
+    )
     batch.add_argument(
         "--again",
         action="store_true",
@@ -417,6 +434,40 @@ def _send_one(
         date = _date_format(ctx).of_text(date)
 
         required, optional = _required_optional(ctx)
+        if not video_link and "video_link" in required:
+            # The studio's gate requires the recording, and this session has
+            # none on its document. That is a person's call to make, not a gap
+            # to fix by default: some lessons genuinely were not filmed. The
+            # confirmed answer arrives as --without-video on a second run and
+            # is applied the same way a studio relaxes its own gate in config —
+            # the field moves to the optional list for this one invocation, so
+            # the send still warns about it and the message still leaves the
+            # video section out (an empty link composes no video line).
+            # Nothing else can be relaxed this way; the other required fields
+            # keep the hard, unoverridable block.
+            if getattr(ctx.args, "without_video", False):
+                required = [name for name in required if name != "video_link"]
+                optional = [*optional, "video_link"]
+            else:
+                raise NeedsHumanError(
+                    f"No recording link was found on the document for "
+                    f"{learner.name}'s {label} {session_number} message, and "
+                    f"the studio's gate requires one.",
+                    candidates=[
+                        {
+                            "option": "--without-video",
+                            "effect": "send now, with no video section in the message",
+                        },
+                        {
+                            "option": "add-the-recording-first",
+                            "effect": "put the recording on the lesson document, "
+                            "then re-run as usual",
+                        },
+                    ],
+                    remedy="Nothing was sent. A person chooses: re-run with "
+                    "--without-video to send with no video section, or add the "
+                    "recording to the lesson document first.",
+                )
         return send_lesson(
             messenger,
             store,

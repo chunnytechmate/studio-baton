@@ -6,6 +6,14 @@ no override flag.** The fix is to supply the data. An override would mean a
 message reaching a parent with no link to the lesson — which is worse than no
 message, because the parent believes they were sent something.
 
+One field has a way past the block, and it goes through a person rather than a
+flag on the gate: when a session has no recording link, `send lesson` stops on
+exit 3 and asks, and only a person's confirmed `--without-video` sends it —
+with no video section in the message. The pipeline here plays no part in that
+decision; the CLI applies the confirmation as a required list with `video_link`
+moved to optional, which is the same shape as a studio configuring its own
+standard. Every other required field keeps the hard, unoverridable block.
+
 What counts as required is configuration, not code, so a studio decides its own
 standard of completeness. The block is not negotiable.
 

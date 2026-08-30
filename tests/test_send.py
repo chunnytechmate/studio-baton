@@ -648,11 +648,11 @@ def test_an_unknown_contact_exits_needs_human(studio, capsys):
     assert "teacher" in [c["name"] for c in payload["details"]["candidates"]]
 
 
-def test_a_document_outage_blocks_the_send_while_the_recording_is_required(studio, capsys):
-    """The packaged gate requires the recording link, so an unreadable
-    document blocks rather than sending a lesson message with no recording in
-    it. That is the studio's standard being enforced — the outage is why the
-    link is unknown, not a second kind of failure."""
+def test_a_document_outage_stops_the_send_and_asks_while_the_recording_is_required(studio, capsys):
+    """The packaged gate requires the recording link, and an unreadable
+    document means the link is *unknown* — which Baton does not resolve on its
+    own, in either direction. The send stops on exit 3 and asks a person, the
+    same place a genuinely unfilmed lesson stops."""
     from baton.errors import UpstreamError
 
     profile = studio[0]
@@ -660,10 +660,10 @@ def test_a_document_outage_blocks_the_send_while_the_recording_is_required(studi
     publish(profile, "1")
     docs.fail_with = UpstreamError("notion is down", service="notion")
 
-    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.GATE
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.NEEDS_HUMAN
 
     payload = json.loads(capsys.readouterr().out)
-    assert [item["field"] for item in payload["details"]["missing"]] == ["video_link"]
+    assert payload["error"] == "needs_human"
     assert studio[1].sent == []
 
 
@@ -685,6 +685,137 @@ def test_a_studio_that_does_not_record_can_make_the_link_optional(studio, capsys
     assert payload["sent"] is True
     assert "Recording:" not in payload["message"]
     assert {w["field"] for w in payload["warnings"]} >= {"video_link"}
+
+
+# -- a lesson with no recording is a person's call --------------------------------
+
+
+def test_a_session_with_no_recording_stops_and_asks_a_person(studio, capsys):
+    """The gate requires the recording, but a lesson that was never filmed is
+    a decision rather than a data gap: the send stops on exit 3 carrying the
+    two real choices, and nothing goes out until a person answers."""
+    profile, messenger, docs = studio
+    publish(profile, "1")
+    docs.blocks["doc-ada-03"] = []
+
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.NEEDS_HUMAN
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"] == "needs_human"
+    assert payload["details"]["candidates"][0]["option"] == "--without-video"
+    assert messenger.sent == []
+
+
+def test_without_video_sends_with_no_video_section_after_the_confirmation(studio, capsys):
+    """`--without-video` is the person's confirmed answer, applied the same way
+    a studio relaxes its own gate: the field moves to optional for this one
+    send, so the message leaves the video line off, the doc link stays, and
+    the result still warns about what is missing."""
+    profile, messenger, docs = studio
+    publish(profile, "1")
+    docs.blocks["doc-ada-03"] = []
+
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video")
+        == Exit.OK
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["sent"] is True
+    assert "เฉพาะ Video:" not in payload["message"]
+    assert "https://example.invalid/lesson-3" in payload["message"]
+    assert {w["field"] for w in payload["warnings"]} >= {"video_link"}
+    assert "เฉพาะ Video:" not in messenger.sent[0][1]
+
+
+def test_without_video_leaves_a_session_that_has_a_recording_alone(studio, capsys):
+    """The flag answers "there is no recording"; it is not an order to strip
+    one that exists."""
+    profile, messenger, _docs = studio
+    publish(profile, "1")  # the fixture's page carries a video block
+
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video")
+        == Exit.OK
+    )
+
+    capsys.readouterr()
+    assert "https://example.invalid/watch/ada-3" in messenger.sent[0][1]
+
+
+def test_without_video_dry_run_previews_the_message_and_sends_nothing(studio, capsys):
+    profile, messenger, docs = studio
+    publish(profile, "1")
+    docs.blocks["doc-ada-03"] = []
+
+    code = call(
+        studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", "--dry-run"
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == Exit.OK
+    assert payload["dry_run"] is True
+    assert "เฉพาะ Video:" not in payload["message"]
+    assert messenger.sent == []
+
+
+def test_a_batch_reports_the_no_video_learner_as_waiting_on_a_person(studio, capsys):
+    """One refusal must not abandon the rest of the batch — and the blocked
+    entry must say which *kind* of stop it was, so whoever reads the report
+    relays a question rather than hunting for a video block that was never
+    filmed."""
+    profile, _messenger, docs = studio
+    publish(profile, "1")
+    publish(profile, "2", learner_name="Bruno Castell", doc_id="doc-b-1")
+    docs.blocks["doc-b-1"] = []
+
+    code = call(
+        studio,
+        "batch",
+        "--to",
+        "teacher",
+        "--learner",
+        "Ada Whitfield",
+        "--learner",
+        "Bruno Castell",
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == Exit.GATE
+    assert payload["sent"] == 1
+    assert [b["learner"] for b in payload["blocked"]] == ["Bruno Castell"]
+    assert payload["blocked"][0]["error"]["error"] == "needs_human"
+
+
+def test_a_confirmed_batch_sends_the_no_video_learner_without_the_video_section(
+    studio, capsys
+):
+    """One flag covers the batch, so it belongs to whoever named the learners
+    in it: Bruno goes out with no video line, Ada keeps the recording she
+    has."""
+    profile, _messenger, docs = studio
+    publish(profile, "1")
+    publish(profile, "2", learner_name="Bruno Castell", doc_id="doc-b-1")
+    docs.blocks["doc-b-1"] = []
+
+    code = call(
+        studio,
+        "batch",
+        "--to",
+        "teacher",
+        "--without-video",
+        "--learner",
+        "Ada Whitfield",
+        "--learner",
+        "Bruno Castell",
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == Exit.OK
+    assert payload["sent"] == 2
+    messages = {result["learner"]: result["message"] for result in payload["results"]}
+    assert "เฉพาะ Video:" in messages["Ada Whitfield"]
+    assert "เฉพาะ Video:" not in messages["Bruno Castell"]
 
 
 def test_contacts_lists_what_is_configured(studio, capsys):
@@ -867,7 +998,8 @@ def test_the_song_on_the_page_is_not_sent_as_the_recording(studio, capsys):
     recording yet, and the message went out carrying the link to the song's
     official music video. The gate did not stop it because a link *was* found.
 
-    The send must be refused instead — the recording is genuinely missing.
+    The send must be refused instead — the recording is genuinely missing, and
+    whether the lesson goes out without one is a person's call to make.
     """
     profile, messenger, docs = studio
     _teach(profile, SONG)
@@ -878,10 +1010,10 @@ def test_the_song_on_the_page_is_not_sent_as_the_recording(studio, capsys):
     ]
     publish(profile, "1")
 
-    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.GATE
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.NEEDS_HUMAN
 
     payload = json.loads(capsys.readouterr().out)
-    assert [m["field"] for m in payload["details"]["missing"]] == ["video_link"]
+    assert payload["error"] == "needs_human"
     assert messenger.sent == []
 
 
@@ -919,10 +1051,10 @@ def test_the_song_taught_that_lesson_is_excluded_after_the_learner_moves_on(stud
         ).to_dict(),
     )
 
-    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.GATE
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.NEEDS_HUMAN
 
     payload = json.loads(capsys.readouterr().out)
-    assert [m["field"] for m in payload["details"]["missing"]] == ["video_link"]
+    assert payload["error"] == "needs_human"
     assert messenger.sent == []
 
 

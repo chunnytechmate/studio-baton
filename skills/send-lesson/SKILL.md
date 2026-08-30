@@ -23,6 +23,9 @@ baton send lesson "<name>" --to <contact> --json
 baton send batch --to <contact> \
   --learner "<name>" --learner "<name>" --learner "<name>" --json
 
+# Only after the user confirmed a lesson with no recording may go out:
+baton send lesson "<name>" --to <contact> --without-video --json
+
 # Reports, not gates: exit 0 whatever they find
 baton send readiness --date today --json   # before the sends: who is booked, what blocks them
 baton send aftermath --date today --json   # after: what the day left behind
@@ -59,17 +62,29 @@ batch report exists to prevent.
 **Exit 5 means the message was NOT sent, and must not be forced.**
 `details.missing` lists each gap with how to fix it. Report those to the user
 and stop. There is no override flag, and there is no way to send an incomplete
-message — do not look for one, and never send the message another way.
+message — do not look for one, and never send the message another way. (A
+missing *recording link* is the one case that does not land here — it stops on
+exit 3 and asks; see the next rule.)
 
 **If a command fails, do not send the message by hand.** No API calls, no other
 tools. Report the failure and stop.
 
-**`missing: video_link` when the page visibly has a YouTube link means that
+**A lesson with no recording is the user's call, not yours.** When a session
+has no recording link, the send stops on exit `3` with two candidates: send
+now with no video section in the message (`--without-video`), or put the
+recording on the document first. Show both to the user and wait — never add
+`--without-video` yourself, and never send the message another way. The flag
+is how their *confirmed answer* is delivered: a session that does have a
+recording keeps it, flag or no flag, and every other missing field still
+blocks with no override at all.
+
+**`video_link` missing when the page visibly has a YouTube link means that
 link is the song, not the recording.** Baton reads the piece's own
 `source_link` and refuses to send it as the lesson's video — that refusal is
 the fix for a message that once went out carrying a music video. Run `baton
 lesson publish "<name>"`, which links the recording if one was uploaded; if
-that reports nothing, the recording genuinely does not exist yet.
+that reports nothing, the recording genuinely does not exist yet, and whether
+that lesson still goes out is the user's decision above.
 
 **"Already sent" means it went out. Say so and stop.** Baton keeps a receipt of
 every delivery, so a repeat of the same learner's same session is refused with
@@ -88,7 +103,7 @@ other one.
 | --- | --- |
 | `0` | Report what was sent, and any `warnings` |
 | `1` | Nothing published for that learner — publish first |
-| `3` | Show `details.candidates`, ask which contact or learner |
+| `3` | Show `details.candidates` and ask — which contact or learner, or (no recording link) whether to send with no video section |
 | `5` | **Nothing was sent.** Report `details.missing` — or, when the message says *already sent*, report that it went out at `details.already_sent.sent_at`. Do not retry either way |
 | `6` | The platform failed. Report; the message did not go |
 | `8` | Another send holds the lock. Wait, then re-run |

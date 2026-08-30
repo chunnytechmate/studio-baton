@@ -170,7 +170,12 @@ exit=5
 
 What counts as required is configuration (`gates.send_lesson_required`), so a
 studio sets its own standard of completeness; the block itself is not
-negotiable. What is sent is what was *published* — the message comes from the
+negotiable. One field has a way past the block, and it goes through a person:
+when a session has no `video_link` on its document, `send lesson` stops on
+exit 3 and asks, and `--without-video` — only after someone confirmed the
+lesson should go out without it — sends the message with the video section
+left off. A session that does have a recording keeps it, flag or no flag. What
+is sent is what was *published* — the message comes from the
 record stored at publish time, and the links are Baton's own, which is why
 links are forbidden inside the summary a model writes.
 

@@ -441,9 +441,12 @@ gates:
   #
   # `video_link` is required because the studio this came from learned it the
   # hard way: a lesson message without the recording had already gone out, and
-  # the fix was to gate on it in two places. A studio that does not record its
-  # lessons should move it to the optional list below rather than leave a gate
-  # it can never pass.
+  # the fix was to gate on it in two places. A session that genuinely has no
+  # recording still does not force its way through: `send lesson` stops on
+  # exit 3 and asks, and a person's confirmed `--without-video` sends the
+  # message with no video section. A studio that does not record its lessons
+  # at all should move it to the optional list below rather than confirm every
+  # send by hand.
   send_lesson_required:
     - doc_link
     - short_summary
