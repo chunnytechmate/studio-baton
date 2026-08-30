@@ -715,10 +715,7 @@ def test_without_video_sends_with_no_video_section_after_the_confirmation(studio
     publish(profile, "1")
     docs.blocks["doc-ada-03"] = []
 
-    assert (
-        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video")
-        == Exit.OK
-    )
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video") == Exit.OK
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["sent"] is True
@@ -734,10 +731,7 @@ def test_without_video_leaves_a_session_that_has_a_recording_alone(studio, capsy
     profile, messenger, _docs = studio
     publish(profile, "1")  # the fixture's page carries a video block
 
-    assert (
-        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video")
-        == Exit.OK
-    )
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video") == Exit.OK
 
     capsys.readouterr()
     assert "https://example.invalid/watch/ada-3" in messenger.sent[0][1]
@@ -787,9 +781,7 @@ def test_a_batch_reports_the_no_video_learner_as_waiting_on_a_person(studio, cap
     assert payload["blocked"][0]["error"]["error"] == "needs_human"
 
 
-def test_a_confirmed_batch_sends_the_no_video_learner_without_the_video_section(
-    studio, capsys
-):
+def test_a_confirmed_batch_sends_the_no_video_learner_without_the_video_section(studio, capsys):
     """One flag covers the batch, so it belongs to whoever named the learners
     in it: Bruno goes out with no video line, Ada keeps the recording she
     has."""
