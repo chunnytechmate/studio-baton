@@ -109,9 +109,7 @@ class VideoWaivers:
             "code": code,
             "sent_to": sent_to,
             "requested_at": now.isoformat(timespec="seconds"),
-            "expires_at": (now + timedelta(minutes=self.ttl_minutes)).isoformat(
-                timespec="seconds"
-            ),
+            "expires_at": (now + timedelta(minutes=self.ttl_minutes)).isoformat(timespec="seconds"),
         }
         self._save(entries)
         return code
