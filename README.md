@@ -1,5 +1,7 @@
 # Studio Baton
 
+English · [ภาษาไทย](https://github.com/chunnytechmate/studio-baton/blob/main/README.th.md)
+
 Scripted operations for a one-to-one teaching studio: learner records, session
 documents, lesson summaries, messaging, video, and calendar — driven by one
 command-line tool with a stable exit code contract.
@@ -10,13 +12,14 @@ and fails quietly when it is not. Everything that can be a script here is a
 script, so the model is left with the one job only a model can do — writing the
 summary — and even that is submitted as JSON validated against a schema.
 
-> **Status: usable, not yet 1.0.** Every pipeline is ported and tested; the
-> configuration format is versioned and will not change shape without saying
-> so. See [Roadmap](#roadmap).
+> **Status: 1.0.0 · Production/Stable.** The full cycle — booking, video,
+> lesson summaries, and delivery — has run end to end on real teaching days.
+> The package is available from PyPI and remains explicit about the parts that
+> still require a person to review or choose.
 
 ## Where it came from
 
-Studio Baton is the third generation of one workflow used in a real music studio:
+Studio Baton is the latest form in a four-stage lineage used in a real music studio:
 
 **Class Summarize scripts → [PLAM](https://github.com/chunnytechmate/plam) voice assistant →
 OpenClaw skills → Studio Baton**
@@ -49,16 +52,19 @@ own speech layer, but the operational CLI is not coupled to one ASR model.
 | Command | Job |
 | --- | --- |
 | `baton init` | Create a profile that already runs |
+| `baton schema` | Print the reference SQL for SQLite or PostgreSQL |
 | `baton doctor` | Check config, credentials, and drivers before anything runs |
 | `baton config` | Show the configuration the tool actually resolved |
 | `baton job` | Run long work detached, then check on it, wait, or stop it |
 | `baton learner` | Enrol and look up learners, sessions, pieces, and past work |
 | `baton song` | List, search, add, edit, and remove pieces in the shared catalogue |
+| `baton course` | Plan, verify, and clear a finished course after it is archived |
 | `baton lesson` | Stage a lesson, validate a model-written summary, publish it |
 | `baton send` | Send a lesson summary or a recorded work's links (Drive/YouTube), refusing to send anything incomplete |
 | `baton video` | Collect recordings → encode → publish → link back, resumable |
 | `baton calendar` | Book lessons, keeping documents and calendar in step |
 | `baton notes` | Push a note or a Markdown file to a documents page |
+| `baton prep` | Produce the day's lesson-preparation report |
 
 ## Install
 
@@ -646,17 +652,16 @@ diffed against the legacy scripts before the old path is retired.
 - [x] **P9** `baton init`, migrations, docs
 - [x] **P10** The parity harness (`tools/parity.py`)
 
-Every phase has landed, and the read paths have now been exercised against a
-real studio: `doctor` passes against live Supabase, Notion, and LINE, one real
-LINE message has been delivered, and a `student-lookup` skill now runs inside
-the live harness so production lookups go through Baton's read path while the
-write paths stay on the legacy system by design. The parity harness below
-agreed with the scripts being replaced on all 54 cases of its latest round
-(18 August 2026). What has *not* run against
-anything real is the write-heavy end — video encoding and upload, and booking
-or cancelling a real calendar event. Treat the parity run — and a first send to
-yourself, never to a family — as the gate before any of this is trusted with a
-real lesson.
+Every phase has landed. Version 1.0.0 shipped on 30 August 2026 after booking,
+video, lesson summaries, and delivery ran end to end on real teaching days.
+The last recorded read-only comparison against the legacy system agreed on all
+54 cases (18 August 2026); it did not claim to compare writes. The current main
+branch exposes 14 top-level commands and 63 user-facing command paths. Its test
+suite collects 1,195 tests.
+
+That evidence belongs to the studio and profile that produced it. A new studio
+still needs to run `baton doctor`, exercise read paths, preview writes, and send
+to an internal recipient before trusting a new mapping with a real lesson.
 
 ## Replacing something that already works
 
