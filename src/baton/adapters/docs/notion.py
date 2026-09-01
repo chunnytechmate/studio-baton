@@ -368,7 +368,7 @@ class NotionDocStore:
 
         Chunks go out in reverse for ``"start"``. Each request puts its chunk
         at the top, so sending them in reading order would leave the last chunk
-        above the first — the payload reversed a hundred blocks at a time.
+        above the first: the payload reversed a hundred blocks at a time.
 
         ``position`` is accepted by the API version this client pins
         (2022-06-28), verified against the live API rather than assumed.

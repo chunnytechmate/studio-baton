@@ -1035,8 +1035,8 @@ def handle_contract(ctx: Context) -> Exit:
     lesson_notes = draft.corrected_context or draft.context
 
     # The default wording tells the model `goals` is homework. For a learner
-    # whose `goals` is published as next lesson's aim — no instrument at home,
-    # or a tone that does not set homework — that instruction contradicts both
+    # whose `goals` is published as next lesson's aim (no instrument at home,
+    # or a tone that does not set homework), that instruction contradicts both
     # the heading above the section and the tone guidance below it, and the
     # model has to pick one. It picked the homework line often enough to be
     # worth removing the choice.

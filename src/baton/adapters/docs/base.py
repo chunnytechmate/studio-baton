@@ -353,8 +353,8 @@ class DocStore(Protocol):
                 until the video pipeline needed to put a recording above a
                 summary that was published before it arrived.
 
-        A store cannot *move* a block that already exists — Notion has no such
-        operation — so ``"start"`` is how a block reaches the top at all.
+        A store cannot *move* a block that already exists, because Notion has
+        no such operation, so ``"start"`` is how a block reaches the top.
         """
         ...
 

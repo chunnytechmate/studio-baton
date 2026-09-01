@@ -692,8 +692,8 @@ def test_a_studio_that_does_not_record_can_make_the_link_optional(studio, capsys
 
 def test_a_session_with_no_recording_stops_and_asks_a_person(studio, capsys):
     """The gate requires the recording, but a lesson that was never filmed is
-    a decision rather than a data gap: the send stops on exit 3 carrying the
-    two real choices, and nothing goes out until a person answers."""
+    a decision rather than a data gap: the send stops on exit 3 naming what is
+    missing, and nothing goes out until a person answers."""
     profile, messenger, docs = studio
     publish(profile, "1")
     docs.blocks["doc-ada-03"] = []
@@ -702,7 +702,30 @@ def test_a_session_with_no_recording_stops_and_asks_a_person(studio, capsys):
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["error"] == "needs_human"
-    assert payload["details"]["candidates"][0]["option"] == "--without-video"
+    details = payload["details"]
+    assert details["missing"] == ["video_link"]
+    assert details["learner"] == "Ada Whitfield"
+    assert messenger.sent == []
+
+
+def test_the_stop_does_not_hand_the_bypass_to_whatever_is_reading(studio, capsys):
+    """`candidates` is the machine-readable half of exit 3, and everywhere else
+    it carries data to pick between: matched learners, configured contacts.
+    Here it carried two command lines, one of which skips the gate: an agent
+    following the contract faithfully would take the bypass, which is the
+    opposite of what stopping to ask a person is for.
+
+    The flag still exists and `--help` still lists it. This only stops the
+    contract from recommending it."""
+    profile, messenger, docs = studio
+    publish(profile, "1")
+    docs.blocks["doc-ada-03"] = []
+
+    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher") == Exit.NEEDS_HUMAN
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["details"]["candidates"] == []
+    assert "--without-video" not in json.dumps(payload)
     assert messenger.sent == []
 
 

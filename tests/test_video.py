@@ -618,7 +618,7 @@ def _summary_already_on_the_page(docs):
 def test_the_recording_goes_above_a_summary_that_was_published_first(pipeline):
     """Encoding takes minutes and the teacher writes meanwhile, so the video
     arriving second is the ordinary case. Appending put it under the summary
-    there and over it when the order went the other way — the same lesson
+    there and over it when the order went the other way: the same lesson
     filed two ways, with nothing on the page to explain why."""
     built, _s, _e, _p, docs, _jobs = pipeline
     _summary_already_on_the_page(docs)

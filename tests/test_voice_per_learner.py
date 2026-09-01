@@ -256,7 +256,7 @@ def test_the_published_page_and_the_stored_message_carry_the_new_wording(studio,
 # `casual` in the studio this was built for means "learning for fun": no
 # homework, and `goals` written as what the next lesson will reach for. That is
 # the substitution the no-instrument case already made, wanted for a different
-# reason — so it is configuration a tone can ask for, not a second branch in
+# reason, so it is configuration a tone can ask for, not a second branch in
 # the code naming tones it cannot know.
 
 
@@ -348,7 +348,7 @@ def test_no_instrument_at_home_outranks_the_tone_override(studio, capsys):
 
 def test_the_family_reads_the_tones_wording_too(studio, capsys):
     """The rename has to survive to the page and the message, not stop at the
-    prompt — the same journey the no-instrument wording already makes."""
+    prompt. It is the same journey the no-instrument wording already makes."""
     with_tone_overrides(studio, EXAM_OVERRIDE)
     contract(studio, capsys, WITH_INSTRUMENT)
     assert ingest(studio, capsys, WITH_INSTRUMENT, SUMMARY)[0] == Exit.OK

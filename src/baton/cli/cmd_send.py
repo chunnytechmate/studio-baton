@@ -449,24 +449,34 @@ def _send_one(
                 required = [name for name in required if name != "video_link"]
                 optional = [*optional, "video_link"]
             else:
+                # `candidates` everywhere else in this CLI carries data a
+                # caller picks between: the learners a name matched, the
+                # contacts configured. Here it carried two command lines, one
+                # of which skips the gate, so the machine-readable half of a
+                # stop-and-ask-a-person exit was handing the bypass to whatever
+                # automation read it. An agent following the contract
+                # faithfully would take it, and that is the opposite of what
+                # this exit is for.
+                #
+                # What goes out now is what is true: which message, and what
+                # is missing from it. The way past is prose, addressed to the
+                # person who has to decide. That is not a boundary, since the
+                # flag still exists and `--help` still lists it. It only stops the
+                # contract from recommending it.
                 raise NeedsHumanError(
                     f"No recording link was found on the document for "
                     f"{learner.name}'s {label} {session_number} message, and "
                     f"the studio's gate requires one.",
-                    candidates=[
-                        {
-                            "option": "--without-video",
-                            "effect": "send now, with no video section in the message",
-                        },
-                        {
-                            "option": "add-the-recording-first",
-                            "effect": "put the recording on the lesson document, "
-                            "then re-run as usual",
-                        },
-                    ],
-                    remedy="Nothing was sent. A person chooses: re-run with "
-                    "--without-video to send with no video section, or add the "
-                    "recording to the lesson document first.",
+                    candidates=[],
+                    details={
+                        "learner": learner.name,
+                        "session_number": session_number,
+                        "missing": ["video_link"],
+                    },
+                    remedy="Nothing was sent. Put the recording on the lesson "
+                    "document and re-run. Sending a lesson with no recording "
+                    "is a person's decision about that lesson, not a step to "
+                    "retry past.",
                 )
         return send_lesson(
             messenger,

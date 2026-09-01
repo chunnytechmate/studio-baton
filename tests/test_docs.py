@@ -311,7 +311,7 @@ def test_inserting_at_the_start_asks_notion_for_it(monkeypatch):
 
 def test_a_long_payload_going_to_the_start_keeps_its_reading_order(monkeypatch):
     """Each request puts its own chunk at the top, so sending them in reading
-    order leaves the last chunk above the first — a payload reversed a hundred
+    order leaves the last chunk above the first: a payload reversed a hundred
     blocks at a time, and only ever visible past the chunking threshold."""
     bodies = _capture_appends(monkeypatch)
     store = NotionDocStore(token="t", properties={})

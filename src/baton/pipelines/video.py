@@ -379,7 +379,7 @@ class VideoPipeline:
         Where it lands used to depend on the order the day happened in. The
         publish step appends the summary and leaves preserved blocks where they
         are, so a video that arrived first sat above the summary and a video
-        that arrived second sat below it — the same lesson filed two ways, and
+        that arrived second sat below it: the same lesson filed two ways, and
         the family reading the page could not tell why.
 
         Encoding takes minutes and the teacher writes the summary meanwhile, so
