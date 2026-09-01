@@ -352,7 +352,9 @@ class VideoPipeline:
         if not resolved:
             raise StateError(
                 f"No session to attach {learner.name}'s recording to.",
-                remedy=f"Create the next {self.session_label} for them, then re-run.",
+                remedy=f"{learner.name} has no {self.session_label} in progress and "
+                f"none finished, so nothing says which lesson this recording is "
+                f"from. Book the {self.session_label} it belongs to, then re-run.",
             )
         number, doc_id = resolved
         job.session_number = int(number)

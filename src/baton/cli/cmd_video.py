@@ -110,6 +110,35 @@ def _detach(ctx: Context, argv: list[str]) -> Exit:
     return Exit.OK
 
 
+def session_for_recording(history: LearnerHistory, learner: Learner) -> tuple[int, str] | None:
+    """Which lesson this learner's recording belongs to, read from the status.
+
+    The status is the record of what happened, so it is the only thing asked.
+    A booked lesson is "In progress" and is the answer while it lasts. Once
+    `lesson publish` marks it "Done" the recording still belongs to that
+    lesson, so the most recently finished one answers next: encoding outlasts
+    the writing of a summary often enough that video running last is ordinary
+    rather than a mistake.
+
+    "Not started" is never the answer. It is a page nobody has taught against,
+    and the fallback here used to pick exactly that. Publishing turned the real
+    session Done, which left nothing in progress, so the recording went onto
+    next week's empty page and the lesson it belonged to was reported as having
+    no video, after the upload had already succeeded.
+
+    Nothing here writes a status. Only `lesson publish` moves a session to
+    Done; this reads what that left behind.
+
+    Returns:
+        The session number and its document id, or ``None`` when no session
+        says it happened. Guessing at that point is what this exists to stop.
+    """
+    views = history.sessions(learner)
+    active = history.in_progress(views)
+    chosen = active[0] if active else history.latest_done(views)
+    return (chosen.number, chosen.session.doc_id) if chosen else None
+
+
 def _build(ctx: Context) -> VideoPipeline:
     """Assemble the pipeline from configuration."""
     config = ctx.config
@@ -123,16 +152,7 @@ def _build(ctx: Context) -> VideoPipeline:
     )
 
     def resolve_session(learner: Learner) -> tuple[int, str] | None:
-        """Where this learner's recording belongs.
-
-        The session in progress if there is one, otherwise the next free one —
-        the same order the original used, and the one that matches how a
-        recording arrives: during or just after the lesson.
-        """
-        views = history.sessions(learner)
-        active = history.in_progress(views)
-        chosen = active[0] if active else history.next_empty(views)
-        return (chosen.number, chosen.session.doc_id) if chosen else None
+        return session_for_recording(history, learner)
 
     return VideoPipeline(
         source=open_source(config),
