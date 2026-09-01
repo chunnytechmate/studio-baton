@@ -599,3 +599,45 @@ def test_google_vendor_errors_stay_inside_the_baton_contract():
 
     assert excinfo.value.details["service"] == "gdrive"
     assert "vendor traceback" not in excinfo.value.message
+
+
+# -- where the recording lands on the page -----------------------------------
+
+
+def _summary_already_on_the_page(docs):
+    """What `lesson publish` leaves behind: the summary appended to the page."""
+    docs.append_blocks(
+        "doc-ada-03",
+        [
+            {"object": "block", "type": "heading_2", "heading_2": {}},
+            {"object": "block", "type": "paragraph", "paragraph": {}},
+        ],
+    )
+
+
+def test_the_recording_goes_above_a_summary_that_was_published_first(pipeline):
+    """Encoding takes minutes and the teacher writes meanwhile, so the video
+    arriving second is the ordinary case. Appending put it under the summary
+    there and over it when the order went the other way — the same lesson
+    filed two ways, with nothing on the page to explain why."""
+    built, _s, _e, _p, docs, _jobs = pipeline
+    _summary_already_on_the_page(docs)
+
+    built.run()
+
+    types = [block.type for block in docs.list_blocks("doc-ada-03")]
+    assert types[0] == "video"
+    assert types[1:] == ["heading_2", "paragraph"]
+
+
+def test_the_recording_is_above_the_summary_when_it_arrives_first_too(pipeline):
+    """The point is that the page reads the same either way round, so the
+    order the day happened in stops being visible to the family."""
+    built, _s, _e, _p, docs, _jobs = pipeline
+
+    built.run()
+    _summary_already_on_the_page(docs)
+
+    types = [block.type for block in docs.list_blocks("doc-ada-03")]
+    assert types[0] == "video"
+    assert types[1:] == ["heading_2", "paragraph"]

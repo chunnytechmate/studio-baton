@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -268,6 +268,12 @@ class TableRow:
     status: str
 
 
+#: Where new blocks go. Deliberately not the full set the stores support:
+#: nothing needs to anchor to a particular block, and a position that names one
+#: would have to carry a block id through every layer to say so.
+BlockPosition = Literal["start", "end"]
+
+
 @runtime_checkable
 class DocStore(Protocol):
     """Read and update session documents."""
@@ -331,8 +337,25 @@ class DocStore(Protocol):
         """Every top-level block, in order."""
         ...
 
-    def append_blocks(self, doc_id: str, blocks: list[dict[str, Any]]) -> None:
-        """Append blocks, chunking to respect the store's per-request limit."""
+    def append_blocks(
+        self,
+        doc_id: str,
+        blocks: list[dict[str, Any]],
+        *,
+        position: BlockPosition = "end",
+    ) -> None:
+        """Add blocks, chunking to respect the store's per-request limit.
+
+        Args:
+            doc_id: The page the blocks go on.
+            blocks: The blocks, in the order they should read.
+            position: ``"end"`` appends, which is what every caller wanted
+                until the video pipeline needed to put a recording above a
+                summary that was published before it arrived.
+
+        A store cannot *move* a block that already exists — Notion has no such
+        operation — so ``"start"`` is how a block reaches the top at all.
+        """
         ...
 
     def create_page(self, parent_id: str, title: str, blocks: list[dict[str, Any]]) -> DocStatus:

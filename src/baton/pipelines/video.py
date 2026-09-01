@@ -374,6 +374,19 @@ class VideoPipeline:
         return result
 
     def _link(self, job: VideoJob) -> None:
+        """Put the recording on the session page, above the summary.
+
+        Where it lands used to depend on the order the day happened in. The
+        publish step appends the summary and leaves preserved blocks where they
+        are, so a video that arrived first sat above the summary and a video
+        that arrived second sat below it — the same lesson filed two ways, and
+        the family reading the page could not tell why.
+
+        Encoding takes minutes and the teacher writes the summary meanwhile, so
+        second is the ordinary case, not the exception. The recording goes to
+        the top explicitly instead: no move operation is needed (Notion has
+        none), and a later republish appends below it as usual.
+        """
         if not self._already_linked(job.doc_id, job.video_url):
             self.docs.append_blocks(
                 job.doc_id,
@@ -384,6 +397,7 @@ class VideoPipeline:
                         "video": {"type": "external", "external": {"url": job.video_url}},
                     }
                 ],
+                position="start",
             )
         job.record("doc_linked", url=job.video_url)
 

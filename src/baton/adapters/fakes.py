@@ -19,7 +19,15 @@ from typing import Any
 from ..domain.models import Learner, Piece, Session, Work
 from ..errors import ConfigError, StateError
 from .db.base import LearnerStore
-from .docs.base import Block, DocChild, DocPage, DocStatus, PreservePolicy, TableRow
+from .docs.base import (
+    Block,
+    BlockPosition,
+    DocChild,
+    DocPage,
+    DocStatus,
+    PreservePolicy,
+    TableRow,
+)
 
 
 class FakeLearnerStore:
@@ -325,13 +333,24 @@ class FakeDocStore:
         self._check()
         return list(self.blocks.get(doc_id, []))
 
-    def append_blocks(self, doc_id: str, blocks: list[dict[str, Any]]) -> None:
-        """Append, splitting into request-sized batches like the real store.
+    def append_blocks(
+        self,
+        doc_id: str,
+        blocks: list[dict[str, Any]],
+        *,
+        position: BlockPosition = "end",
+    ) -> None:
+        """Add blocks, splitting into request-sized batches like the real store.
 
         The per-request ceiling is a transport detail the adapter hides, so the
         fake hides it too — a fake that refuses what production accepts sends
         tests chasing a limit that is not really there. Each batch is recorded
         in `appended`, so a test can still assert that the split happened.
+
+        ``"start"`` puts the blocks above what is already there, in the order
+        they were given. The real store reverses its chunks to manage that; the
+        fake does one list insert, so a test that passes here would still catch
+        a chunking mistake there through `list_blocks`.
         """
         self._check()
         for start in range(0, len(blocks), self.MAX_CHILDREN_PER_REQUEST):
@@ -351,7 +370,11 @@ class FakeDocStore:
             )
             for block in blocks
         ]
-        self.blocks.setdefault(doc_id, []).extend(created)
+        existing = self.blocks.setdefault(doc_id, [])
+        if position == "start":
+            existing[:0] = created
+        else:
+            existing.extend(created)
 
     def create_page(self, parent_id: str, title: str, blocks: list[dict[str, Any]]) -> DocStatus:
         self._check()

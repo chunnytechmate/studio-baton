@@ -256,3 +256,78 @@ def test_a_status_read_can_decline_to_count_the_blocks(monkeypatch):
     full = store.get_status("abc123")
     assert len(paths) == 2
     assert full.block_count == 0
+
+
+# -- where new blocks land ---------------------------------------------------
+#
+# A store cannot move a block that already exists: Notion has no such
+# operation, and "move it to the top" can only be spelled as inserting there.
+# The video pipeline needs it because encoding outlasts the writing of the
+# summary, so the recording usually arrives after the summary is already down.
+
+
+def _capture_appends(monkeypatch):
+    import baton.adapters.docs.notion as notion_module
+
+    bodies: list[dict] = []
+
+    def record(_method, _url, **kwargs):
+        bodies.append(kwargs.get("json") or {})
+        return _Reply(200, {"results": []})
+
+    monkeypatch.setattr(notion_module, "http_request", record)
+    return bodies
+
+
+def _paragraphs(count: int) -> list[dict]:
+    return [
+        {"object": "block", "type": "paragraph", "paragraph": {"n": index}}
+        for index in range(count)
+    ]
+
+
+def test_appending_says_nothing_about_position(monkeypatch):
+    """The default has to stay wire-identical. Every existing caller appends,
+    and a `position` Notion did not ask for is a new way for them to fail."""
+    bodies = _capture_appends(monkeypatch)
+    store = NotionDocStore(token="t", properties={})
+
+    store.append_blocks("doc", _paragraphs(2))
+
+    assert len(bodies) == 1
+    assert "position" not in bodies[0]
+
+
+def test_inserting_at_the_start_asks_notion_for_it(monkeypatch):
+    """`start` is one of the three the API accepts (`after_block`, `start`,
+    `end`), and it is accepted by the version this client pins."""
+    bodies = _capture_appends(monkeypatch)
+    store = NotionDocStore(token="t", properties={})
+
+    store.append_blocks("doc", _paragraphs(2), position="start")
+
+    assert bodies[0]["position"] == {"type": "start"}
+
+
+def test_a_long_payload_going_to_the_start_keeps_its_reading_order(monkeypatch):
+    """Each request puts its own chunk at the top, so sending them in reading
+    order leaves the last chunk above the first — a payload reversed a hundred
+    blocks at a time, and only ever visible past the chunking threshold."""
+    bodies = _capture_appends(monkeypatch)
+    store = NotionDocStore(token="t", properties={})
+
+    store.append_blocks("doc", _paragraphs(250), position="start")
+
+    assert [len(body["children"]) for body in bodies] == [50, 100, 100]
+    # Reassembled in the order the requests land, the page reads as it was given.
+    landed = [block["paragraph"]["n"] for body in bodies for block in body["children"]]
+    assert landed == list(range(200, 250)) + list(range(100, 200)) + list(range(100))
+
+
+def test_appending_a_long_payload_still_goes_in_reading_order(monkeypatch):
+    bodies = _capture_appends(monkeypatch)
+    store = NotionDocStore(token="t", properties={})
+
+    store.append_blocks("doc", _paragraphs(250))
+
+    assert [len(body["children"]) for body in bodies] == [100, 100, 50]

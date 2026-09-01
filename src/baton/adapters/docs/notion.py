@@ -18,7 +18,15 @@ from typing import Any
 from ...core.config import Config
 from ...core.retry import http_request
 from ...errors import ConfigError, UpstreamError
-from .base import Block, DocChild, DocPage, DocStatus, PreservePolicy, TableRow
+from .base import (
+    Block,
+    BlockPosition,
+    DocChild,
+    DocPage,
+    DocStatus,
+    PreservePolicy,
+    TableRow,
+)
 
 API_ROOT = "https://api.notion.com/v1"
 
@@ -345,16 +353,35 @@ class NotionDocStore:
             if not cursor:
                 return blocks
 
-    def append_blocks(self, doc_id: str, blocks: list[dict[str, Any]]) -> None:
-        """Append blocks in chunks of at most 100.
+    def append_blocks(
+        self,
+        doc_id: str,
+        blocks: list[dict[str, Any]],
+        *,
+        position: BlockPosition = "end",
+    ) -> None:
+        """Add blocks in chunks of at most 100.
 
         Chunking is not an optimisation: Notion rejects a larger request
         outright, and the original system worked around it by asking the model
         to split the payload itself.
+
+        Chunks go out in reverse for ``"start"``. Each request puts its chunk
+        at the top, so sending them in reading order would leave the last chunk
+        above the first — the payload reversed a hundred blocks at a time.
+
+        ``position`` is accepted by the API version this client pins
+        (2022-06-28), verified against the live API rather than assumed.
         """
-        for start in range(0, len(blocks), MAX_CHILDREN_PER_REQUEST):
-            chunk = blocks[start : start + MAX_CHILDREN_PER_REQUEST]
-            self._request("PATCH", f"/blocks/{doc_id}/children", {"children": chunk})
+        chunks = [
+            blocks[start : start + MAX_CHILDREN_PER_REQUEST]
+            for start in range(0, len(blocks), MAX_CHILDREN_PER_REQUEST)
+        ]
+        for chunk in reversed(chunks) if position == "start" else chunks:
+            body: dict[str, Any] = {"children": chunk}
+            if position != "end":
+                body["position"] = {"type": position}
+            self._request("PATCH", f"/blocks/{doc_id}/children", body)
 
     def create_page(self, parent_id: str, title: str, blocks: list[dict[str, Any]]) -> DocStatus:
         """Create a sub-page, then append anything past the first request.
