@@ -4,6 +4,34 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.0.3 (2026-09-01)
+
+Closes the last way an agent could send a lesson with no recording without
+anyone having agreed to it.
+
+### Upgrading
+
+- `send lesson --without-video` now takes a value: the confirmation code
+  `send video-waiver` texts to a configured contact for that exact learner
+  and session. A bare `--without-video` no longer parses, and no value works
+  unless a code was requested and is still live. Anything scripted around the
+  old flag needs the two-step flow instead.
+- `send batch` no longer accepts `--without-video` at all. One code answers
+  one learner's one session, and a batch has many of both, so there was never
+  a single value that could stand for all of them. A learner with no recording
+  is reported blocked like any other refusal and sent on their own afterwards.
+
+### Sending
+
+- Added `send video-waiver NAME --to CONTACT`. It sends a one-time code
+  through the studio's own messenger and never returns that code to the
+  caller: not in `--json`, not in the human line, nowhere. Reaching it means
+  reading the message it was sent in, which is what makes the confirmation a
+  person's rather than something any caller can assert.
+- Codes are scoped to one learner and session, single-use, and expire on
+  their own (`summary.video_waiver.ttl_minutes`, default 30), so a code seen
+  once is not a standing key.
+
 ## 1.0.2 (2026-09-01)
 
 Three fixes from running the video pipeline against a real course a second

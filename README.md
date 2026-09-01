@@ -12,7 +12,7 @@ and fails quietly when it is not. Everything that can be a script here is a
 script, so the model is left with the one job only a model can do — writing the
 summary — and even that is submitted as JSON validated against a schema.
 
-> **Status: 1.0.2 · Production/Stable.** The full cycle — booking, video,
+> **Status: 1.0.3 · Production/Stable.** The full cycle — booking, video,
 > lesson summaries, and delivery — has run end to end on real teaching days.
 > The package is available from PyPI and remains explicit about the parts that
 > still require a person to review or choose.
@@ -661,7 +661,7 @@ video, lesson summaries, and delivery ran end to end on real teaching days.
 The last recorded read-only comparison against the legacy system agreed on all
 54 cases (18 August 2026); it did not claim to compare writes. The current main
 branch exposes 14 top-level commands and 63 user-facing command paths. Its test
-suite collects 1,195 tests.
+suite collects 1,229 tests.
 
 That evidence belongs to the studio and profile that produced it. A new studio
 still needs to run `baton doctor`, exercise read paths, preview writes, and send
