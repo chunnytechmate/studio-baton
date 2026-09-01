@@ -21,6 +21,7 @@ from ..adapters.chat.guard import GuardedMessenger
 from ..adapters.db import open_store
 from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..core.receipts import DEFAULT_WINDOW_HOURS, Receipts
+from ..core.video_waivers import DEFAULT_TTL_MINUTES, VideoWaivers, generate_code
 from ..domain.localdate import DateFormat
 from ..domain.models import Learner
 from ..domain.prep import SectionRules
@@ -57,10 +58,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "Sends the message that was published — never a re-derived one. A "
             "missing required field blocks the send with exit 5 and there is no "
             "override, with one exception: a session with no recording link "
-            "stops on exit 3 and asks, and --without-video — a person's "
-            "confirmed answer — sends it with no video section. A message that "
-            "already went out is refused the same way, and that one a person "
-            "can override with --again."
+            "stops on exit 3 and asks. `send video-waiver` texts a confirmation "
+            "code to a configured contact, and --without-video <code> is where "
+            "that person's answer sends the lesson with no video section — not "
+            "a flag anything running the CLI can pass on its own. A message "
+            "that already went out is refused the same way, and that one a "
+            "person can override with --again."
         ),
     )
     group = parser.add_subparsers(dest="send_command", metavar="<subcommand>")
@@ -75,10 +78,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     lesson.add_argument("--dry-run", action="store_true", help="Run the gate and stop.")
     lesson.add_argument(
         "--without-video",
-        action="store_true",
+        metavar="CODE",
+        default=None,
         help="Send the message with no video section when the session has no "
-        "recording link. Only after a person has confirmed this lesson should "
-        "go out without one; a session that does have a recording keeps it.",
+        "recording link. CODE is the confirmation code `send video-waiver` "
+        "texted to a person for this exact learner and session; a session "
+        "that does have a recording keeps it regardless.",
     )
     lesson.add_argument(
         "--again",
@@ -87,6 +92,34 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "person who has confirmed the first one never arrived.",
     )
     lesson.set_defaults(handler=handle_lesson)
+
+    waiver = group.add_parser(
+        "video-waiver",
+        help="Text a confirmation code for sending a lesson with no video.",
+        description=(
+            "For a session `send lesson` refused on exit 3 because no "
+            "recording is on the document. Texts a one-time code to --to "
+            "through the studio's own messenger and stops — the code is never "
+            "printed or returned here, only sent. A person reads it off their "
+            "phone and gives it back as `send lesson ... --without-video "
+            "<code>`, which is the only way the confirmation re-enters Baton. "
+            "The code answers this learner's this session alone and expires "
+            f"after {DEFAULT_TTL_MINUTES:g} minutes unanswered."
+        ),
+    )
+    waiver.add_argument("name", metavar="NAME")
+    waiver.add_argument("--to", metavar="CONTACT", required=True, help="Configured contact name.")
+    waiver.add_argument(
+        "--session", type=int, default=None, help="Defaults to the latest published session."
+    )
+    waiver.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show the message and code that would be sent, and send nothing. "
+        "Unlike a real request, the code appears here — this is a person "
+        "previewing the flow, not the flow itself.",
+    )
+    waiver.set_defaults(handler=handle_video_waiver)
 
     recording = group.add_parser(
         "recording",
@@ -132,13 +165,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="One learner per flag. Pass the same command once for a whole day.",
     )
     batch.add_argument("--dry-run", action="store_true")
-    batch.add_argument(
-        "--without-video",
-        action="store_true",
-        help="Send with no video section for every learner in this batch whose "
-        "session has no recording link. One flag covers the whole batch, so "
-        "pass it only with the learners a person confirmed.",
-    )
+    # No --without-video here. A code answers one learner's one session, and
+    # a batch has many of both — there is no single value that could mean
+    # "yes" for all of them. A learner with no recording is reported blocked,
+    # same as any other refusal in a batch, and sent alone once a person has
+    # requested and answered that one's own waiver.
     batch.add_argument(
         "--again",
         action="store_true",
@@ -437,32 +468,33 @@ def _send_one(
         if not video_link and "video_link" in required:
             # The studio's gate requires the recording, and this session has
             # none on its document. That is a person's call to make, not a gap
-            # to fix by default: some lessons genuinely were not filmed. The
-            # confirmed answer arrives as --without-video on a second run and
-            # is applied the same way a studio relaxes its own gate in config —
-            # the field moves to the optional list for this one invocation, so
-            # the send still warns about it and the message still leaves the
-            # video section out (an empty link composes no video line).
-            # Nothing else can be relaxed this way; the other required fields
-            # keep the hard, unoverridable block.
-            if getattr(ctx.args, "without_video", False):
+            # to fix by default: some lessons genuinely were not filmed.
+            #
+            # The confirmed answer is a code, not a bare flag. A bare
+            # --without-video is something anything running this CLI can pass,
+            # including an agent that never asked anyone and is following the
+            # contract faithfully by doing so. A code is different: only
+            # `send video-waiver` can mint one, only the studio's own
+            # messenger ever carries it, and only a person reading their own
+            # phone has it to give back. Matching one moves video_link to
+            # optional for this one invocation, so the send still warns about
+            # it and the message still leaves the video section out (an empty
+            # link composes no video line). Nothing else can be relaxed this
+            # way; the other required fields keep the hard, unoverridable
+            # block, and `candidates` stays empty here for the same reason it
+            # does on the no-code path below — this is not data to pick from.
+            code = getattr(ctx.args, "without_video", None)
+            if code:
+                waivers = VideoWaivers.for_state(
+                    ctx.config.state_dir,
+                    float(ctx.config.get("summary.video_waiver.ttl_minutes", DEFAULT_TTL_MINUTES)),
+                )
+                waivers.verify_and_consume(
+                    learner.id, session_number, code, learner_name=learner.name, label=label
+                )
                 required = [name for name in required if name != "video_link"]
                 optional = [*optional, "video_link"]
             else:
-                # `candidates` everywhere else in this CLI carries data a
-                # caller picks between: the learners a name matched, the
-                # contacts configured. Here it carried two command lines, one
-                # of which skips the gate, so the machine-readable half of a
-                # stop-and-ask-a-person exit was handing the bypass to whatever
-                # automation read it. An agent following the contract
-                # faithfully would take it, and that is the opposite of what
-                # this exit is for.
-                #
-                # What goes out now is what is true: which message, and what
-                # is missing from it. The way past is prose, addressed to the
-                # person who has to decide. That is not a boundary, since the
-                # flag still exists and `--help` still lists it. It only stops the
-                # contract from recommending it.
                 raise NeedsHumanError(
                     f"No recording link was found on the document for "
                     f"{learner.name}'s {label} {session_number} message, and "
@@ -473,10 +505,11 @@ def _send_one(
                         "session_number": session_number,
                         "missing": ["video_link"],
                     },
-                    remedy="Nothing was sent. Put the recording on the lesson "
-                    "document and re-run. Sending a lesson with no recording "
-                    "is a person's decision about that lesson, not a step to "
-                    "retry past.",
+                    remedy="Nothing was sent. Either put the recording on the "
+                    "lesson document and re-run, or run `baton send "
+                    f'video-waiver "{learner.name}" --to {ctx.args.to}` to text '
+                    "a confirmation code to a person, then re-run this with "
+                    "--without-video <the code they were sent>.",
                 )
         return send_lesson(
             messenger,
@@ -514,6 +547,103 @@ def handle_lesson(ctx: Context) -> Exit:
         # rejected without a hard error) without raising; this line is what
         # would surface that the moment one exists.
         + ("" if ctx.args.dry_run or result.get("sent") else "  ✗ NOT DELIVERED"),
+    )
+    return Exit.OK
+
+
+@guarded("send")
+def handle_video_waiver(ctx: Context) -> Exit:
+    """Text a one-time code to a person, for one learner's one session.
+
+    The code itself never appears in this command's own result — not in
+    `--json`, not in the human line, not in a log line anywhere in Baton.
+    Reaching it means reading the message it was sent in. That is the entire
+    mechanism: nothing driving this CLI, agent or person, can answer the
+    question `send lesson` asked without first having read that message.
+    """
+    label = ctx.config.label("session")
+    store = open_store(ctx.config)
+    try:
+        learner = _resolve(ctx, store, ctx.args.name)
+        records = PublishedRecord(ctx.config.state_dir / "published")
+        if ctx.args.session is not None:
+            published = records.get(learner.id, ctx.args.session)
+            if published is None:
+                raise UsageError(
+                    f"No published {label} {ctx.args.session} for {learner.name}.",
+                    remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
+                )
+        else:
+            published = records.latest(learner.id)
+            if published is None:
+                raise UsageError(
+                    f"Nothing has been published for {learner.name} yet.",
+                    remedy=f'Run `baton lesson publish "{ctx.args.name}"` first.',
+                )
+        piece_sources = _piece_sources(store, learner, published)
+    finally:
+        store.close()
+
+    session_number = int(published.get("session_number", 0) or 0)
+    doc_id = str(published.get("doc_id", ""))
+
+    docs = open_docs(ctx.config)
+    video_link = find_video_link(
+        docs,
+        doc_id,
+        blocks=tuple(
+            str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
+        ),
+        exclude=piece_sources,
+    )
+    if video_link:
+        raise UsageError(
+            f"{learner.name}'s {label} {session_number} already has a recording on its document.",
+            remedy="Nothing to waive — `send lesson` will send it with the video section as usual.",
+        )
+
+    messenger = open_chat(ctx.config)
+    recipient_id = messenger.resolve(ctx.args.to)
+    ttl_minutes = float(ctx.config.get("summary.video_waiver.ttl_minutes", DEFAULT_TTL_MINUTES))
+
+    def _message(code: str) -> str:
+        return (
+            f"Baton: {learner.name}'s {label} {session_number} has no recording "
+            f"on its document. Reply this code to send the summary without one: "
+            f"{code}\nExpires in {ttl_minutes:g} minutes. Ignore this if that "
+            f"wasn't your decision."
+        )
+
+    if ctx.args.dry_run:
+        preview = _message(generate_code())
+        ctx.report.result(
+            {
+                "ok": True,
+                "dry_run": True,
+                "learner": learner.name,
+                "session_number": session_number,
+                "would_send_to": ctx.args.to,
+                "message": preview,
+            },
+            human=f"Would text a confirmation code to {ctx.args.to} for "
+            f"{learner.name}'s {label} {session_number}:\n\n{preview}",
+        )
+        return Exit.OK
+
+    waivers = VideoWaivers.for_state(ctx.config.state_dir, ttl_minutes)
+    code = waivers.request(learner.id, session_number, sent_to=ctx.args.to)
+    messenger.send(recipient_id, _message(code))
+
+    ctx.report.result(
+        {
+            "ok": True,
+            "learner": learner.name,
+            "session_number": session_number,
+            "sent_to": ctx.args.to,
+            "expires_in_minutes": ttl_minutes,
+        },
+        human=f"Texted a confirmation code to {ctx.args.to} for {learner.name}'s "
+        f"{label} {session_number}. It expires in {ttl_minutes:g} minutes.",
     )
     return Exit.OK
 

@@ -23,8 +23,9 @@ baton send lesson "<name>" --to <contact> --json
 baton send batch --to <contact> \
   --learner "<name>" --learner "<name>" --learner "<name>" --json
 
-# Only after the user confirmed a lesson with no recording may go out:
-baton send lesson "<name>" --to <contact> --without-video --json
+# Only after the user has a confirmation code for the exact learner+session may go out:
+baton send video-waiver "<name>" --to <contact> --json   # texts the code; never returns it here
+baton send lesson "<name>" --to <contact> --without-video <code> --json
 
 # Reports, not gates: exit 0 whatever they find
 baton send readiness --date today --json   # before the sends: who is booked, what blocks them
@@ -69,14 +70,15 @@ exit 3 and asks; see the next rule.)
 **If a command fails, do not send the message by hand.** No API calls, no other
 tools. Report the failure and stop.
 
-**A lesson with no recording is the user's call, not yours.** When a session
-has no recording link, the send stops on exit `3` with two candidates: send
-now with no video section in the message (`--without-video`), or put the
-recording on the document first. Show both to the user and wait — never add
-`--without-video` yourself, and never send the message another way. The flag
-is how their *confirmed answer* is delivered: a session that does have a
-recording keeps it, flag or no flag, and every other missing field still
-blocks with no override at all.
+**A lesson with no recording is the user's call, not yours to skip.** Exit `3`
+names the gap; `candidates` is empty on purpose, so there is no bare flag to
+add yourself. Either the recording goes onto the document first, or the user
+confirms sending without one — for that, run `send video-waiver "<name>" --to
+<contact>`, which texts a one-time code and never returns it to you. Ask the
+user for the code they were sent, then run `send lesson ... --without-video
+<code>`. Never invent, guess, or reuse a code from another learner or
+session; each works once, for that exact pair. A recording that exists is
+kept regardless, and every other missing field still blocks with no override.
 
 **`video_link` missing when the page visibly has a YouTube link means that
 link is the song, not the recording.** Baton reads the piece's own

@@ -176,14 +176,18 @@ exit=5
 
 What counts as required is configuration (`gates.send_lesson_required`), so a
 studio sets its own standard of completeness; the block itself is not
-negotiable. One field has a way past the block, and it goes through a person:
-when a session has no `video_link` on its document, `send lesson` stops on
-exit 3 and asks, and `--without-video` — only after someone confirmed the
-lesson should go out without it — sends the message with the video section
-left off. A session that does have a recording keeps it, flag or no flag. What
-is sent is what was *published* — the message comes from the
-record stored at publish time, and the links are Baton's own, which is why
-links are forbidden inside the summary a model writes.
+negotiable. One field has a way past the block, and it goes through a person
+by construction, not by convention: when a session has no `video_link` on its
+document, `send lesson` stops on exit 3 and asks. `send video-waiver` texts a
+one-time code to a configured contact — never printed or returned by the
+command that sends it, only delivered — and `--without-video <code>` is where
+that person's answer, read off their own phone, re-enters Baton. A bare
+`--without-video` is not a working flag; nothing running the CLI, agent or
+person, can produce a valid code without someone having read one. A session
+that does have a recording keeps it regardless. What is sent is what was
+*published* — the message comes from the record stored at publish time, and
+the links are Baton's own, which is why links are forbidden inside the
+summary a model writes.
 
 Several learners go through one invocation. A refusal for one does not abandon
 the rest, and the exit code plus the report say exactly which did not go:

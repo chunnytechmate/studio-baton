@@ -9,6 +9,7 @@ override flag" only means something if it survives contact with tests.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import textwrap
 from pathlib import Path
@@ -708,15 +709,17 @@ def test_a_session_with_no_recording_stops_and_asks_a_person(studio, capsys):
     assert messenger.sent == []
 
 
-def test_the_stop_does_not_hand_the_bypass_to_whatever_is_reading(studio, capsys):
+def test_the_stop_does_not_hand_a_working_bypass_to_whatever_is_reading(studio, capsys):
     """`candidates` is the machine-readable half of exit 3, and everywhere else
     it carries data to pick between: matched learners, configured contacts.
-    Here it carried two command lines, one of which skips the gate: an agent
-    following the contract faithfully would take the bypass, which is the
-    opposite of what stopping to ask a person is for.
+    A bare `--without-video` used to be a working bypass sitting right there
+    in the contract; an agent following it faithfully would take it, which is
+    the opposite of what stopping to ask a person is for.
 
-    The flag still exists and `--help` still lists it. This only stops the
-    contract from recommending it."""
+    Nothing in this response is a secret to withhold — the remedy is allowed
+    to name `send video-waiver` and `--without-video`, because neither one
+    alone completes anything. What matters is checked below: no code has been
+    requested, so no value passed to --without-video succeeds."""
     profile, messenger, docs = studio
     publish(profile, "1")
     docs.blocks["doc-ada-03"] = []
@@ -725,55 +728,163 @@ def test_the_stop_does_not_hand_the_bypass_to_whatever_is_reading(studio, capsys
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["details"]["candidates"] == []
-    assert "--without-video" not in json.dumps(payload)
+    assert messenger.sent == []
+
+    # No waiver was ever requested, so nothing --without-video is given works.
+    guessed = call(
+        studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", "000000"
+    )
+    assert guessed == Exit.NEEDS_HUMAN
     assert messenger.sent == []
 
 
-def test_without_video_sends_with_no_video_section_after_the_confirmation(studio, capsys):
-    """`--without-video` is the person's confirmed answer, applied the same way
-    a studio relaxes its own gate: the field moves to optional for this one
+def _request_waiver(studio, capsys, name="Ada Whitfield", **extra):
+    """Ask for a code and hand back the exact string it sent — standing in for
+    the person reading their own phone, since nothing else in the test can."""
+    _profile, messenger, _docs = studio
+    args = ["video-waiver", name, "--to", "teacher"]
+    for key, value in extra.items():
+        args += [f"--{key.replace('_', '-')}", str(value)]
+    assert call(studio, *args) == Exit.OK
+    capsys.readouterr()
+    text = messenger.sent[-1][1]
+    match = re.search(r"[A-Z2-9]{6}", text)
+    assert match, f"no code-shaped token in: {text!r}"
+    return match.group(0)
+
+
+def test_video_waiver_texts_a_code_and_the_command_never_returns_it(studio, capsys):
+    profile, messenger, docs = studio
+    publish(profile, "1")
+    docs.blocks["doc-ada-03"] = []
+
+    assert call(studio, "video-waiver", "Ada Whitfield", "--to", "teacher") == Exit.OK
+
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["sent_to"] == "teacher"
+    assert len(messenger.sent) == 1
+    text = messenger.sent[0][1]
+    match = re.search(r"[A-Z2-9]{6}", text)
+    assert match
+    # The command's own stdout must not carry the value it just had a
+    # messenger deliver — that is the entire mechanism.
+    assert match.group(0) not in out
+
+
+def test_video_waiver_refuses_a_session_that_already_has_a_recording(studio, capsys):
+    profile, _messenger, _docs = studio
+    publish(profile, "1")  # the fixture's page carries a video block
+
+    assert call(studio, "video-waiver", "Ada Whitfield", "--to", "teacher") == Exit.USAGE
+
+
+def test_video_waiver_dry_run_previews_without_sending_or_writing_state(studio, capsys):
+    profile, messenger, docs = studio
+    publish(profile, "1")
+    docs.blocks["doc-ada-03"] = []
+
+    assert call(studio, "video-waiver", "Ada Whitfield", "--to", "teacher", "--dry-run") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True
+    assert re.search(r"[A-Z2-9]{6}", payload["message"])
+    assert messenger.sent == []
+
+    # A dry run must not answer for the real request that comes later — the
+    # previewed code is never live.
+    from baton.core.video_waivers import VideoWaivers
+
+    assert VideoWaivers.for_state(profile / "state")._load() == {}
+
+
+def test_without_video_sends_with_no_video_section_after_a_waiver_is_answered(studio, capsys):
+    """The code is the person's confirmed answer, applied the same way a
+    studio relaxes its own gate: the field moves to optional for this one
     send, so the message leaves the video line off, the doc link stays, and
     the result still warns about what is missing."""
     profile, messenger, docs = studio
     publish(profile, "1")
     docs.blocks["doc-ada-03"] = []
+    code = _request_waiver(studio, capsys)
 
-    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video") == Exit.OK
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", code)
+        == Exit.OK
+    )
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["sent"] is True
     assert "เฉพาะ Video:" not in payload["message"]
     assert "https://example.invalid/lesson-3" in payload["message"]
     assert {w["field"] for w in payload["warnings"]} >= {"video_link"}
-    assert "เฉพาะ Video:" not in messenger.sent[0][1]
+    assert "เฉพาะ Video:" not in messenger.sent[-1][1]
 
 
-def test_without_video_leaves_a_session_that_has_a_recording_alone(studio, capsys):
-    """The flag answers "there is no recording"; it is not an order to strip
-    one that exists."""
-    profile, messenger, _docs = studio
-    publish(profile, "1")  # the fixture's page carries a video block
-
-    assert call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video") == Exit.OK
-
-    capsys.readouterr()
-    assert "https://example.invalid/watch/ada-3" in messenger.sent[0][1]
-
-
-def test_without_video_dry_run_previews_the_message_and_sends_nothing(studio, capsys):
+def test_a_wrong_code_is_refused_and_leaves_the_real_one_live(studio, capsys):
     profile, messenger, docs = studio
     publish(profile, "1")
     docs.blocks["doc-ada-03"] = []
+    code = _request_waiver(studio, capsys)
 
-    code = call(
-        studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", "--dry-run"
+    wrong = "999999" if code != "999999" else "888888"
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", wrong)
+        == Exit.NEEDS_HUMAN
+    )
+    assert len(messenger.sent) == 1  # only the original waiver text; the wrong guess sent nothing
+
+    # The real code still works — a wrong guess did not burn it.
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", code)
+        == Exit.OK
     )
 
-    payload = json.loads(capsys.readouterr().out)
-    assert code == Exit.OK
-    assert payload["dry_run"] is True
-    assert "เฉพาะ Video:" not in payload["message"]
-    assert messenger.sent == []
+
+def test_a_waiver_code_is_single_use(studio, capsys):
+    profile, _messenger, docs = studio
+    publish(profile, "1")
+    docs.blocks["doc-ada-03"] = []
+    code = _request_waiver(studio, capsys)
+
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", code)
+        == Exit.OK
+    )
+    capsys.readouterr()
+
+    replay = call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", code)
+    assert replay == Exit.NEEDS_HUMAN
+
+
+def test_a_waiver_answers_only_the_session_it_was_requested_for(studio, capsys):
+    """Bruno's code must not open Ada's session, even to the same contact."""
+    profile, _messenger, docs = studio
+    publish(profile, "1")
+    publish(profile, "2", learner_name="Bruno Castell", doc_id="doc-b-1")
+    docs.blocks["doc-ada-03"] = []
+    docs.blocks["doc-b-1"] = []
+    bruno_code = _request_waiver(studio, capsys, name="Bruno Castell")
+
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", bruno_code)
+        == Exit.NEEDS_HUMAN
+    )
+
+
+def test_without_video_leaves_a_session_that_has_a_recording_alone(studio, capsys):
+    """A code answers "there is no recording"; it is not an order to strip
+    one that exists, and the gate never even looks at it when the video is
+    already there."""
+    profile, messenger, _docs = studio
+    publish(profile, "1")  # the fixture's page carries a video block
+
+    assert (
+        call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", "anything")
+        == Exit.OK
+    )
+
+    capsys.readouterr()
+    assert "https://example.invalid/watch/ada-3" in messenger.sent[0][1]
 
 
 def test_a_batch_reports_the_no_video_learner_as_waiting_on_a_person(studio, capsys):
@@ -804,33 +915,54 @@ def test_a_batch_reports_the_no_video_learner_as_waiting_on_a_person(studio, cap
     assert payload["blocked"][0]["error"]["error"] == "needs_human"
 
 
-def test_a_confirmed_batch_sends_the_no_video_learner_without_the_video_section(studio, capsys):
-    """One flag covers the batch, so it belongs to whoever named the learners
-    in it: Bruno goes out with no video line, Ada keeps the recording she
-    has."""
-    profile, _messenger, docs = studio
-    publish(profile, "1")
-    publish(profile, "2", learner_name="Bruno Castell", doc_id="doc-b-1")
-    docs.blocks["doc-b-1"] = []
-
+def test_batch_has_no_blanket_bypass(studio, capsys):
+    """A waiver code answers one learner's one session; a batch has many of
+    both, so there is no single value `--without-video` could take that would
+    mean "yes" for all of them. The flag is not offered on this subcommand at
+    all — a person confirms Bruno's session on its own, the same as any exit-3
+    stop, and re-sends him alone once they have."""
     code = call(
         studio,
         "batch",
         "--to",
         "teacher",
         "--without-video",
+        "whatever",
+        "--learner",
+        "Ada Whitfield",
+    )
+
+    assert code == Exit.USAGE
+
+
+def test_a_batch_learner_confirmed_separately_can_be_sent_alone_after(studio, capsys):
+    profile, _messenger, docs = studio
+    publish(profile, "1")
+    publish(profile, "2", learner_name="Bruno Castell", doc_id="doc-b-1")
+    docs.blocks["doc-b-1"] = []
+
+    batch_code = call(
+        studio,
+        "batch",
+        "--to",
+        "teacher",
         "--learner",
         "Ada Whitfield",
         "--learner",
         "Bruno Castell",
     )
-
     payload = json.loads(capsys.readouterr().out)
-    assert code == Exit.OK
-    assert payload["sent"] == 2
-    messages = {result["learner"]: result["message"] for result in payload["results"]}
-    assert "เฉพาะ Video:" in messages["Ada Whitfield"]
-    assert "เฉพาะ Video:" not in messages["Bruno Castell"]
+    assert batch_code == Exit.GATE
+    assert payload["sent"] == 1
+    assert [b["learner"] for b in payload["blocked"]] == ["Bruno Castell"]
+
+    waiver_code = _request_waiver(studio, capsys, name="Bruno Castell")
+    assert (
+        call(studio, "lesson", "Bruno Castell", "--to", "teacher", "--without-video", waiver_code)
+        == Exit.OK
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert "เฉพาะ Video:" not in payload["message"]
 
 
 def test_contacts_lists_what_is_configured(studio, capsys):
