@@ -4,6 +4,26 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.0.1 (2026-09-01)
+
+This patch makes the public package describe the production system as clearly
+as the CLI operates it. It changes no command, schema, exit code, or adapter.
+
+### Documentation
+
+- Added a complete Thai README and linked it from the package description.
+- Reworked the English overview around the five handoffs of one lesson and
+  corrected the inventory to 14 top-level groups and 63 user-facing command
+  paths; the hidden `job supervise` path is not presented as a user command.
+- Replaced stale pre-1.0 package metadata with the current Production/Stable
+  status and the four-stage Class Summarize → PLAM → OpenClaw → Baton lineage.
+
+### Thai locale
+
+- Rephrased configuration, driver, model, and background-job diagnostics so
+  they read as direct Thai instructions while preserving their keys and
+  operational meaning.
+
 ## 1.0.0
 
 The version the project was working towards: the whole cycle — booking,
