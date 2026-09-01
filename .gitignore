@@ -71,3 +71,11 @@ callgraph.json
 # stray `git add -A` can never stage them.
 tests/fixtures/
 tests/fixtures-staging-videos
+
+# Same arrangement for the mock learner's clips (2026-09-01): the bytes live
+# beside the other test assets under the OpenClaw mount, and this is only the
+# doorway. Filmed for testing rather than recovered from a real lesson, so the
+# reason is size and provenance rather than privacy — but it stays out of git
+# either way. `~/studio-baton-private/bin/restore-test-clips` puts them back
+# on Drive after a run trashes them.
+tests/fixtures-test-learner

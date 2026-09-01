@@ -402,28 +402,55 @@ def _no_instrument(ctx: Context, key: str) -> str:
     return value
 
 
+def _tone_override(ctx: Context, learner: Learner, key: str) -> str:
+    """One wording this learner's tone asks to change, from config.
+
+    A tone can rename the `goals` heading and the parent message's homework
+    label, the same substitution `has_instrument` already makes. It lives in
+    config rather than as tone names in code: a studio that invents a fifth
+    tone gets the behaviour without waiting for a release, and a tone nobody
+    wrote an override for changes nothing.
+    """
+    tone = str(learner.tone or "").strip()
+    if not tone:
+        return ""
+    return str(ctx.config.get(f"summary.tone_overrides.{tone}.{key}", "")).strip()
+
+
+def _goals_wording(ctx: Context, learner: Learner, key: str) -> str:
+    """What `goals` is called for this learner, or "" for the profile default.
+
+    Two things can rename it and they can both apply at once, so the order is
+    deliberate: a tone is a choice about how to teach, while no instrument at
+    home is a fact about what the learner can physically do. The fact wins.
+    """
+    wording = _tone_override(ctx, learner, key)
+    if not learner.has_instrument:
+        wording = _no_instrument(ctx, key) or wording
+    return wording
+
+
 def _sections(ctx: Context, learner: Learner) -> dict[str, Any]:
     """Section headings for this learner's page.
 
-    A learner with no instrument at home gets a different heading over
-    `goals`: calling it homework when there is nothing at home to do it on is
-    the heading contradicting the lesson underneath it.
+    A learner with no instrument at home, or one taught in a tone that does
+    not set homework, gets a different heading over `goals`: calling it
+    homework when none is coming is the heading contradicting the lesson
+    underneath it.
     """
     sections = dict(ctx.config.get("summary.sections", {}) or {})
-    if not learner.has_instrument:
-        heading = _no_instrument(ctx, "section")
-        if heading:
-            sections["goals"] = heading
+    heading = _goals_wording(ctx, learner, "section")
+    if heading:
+        sections["goals"] = heading
     return sections
 
 
 def _message_labels(ctx: Context, learner: Learner) -> dict[str, Any]:
     """Labels for the parent's message, with the same substitution."""
     labels = dict(ctx.config.get("summary.short_summary.labels", {}) or {})
-    if not learner.has_instrument:
-        label = _no_instrument(ctx, "message_label")
-        if label:
-            labels["homework"] = label
+    label = _goals_wording(ctx, learner, "message_label")
+    if label:
+        labels["homework"] = label
     return labels
 
 
@@ -464,12 +491,12 @@ def _voice(ctx: Context, learner: Learner) -> list[str]:
         without = _no_instrument(ctx, "instruction")
         if without:
             lines.append(without)
-        heading = _no_instrument(ctx, "section")
-        if heading:
-            # The model is told what the section it is filling will be called.
-            # Writing "practise at home" under a heading that says "next
-            # lesson" is the same contradiction from the other direction.
-            lines.append(f'The `goals` section is published under the heading "{heading}".')
+    heading = _goals_wording(ctx, learner, "section")
+    if heading:
+        # The model is told what the section it is filling will be called.
+        # Writing "practise at home" under a heading that says "next lesson"
+        # is the same contradiction from the other direction.
+        lines.append(f'The `goals` section is published under the heading "{heading}".')
     level = _prompt_level(ctx, learner)
     guidance = str(ctx.config.section("summary.prompt_levels").get(level, "")).strip()
     if guidance:
@@ -1007,6 +1034,18 @@ def handle_contract(ctx: Context) -> Exit:
     # keeps both for exactly that.
     lesson_notes = draft.corrected_context or draft.context
 
+    # The default wording tells the model `goals` is homework. For a learner
+    # whose `goals` is published as next lesson's aim — no instrument at home,
+    # or a tone that does not set homework — that instruction contradicts both
+    # the heading above the section and the tone guidance below it, and the
+    # model has to pick one. It picked the homework line often enough to be
+    # worth removing the choice.
+    goals_rule = (
+        "`goals` says what to aim for by the next lesson"
+        if _goals_wording(ctx, learner, "section")
+        else "`goals` says what to practise at home"
+    )
+
     payload = {
         "schema": contracts.load_schema(contracts.LESSON_SUMMARY),
         "context": {
@@ -1034,8 +1073,8 @@ def handle_contract(ctx: Context) -> Exit:
             "Put what changed in `progress`, as the state before and the state "
             "now — not as a rating. `overview` says how the session went; "
             "`progress` says what is different; `covered` says what was worked "
-            "on; `focus` says what is still hard; `goals` says what to practise "
-            "at home. One fact belongs in one of them.",
+            f"on; `focus` says what is still hard; {goals_rule}. "
+            "One fact belongs in one of them.",
             "Describe what was observed rather than what it means: what they "
             "managed, how much help it took, what changed.",
             "Only use callout ids from `available_callout_ids`; never write theory text.",

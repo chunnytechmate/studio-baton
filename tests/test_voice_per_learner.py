@@ -249,3 +249,120 @@ def test_the_published_page_and_the_stored_message_carry_the_new_wording(studio,
     record = json.loads((studio / "state" / "published" / "2-1.json").read_text(encoding="utf-8"))
     assert "Next lesson: Count the backbeat out loud" in record["short_message"]
     assert "Goals for next lesson" in {entry["text"] for entry in record["blocks"]}
+
+
+# -- a tone that does not set homework --------------------------------------
+#
+# `casual` in the studio this was built for means "learning for fun": no
+# homework, and `goals` written as what the next lesson will reach for. That is
+# the substitution the no-instrument case already made, wanted for a different
+# reason — so it is configuration a tone can ask for, not a second branch in
+# the code naming tones it cannot know.
+
+
+def with_tone_overrides(studio: Path, block: str) -> None:
+    """Append `summary.tone_overrides` to the profile the fixture wrote."""
+    path = studio / "baton.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + textwrap.indent(textwrap.dedent(block).strip() + "\n", "  "),
+        encoding="utf-8",
+    )
+
+
+EXAM_OVERRIDE = """
+tone_overrides:
+  exam:
+    section: Exam targets
+    message_label: Next up
+"""
+
+
+def test_a_tone_can_rename_the_goals_section_for_a_learner_who_has_an_instrument(studio, capsys):
+    """Nothing about Clara's record says "no instrument"; the rename is her
+    tone asking for it, which nothing but `has_instrument` could do before."""
+    with_tone_overrides(studio, EXAM_OVERRIDE)
+
+    instructions = contract(studio, capsys, WITH_INSTRUMENT)["instructions"]
+
+    assert any("Exam targets" in line for line in instructions)
+    assert not any("no instrument at home" in line for line in instructions)
+
+
+def test_the_renamed_section_also_flips_the_rule_that_calls_goals_homework(studio, capsys):
+    """The standing rule says `goals` is what to practise at home. Under a
+    heading that says otherwise it contradicts both the heading and the tone,
+    and the model has to pick one."""
+    with_tone_overrides(studio, EXAM_OVERRIDE)
+
+    instructions = contract(studio, capsys, WITH_INSTRUMENT)["instructions"]
+
+    assert any("aim for by the next lesson" in line for line in instructions)
+    assert not any("practise at home" in line for line in instructions)
+
+
+def test_without_an_override_goals_is_still_homework(studio, capsys):
+    instructions = contract(studio, capsys, WITH_INSTRUMENT)["instructions"]
+
+    assert any("practise at home" in line for line in instructions)
+    assert not any("aim for by the next lesson" in line for line in instructions)
+
+
+def test_a_tone_nobody_wrote_an_override_for_changes_nothing(studio, capsys):
+    """The same refusal to guess that `summary.tones` makes: a tone with no
+    override is a tone whose studio has not asked for one."""
+    with_tone_overrides(
+        studio,
+        """
+        tone_overrides:
+          casual:
+            section: Casual targets
+        """,
+    )
+
+    instructions = contract(studio, capsys, WITH_INSTRUMENT)["instructions"]  # exam
+
+    assert not any("Casual targets" in line for line in instructions)
+    assert any("practise at home" in line for line in instructions)
+
+
+def test_no_instrument_at_home_outranks_the_tone_override(studio, capsys):
+    """Bruno is `casual` *and* has nothing at home. A tone is a choice about
+    how to teach; an empty room is a fact about what he can do. The fact wins,
+    so the two never race to name the same heading."""
+    with_tone_overrides(
+        studio,
+        """
+        tone_overrides:
+          casual:
+            section: Casual targets
+            message_label: Casually
+        """,
+    )
+
+    instructions = contract(studio, capsys, WITHOUT_INSTRUMENT)["instructions"]
+
+    assert any("Goals for next lesson" in line for line in instructions)
+    assert not any("Casual targets" in line for line in instructions)
+
+
+def test_the_family_reads_the_tones_wording_too(studio, capsys):
+    """The rename has to survive to the page and the message, not stop at the
+    prompt — the same journey the no-instrument wording already makes."""
+    with_tone_overrides(studio, EXAM_OVERRIDE)
+    contract(studio, capsys, WITH_INSTRUMENT)
+    assert ingest(studio, capsys, WITH_INSTRUMENT, SUMMARY)[0] == Exit.OK
+
+    assert call(studio, "render", WITH_INSTRUMENT, "--format", "blocks") == Exit.OK
+    headings = [
+        block["heading_2"]["rich_text"][0]["text"]["content"]
+        for block in out(capsys)["blocks"]
+        if block.get("type") == "heading_2"
+    ]
+    assert "Exam targets" in headings
+    assert "Practice goals" not in headings
+
+    assert call(studio, "render", WITH_INSTRUMENT, "--format", "message") == Exit.OK
+    message = out(capsys)["message"]
+    assert "Next up: Count the backbeat out loud" in message
+    assert "Practice:" not in message
