@@ -4,6 +4,40 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.0.2 (2026-09-01)
+
+Three fixes from running the video pipeline against a real course a second
+time, after a summary had already been published, and one change to how the
+no-recording stop presents its way past.
+
+### Upgrading
+
+- `send`'s no-recording stop no longer returns `candidates` naming
+  `--without-video`. The flag itself is unchanged; only the machine-readable
+  contract lost the option that skipped the person it exists to consult. A
+  caller that inspected `candidates[0].option` for that flow should read the
+  new `details.missing` field instead, and `--without-video` still has to be
+  typed by whoever decides.
+
+### Video pipeline
+
+- A recording now lands on the correct lesson whether it finishes before or
+  after the summary does. `baton video` used to ask for the session in
+  progress, then fall back to the next *empty* one; publishing a summary
+  marks a session Done, which used to send a later recording onto next
+  week's untaught page instead of the lesson it was filmed for.
+- The recording is inserted above the summary regardless of which one was
+  written first, instead of wherever an append happened to land. Notion has
+  no operation to move a block that already exists, so this is spelled as an
+  insert at the top of the page (`DocStore.append_blocks(..., position=)`).
+
+### Summaries
+
+- A tone can now rename the `goals` section and its message label, the same
+  way a learner with no instrument at home already could
+  (`summary.tone_overrides`). A studio whose tone means "no homework" no
+  longer needs an unrelated database column to say so.
+
 ## 1.0.1 (2026-09-01)
 
 This patch makes the public package describe the production system as clearly

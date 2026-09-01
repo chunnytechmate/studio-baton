@@ -12,7 +12,7 @@ and fails quietly when it is not. Everything that can be a script here is a
 script, so the model is left with the one job only a model can do — writing the
 summary — and even that is submitted as JSON validated against a schema.
 
-> **Status: 1.0.1 · Production/Stable.** The full cycle — booking, video,
+> **Status: 1.0.2 · Production/Stable.** The full cycle — booking, video,
 > lesson summaries, and delivery — has run end to end on real teaching days.
 > The package is available from PyPI and remains explicit about the parts that
 > still require a person to review or choose.
