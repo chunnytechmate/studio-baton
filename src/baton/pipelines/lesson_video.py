@@ -86,7 +86,7 @@ def compose_video_message(
         )
 
     icon = _instrument_icon(instrument)
-    header = f"{icon} วีดีโอบทเรียนของ{learner_name}"
+    header = f"{icon} วิดีโอบทเรียนของ{learner_name}"
     if instrument:
         header += f" ({instrument})"
 

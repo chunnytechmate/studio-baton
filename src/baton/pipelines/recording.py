@@ -1,7 +1,7 @@
 """Offering a learner's recorded works, and sending the chosen links.
 
 A studio records its learners: YouTube for sharing, Drive beside it for the
-copy parents keep. Both live on the ``works`` row, and a parent asking "วีดีโอ
+copy parents keep. Both live on the ``works`` row, and a parent asking "วิดีโอ
 ครั้งก่อนหน่อยครับ" means one specific recording, not whatever came out last.
 So sending is two steps and never guesses: list what exists, let a person pick
 one by number, then deliver exactly that one's links.

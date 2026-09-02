@@ -1189,7 +1189,7 @@ def handle_aftermath(ctx: Context) -> Exit:
             lines.append(f"ตรวจการส่งไม่ได้: {chat_unavailable}")
         else:
             lines.append(
-                f"publish แล้วยังไม่ส่ง: {len(unsent)} (ตรวจแล้ว {checked} คู่, เจอใบเสร็จ {found})"
+                f"publish แล้วยังไม่ส่ง: {len(unsent)} (ตรวจแล้ว {checked} คู่, เจอหลักฐาน {found})"
             )
         for item in unsent:
             lines.append(

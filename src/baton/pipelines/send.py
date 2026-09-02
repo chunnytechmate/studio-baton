@@ -272,7 +272,7 @@ def compose_message(context: SendContext) -> str:
         lines.append(f"\n📝 {context.short_message}")
 
     week = context.session_number if context.session_number else "ล่าสุด"
-    lines.append(f"\n📌 Week {week} รายละเอียดการเรียนและวีดีโอ:\n{context.doc_url}")
+    lines.append(f"\n📌 Week {week} รายละเอียดการเรียนและวิดีโอ:\n{context.doc_url}")
 
     if context.practice_track:
         lines.append(f"\n🎧 Track สำหรับซ้อม:\n{context.practice_track}")

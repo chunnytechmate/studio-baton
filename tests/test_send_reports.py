@@ -294,7 +294,7 @@ def test_a_receipt_counts_as_proof_the_message_went_out(studio, capsys):
         "chat_unavailable": "",
     }
     assert payload["unsent"] == []
-    assert "เจอใบเสร็จ 1" in text(studio, capsys, "aftermath", "--date", DAY)
+    assert "เจอหลักฐาน 1" in text(studio, capsys, "aftermath", "--date", DAY)
 
 
 def test_stuck_drafts_and_orphan_files_are_different_problems(studio, capsys):

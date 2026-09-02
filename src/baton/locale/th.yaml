@@ -11,7 +11,7 @@ doctor.check.locale: "มีไฟล์ภาษาให้ใช้"
 doctor.check.timezone: "เขตเวลาเป็นชื่อ IANA ที่รู้จัก"
 doctor.check.state_dir: "เขียนไฟล์ลงโฟลเดอร์เก็บสถานะได้"
 doctor.check.secret: "ตั้งค่า {env} แล้ว"
-doctor.check.driver: "พบไดรเวอร์ {kind} ชื่อ `{driver}`"
+doctor.check.driver: "พบ driver ของ {kind} ชื่อ `{driver}`"
 doctor.check.llm: "Baton ไม่ได้ตั้งให้เรียกโมเดลเอง"
 
 config.effective: "การตั้งค่าที่ใช้จริง"

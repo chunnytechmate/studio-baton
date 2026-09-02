@@ -143,7 +143,7 @@ def test_the_video_leads_and_the_summary_rides_along():
     )
 
     lines = message.splitlines()
-    assert lines[0] == "🥁 วีดีโอบทเรียนของน้องปิติ (กลอง)"
+    assert lines[0] == "🥁 วิดีโอบทเรียนของน้องปิติ (กลอง)"
     assert lines[1] == "week 12 (23 ส.ค. 2569)"
     assert "🎵 ขุนแผนมนต์พระกาฬ" in message
     assert SECTIONS["overview"] in message
@@ -204,7 +204,7 @@ def test_sends_the_latest_sessions_video(studio, capsys):
     payload = out(capsys)
     assert payload["sent"] is True
     text = messenger.sent[0][1]
-    assert "วีดีโอบทเรียนของAda Whitfield" in text
+    assert "วิดีโอบทเรียนของAda Whitfield" in text
     assert "https://youtu.be/dQw4w9WgXcQ" in text
 
 
