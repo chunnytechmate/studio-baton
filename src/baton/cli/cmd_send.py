@@ -391,6 +391,12 @@ def _roster_for_day(
             vocabulary,
             timezone=ctx.config.timezone,
             session_label=ctx.config.label("session"),
+            # The same icons `baton calendar` writes titles with. Without
+            # them the title match has only the bare `Name (` prefix to try,
+            # so every event this studio books reads as unmatched and both
+            # reports show an empty roster on a full teaching day.
+            event_emoji=ctx.config.section("calendar.event_emoji"),
+            default_emoji=str(ctx.config.get("calendar.default_event_emoji", "")),
         )
         learners, unmatched = scheduler.who_is_booked(store, day)
         return learners, unmatched, "calendar"

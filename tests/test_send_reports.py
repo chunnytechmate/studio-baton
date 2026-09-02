@@ -103,6 +103,10 @@ def studio(profile, monkeypatch):
                 teacher:
                   id_env: BATON_TEACHER
                   aliases: [me]
+            calendar:
+              event_emoji:
+                guitar: "🎸"
+              default_event_emoji: "🎵"
             """
         ).strip()
         + "\n",
@@ -212,6 +216,37 @@ def test_not_publishing_is_a_layer_below_the_gate(studio, capsys):
     assert row["staging"] == "ไม่มี draft"
     assert payload["ready"] == 0
     assert "ขาด ยังไม่ publish" in text(studio, capsys, "readiness", "--date", DAY)
+
+
+def test_an_icon_prefixed_title_still_names_its_learner(studio, capsys, monkeypatch):
+    """`baton calendar` writes `🎸 Name (lesson N)`, so the roster reads past it.
+
+    The reports used to build their scheduler without the profile's icons,
+    leaving the title match only the bare `Name (` prefix to try. Every event
+    this studio books carries an instrument icon, so a full teaching day
+    reported an empty roster and every booking as unmatched.
+    """
+    publish(studio)
+    monkeypatch.setattr(
+        "baton.cli.cmd_send.open_calendar",
+        lambda _config: FakeCalendar(
+            events=[
+                CalendarEvent(
+                    id="ev-1",
+                    title="🎸 Ada Whitfield (lesson 3)",
+                    start=f"{DAY}T10:00:00+07:00",
+                    end=f"{DAY}T11:00:00+07:00",
+                ),
+            ]
+        ),
+    )
+
+    assert call(studio, "readiness", "--date", DAY) == Exit.OK
+    payload = out(capsys)
+
+    assert payload["source"] == "calendar"
+    assert payload["unmatched"] == []
+    assert [row["learner"] for row in payload["learners"]] == ["Ada Whitfield"]
 
 
 def test_the_calendar_is_the_roster_when_there_is_one(studio, capsys, monkeypatch):
