@@ -4,6 +4,56 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.0.4 (2026-09-02)
+
+A writing pass over everything a person reads: the messages parents receive,
+the reports the teacher reads, and the prose in the code and docs. No
+behaviour changed, but wording did, so anything asserting on Baton's exact
+output needs a look.
+
+### Upgrading
+
+- Message and report wording changed in several places. Nothing parses
+  Baton's human output (that is what `--json` is for), but a studio scripting
+  around the exact strings should read the list below.
+
+### Sending
+
+- The YouTube description no longer apologises in advance for the summary
+  being wrong. The teacher reads every summary before it goes out, so the
+  apology only spent trust it had no reason to spend. The signature stays.
+- The lesson message links the session page as `Week N` instead of
+  `ลิ้งค์ Link Week N`, which said "link" twice and misspelled it.
+- The recording message says `รายละเอียดการเรียน` where it used to say
+  `รายละเอียด Notion`. A parent opens a lesson page, not a vendor.
+- `send readiness` and `send aftermath` call a calendar entry
+  `รายการในปฏิทิน` rather than `คิว`, and both now say `หลักฐาน` for a
+  delivery receipt instead of one saying `ใบเสร็จ`.
+
+### Summaries
+
+- A covered topic renders as `topic: detail` on the page, in Markdown, and in
+  the YouTube description. The separator used to be an em dash.
+
+### Naming
+
+- The upload title and the calendar event description separate a learner from
+  their session with a hyphen instead of an em dash.
+- `วิดีโอ` is now the only spelling; the messages used to write `วีดีโอ`
+  while the docs wrote `วิดีโอ`.
+- `baton doctor` reports `พบ driver ของ {kind}`, matching the `driver` key
+  the profile actually sets, instead of transliterating it.
+
+### Docs
+
+- README.th.md drops `จองคาบ` for `นัดหมาย`, a word the reader outside this
+  studio would stumble on, and replaces the "four stages" and "one lesson's
+  cycle" framing with plain descriptions.
+- U+2014 is gone from authored prose across the project, replaced per sentence
+  by a period, comma, colon, or parentheses. It survives in exactly one place,
+  commented at both sites: the free-slot marker a teacher types into a
+  schedule, which is input rather than prose.
+
 ## 1.0.3 (2026-09-01)
 
 Closes the last way an agent could send a lesson with no recording without
