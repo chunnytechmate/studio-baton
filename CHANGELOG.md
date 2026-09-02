@@ -4,6 +4,24 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.0.5 (2026-09-02)
+
+One fix, found by running 1.0.4 against the real calendar an hour after
+deploying it.
+
+### Sending
+
+- `send readiness` and `send aftermath` now read past the icon a calendar
+  title starts with. Both built their scheduler without the profile's
+  `calendar.event_emoji`, leaving the title match only the bare `Name (`
+  prefix to try. `baton calendar` writes every title as `🎸 Name (Week N)`,
+  so on a studio that uses icons the roster came back empty on a full
+  teaching day and every real booking was listed as naming nobody.
+  `baton calendar` had passed the icons all along; the reports had not, since
+  they shipped in 0.7.0.
+- The roster test now books an icon-prefixed title. The old one used bare
+  names, which is how this survived four releases.
+
 ## 1.0.4 (2026-09-02)
 
 A writing pass over everything a person reads: the messages parents receive,

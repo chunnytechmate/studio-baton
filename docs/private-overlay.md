@@ -18,14 +18,14 @@ will one day pick up a change to the config schema between two runs of the same
 nightly job, and the run that breaks will be the unattended one:
 
 ```
-studio-baton[google]==1.0.4
+studio-baton[google]==1.0.5
 ```
 
 Every release since 0.1.0 is on PyPI, so an exact version is the pin to use.
 No git is needed at build time. The git form still works where PyPI is unreachable:
 
 ```
-studio-baton[google] @ git+https://github.com/chunnytechmate/studio-baton@v1.0.4
+studio-baton[google] @ git+https://github.com/chunnytechmate/studio-baton@v1.0.5
 ```
 
 Every tag is a commit CI has already passed on Linux and macOS across Python
