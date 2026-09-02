@@ -44,7 +44,7 @@ class CalendarStore(Protocol):
         ...
 
     def delete(self, event_id: str) -> None:
-        """Remove one event. A missing event is not an error — the desired
+        """Remove one event. A missing event is not an error: the desired
         state has been reached, and a cancel run twice must not fail."""
         ...
 

@@ -1,4 +1,4 @@
-"""``baton config`` — inspect what the tool actually believes.
+"""``baton config``: inspect what the tool actually believes.
 
 Layered configuration is only debuggable if you can see the resolved result.
 ``config show`` prints exactly the tree every command reads, after defaults,

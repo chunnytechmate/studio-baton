@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 #: Extensions treated as video, shared by every source driver. Anything else
-#: in a source folder — a photo, a note, a stray pdf — is not a clip, and a
+#: in a source folder (a photo, a note, a stray pdf) is not a clip, and a
 #: driver that picks it up sends it to ffmpeg as one.
 VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"})
 
@@ -57,7 +57,7 @@ class EncodeProfile:
     timeout_seconds: int = 1800
     extra_args: list[str] = field(default_factory=list)
     #: Which encoder writes the output. "libx264" (CPU, the long-standing
-    #: default) or "h264_nvenc" (NVIDIA GPU — much faster, needs the driver
+    #: default) or "h264_nvenc" (NVIDIA GPU: much faster, needs the driver
     #: and a codec-capable ffmpeg build; see FfmpegEncoder._args).
     codec: str = "libx264"
     #: Tone-map HDR clips down to BT.709 before encoding. On by default: an
@@ -73,7 +73,7 @@ class EncodeProfile:
 
 @runtime_checkable
 class MediaSource(Protocol):
-    """Where recordings arrive — a Drive folder, a watched directory."""
+    """Where recordings arrive: a Drive folder, a watched directory."""
 
     def list_pending(self) -> list[SourceClip]:
         """Every clip currently waiting, across all learner folders."""
@@ -86,7 +86,7 @@ class MediaSource(Protocol):
     def trash(self, clip_ids: list[str]) -> int:
         """Move clips out of the way. Returns how many were moved.
 
-        Called only after everything else for that learner has succeeded —
+        Called only after everything else for that learner has succeeded:
         see :mod:`baton.pipelines.video` on deferred trashing.
         """
         ...

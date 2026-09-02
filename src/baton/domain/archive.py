@@ -2,7 +2,7 @@
 
 A finished course is kept as a copy of its page, named for the span it covered:
 ``Course 12 (16/05 - 07/08/69)``. Studios have been doing this by hand for
-years, so the shape is not ours to invent — it is a convention to reproduce
+years, so the shape is not ours to invent: it is a convention to reproduce
 exactly, including the two details a person applies without thinking:
 
 The year is written once, on the closing end. It appears on the opening end too
@@ -77,7 +77,7 @@ class SpanFormat:
         if not with_year:
             return text
         # strftime owns the year's shape (%y zero-pads, %Y does not truncate),
-        # but not its value — an era offset can push it past what a real date
+        # but not its value: an era offset can push it past what a real date
         # can hold, so the year is formatted from a date that only exists to
         # carry it.
         stand_in = date(2000, 1, 1).replace(year=self.year_of(day))
@@ -97,7 +97,7 @@ class SpanFormat:
 
         Derived from the format rather than hard-coded so a studio that writes
         its dates differently still gets old spans stripped. Anything that is
-        not a span — ``(Drum)``, ``(Worth It)`` — cannot match, and stays.
+        not a span: ``(Drum)``, ``(Worth It)``: cannot match, and stays.
         """
         year = rf"(?:{re.escape(self.joiner)}{_as_pattern(self.year_format)})?"
         end = f"{_as_pattern(self.date_format)}{year}"
@@ -155,7 +155,7 @@ def archive_title(
         last: The latest.
         span_format: How this studio writes the two ends.
         template: ``{course}`` and ``{span}``, plus ``{label}`` when one is given.
-        label: An optional note — a piece the course was about, say — placed
+        label: An optional note (a piece the course was about, say) placed
             between the course name and the span.
     """
     course = strip_span(course_title, span_format)

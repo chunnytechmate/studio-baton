@@ -1,6 +1,6 @@
 """Env overrides must not have an order-dependent winner (M5).
 
-`BATON__DOCS=x` and `BATON__DOCS__DRIVER=y` both target the `docs` setting —
+`BATON__DOCS=x` and `BATON__DOCS__DRIVER=y` both target the `docs` setting:
 one as a scalar, one as a key inside it. Which one won used to depend on
 ``os.environ``'s iteration order, and the loser was silently converted on the
 way (a scalar became a dict, or a section was replaced by a scalar). Both
@@ -28,7 +28,7 @@ def test_scalar_and_nested_is_an_error_scalar_first(monkeypatch):
 
 
 def test_scalar_and_nested_is_an_error_nested_first(monkeypatch):
-    """The same collision in the opposite insertion order — the outcome must
+    """The same collision in the opposite insertion order: the outcome must
     not depend on which variable the environment happens to list first."""
     monkeypatch.setenv("BATON__DOCS__DRIVER", "notion")
     monkeypatch.setenv("BATON__DOCS", "markdown")
@@ -48,7 +48,7 @@ def test_case_variant_of_the_same_setting_is_an_error(monkeypatch):
 
 
 def test_distinct_settings_still_collect(monkeypatch):
-    """Only collisions error — unrelated scalar and nested overrides keep
+    """Only collisions error: unrelated scalar and nested overrides keep
     collecting exactly as before."""
     monkeypatch.setenv("BATON__TIMEZONE", "UTC")
     monkeypatch.setenv("BATON__DOCS__PROPERTIES__STATUS", "State")

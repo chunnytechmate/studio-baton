@@ -2,7 +2,7 @@
 
 Every ``baton`` command exits with one of these codes. The codes are the
 machine-readable half of the CLI's interface: an agent driving Baton branches
-on the *number*, never on the wording of a message. That is the whole point —
+on the *number*, never on the wording of a message. That is the whole point:
 a small local model cannot reliably parse prose, but it can reliably compare
 an integer.
 
@@ -40,7 +40,7 @@ class Exit(IntEnum):
 
     Raised by identity resolution when a name is ambiguous or unknown. The
     payload always carries a `candidates` list. An agent must surface the
-    candidates to the user verbatim and re-run with an exact name — it must
+    candidates to the user verbatim and re-run with an exact name: it must
     never pick one itself.
     """
 
@@ -61,7 +61,7 @@ class Exit(IntEnum):
     UPSTREAM = 6
     """A remote service failed after the configured retries were exhausted.
 
-    Transient by nature — re-running later is reasonable, and resumable
+    Transient by nature: re-running later is reasonable, and resumable
     pipelines will skip the steps that already succeeded.
     """
 
@@ -77,7 +77,7 @@ class Exit(IntEnum):
 
     Returned by ``job wait`` when its timeout expires with the job unfinished,
     and by any run that collides with a live run lock. The caller should wait,
-    poll, or stop the existing job — never start a second one.
+    poll, or stop the existing job, never start a second one.
 
     Payload always carries the job ``id``.
     """
@@ -86,7 +86,7 @@ class Exit(IntEnum):
     """Baton itself failed: an unexpected exception escaped a command.
 
     Nothing here is the caller's fault, so re-running the same command with
-    different arguments is pointless — this is a bug report. The payload
+    different arguments is pointless: this is a bug report. The payload
     carries the exception type and a `traceback` an operator can paste.
 
     It exists because the alternative was worse: an uncaught exception used to
@@ -103,7 +103,7 @@ class Exit(IntEnum):
 
     This is how a command normally dies under an agent harness: the harness
     caps how long one call may run and kills what overruns. Baton catches the
-    signal so that death still produces the usual envelope — a caller learns
+    signal so that death still produces the usual envelope: a caller learns
     the run was cut short rather than reading a silent, empty stdout.
     """
 

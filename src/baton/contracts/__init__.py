@@ -11,7 +11,7 @@ the rules a small local model ignores when they are stated in prose. Those are
 checked here in code.
 
 A rejection is never partial. Nothing is stored, nothing is published, and the
-caller gets every violation at once with a JSON Pointer to each — so an agent
+caller gets every violation at once with a JSON Pointer to each, so an agent
 can fix them in one pass rather than discovering them one re-run at a time.
 """
 
@@ -160,7 +160,7 @@ def validate_short_summary(
 def validate_callouts(payload: dict[str, Any], known_ids: set[str]) -> list[dict[str, str]]:
     """Check every referenced theory callout exists.
 
-    Carried over from the original rule "never invent a callout — look it up".
+    Carried over from the original rule "never invent a callout: look it up".
     Here the lookup is enforced: an id the studio's notes do not contain is a
     rejection, not a silently rendered invention.
     """
@@ -224,7 +224,7 @@ def validate_no_repetition(
     """Refuse a document that says the same thing in too many places.
 
     Each section of a summary is meant to carry a different *kind* of
-    information — what happened, what changed, what is still hard, what to
+    information: what happened, what changed, what is still hard, what to
     practise. When one fact is restated in three of them the page grows without
     telling a family anything more, and the sections stop meaning what their
     headings promise.
@@ -288,7 +288,7 @@ def validate_specific_language(
     gets no credit for what they actually saw.
 
     A list rather than a cleverer measure, because the phrases that do this are
-    few, studio-specific, and known — and a rule a studio can read is one it
+    few, studio-specific, and known, and a rule a studio can read is one it
     can argue with.
     """
     phrases = [str(phrase) for phrase in vague_phrases if str(phrase).strip()]
@@ -316,7 +316,7 @@ def validate_about_the_playing(
 
     "A weak point" names something a learner *is*; "still coming" names
     something a lesson *changes*. The families reading these pages keep them,
-    and a word that sounds diagnostic is the one they remember — so the rule is
+    and a word that sounds diagnostic is the one they remember, so the rule is
     not politeness, it is accuracy: a lesson observes playing, and nobody in
     the room assessed the child.
 
@@ -335,8 +335,8 @@ def validate_about_the_playing(
                 _violation(
                     pointer,
                     f"describes the learner (`{hit}`) rather than the playing",
-                    "Name the skill and where it has got to — what they can do "
-                    "unaided, what still needs help — not what they are like.",
+                    "Name the skill and where it has got to: what they can do "
+                    "unaided, what still needs help, not what they are like.",
                 )
             )
     return violations
@@ -348,8 +348,8 @@ def validate_practice_goals(
     """Refuse a practice goal nobody can practise.
 
     `goals` renders as the checklist a learner and their family work through
-    between lessons. Anything on it that can only happen in the next lesson —
-    or that asks for an attitude rather than an action — cannot be ticked off,
+    between lessons. Anything on it that can only happen in the next lesson (
+    or that asks for an attitude rather than an action) cannot be ticked off,
     and an uncompletable checklist teaches a family to ignore the list.
     """
     phrases = [str(phrase) for phrase in not_practicable if str(phrase).strip()]
@@ -384,7 +384,7 @@ def validate_progress(payload: dict[str, Any], *, expected: bool) -> list[dict[s
         _violation(
             "/progress",
             "is missing, and this session has a previous one to compare with",
-            "Name what changed since last time, as `before` and `after` — what "
+            "Name what changed since last time, as `before` and `after`: what "
             "they needed help with then and manage now. If genuinely nothing "
             "changed, say that as the one entry rather than leaving it out.",
         )
@@ -503,7 +503,7 @@ def vocabulary_near_misses(payload: dict[str, Any], vocabulary: Iterable[str]) -
     The third layer of the vocabulary design, and the only one that looks at
     what the model actually wrote. The contract asked for the pool's spellings
     before the model started; if it invented a near-miss anyway, the teacher
-    should see it before the page is published — but a warning is where this
+    should see it before the page is published, but a warning is where this
     stops. A summary rejected over a spelling is how a pipeline stops being
     used, and the raw teacher's notes are always what wins an argument about
     which spelling was right in the first place.

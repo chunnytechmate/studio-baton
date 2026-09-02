@@ -1,4 +1,4 @@
-"""`baton init` — the first two minutes.
+"""`baton init`: the first two minutes.
 
 Whether someone tries this at all is decided here, so the tests check that what
 it produces actually runs: the config loads, the database satisfies the mapping,
@@ -99,7 +99,7 @@ def test_the_env_template_lists_exactly_this_profiles_variables(tmp_path, capsys
     assert "TELEGRAM_BOT_TOKEN=" in env
     assert "SUPABASE_PROJECT_URL=" in env
     assert "NOTION_API_TOKEN=" in env
-    # Not this profile's driver, so not in its .env — a template full of
+    # Not this profile's driver, so not in its .env: a template full of
     # variables you do not need is how people stop reading it.
     assert "LINE_CHANNEL_ACCESS_TOKEN" not in env
 

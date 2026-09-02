@@ -1,9 +1,9 @@
-"""``baton prep`` — the day's lesson-prep report, behind a hard gate.
+"""``baton prep``: the day's lesson-prep report, behind a hard gate.
 
 Walking into a lesson means knowing three things about the last one: what was
 covered, what was set to practise, and where the teaching goes next. The
 pages hold all of it, but assembling it by hand is exactly the work an agent
-does badly under time pressure — sections get dropped, links get mangled, and
+does badly under time pressure: sections get dropped, links get mangled, and
 the teacher walks in half-briefed. So the report is built by the command, and
 the agent's job is to hand it over untouched.
 
@@ -11,7 +11,7 @@ Two rules make that safe, and both are enforced here rather than asked of
 whoever is driving:
 
 * **Fail closed.** A learner appears in the report only when every required
-  field of their latest session is present — name, date, pieces, the page
+  field of their latest session is present: name, date, pieces, the page
   link, the overview, the content, the homework. A learner whose page is
   half-written is listed as blocked, with the fields it lacks; when nobody
   passes, there is no report at all and the command exits ``5``.
@@ -19,8 +19,8 @@ whoever is driving:
   An agent relays it verbatim or not at all; re-composing it is how links
   went missing in the system this replaces.
 
-Who to prepare comes from the calendar by default — every learner booked on
-the day — or from explicit ``--learner`` flags. The next goal is a warning
+Who to prepare comes from the calendar by default (every learner booked on
+the day) or from explicit ``--learner`` flags. The next goal is a warning
 rather than a requirement: plenty of pages end without one, and a missing
 plan is worth seeing, not worth blocking the whole briefing over.
 """
@@ -58,7 +58,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "their latest finished session, read as sections. A learner whose "
             "page is missing a required field is listed as blocked, not "
             "reported half-read; the command exits 5 when nobody passes. The "
-            "printed report is the briefing — relay it verbatim."
+            "printed report is the briefing: relay it verbatim."
         ),
     )
     parser.add_argument(
@@ -173,7 +173,7 @@ def handle_prep(ctx: Context) -> Exit:
         "unmatched_events": unmatched,
         "count": len(ready),
         # Carried in the payload too, so a caller in --json mode can relay the
-        # briefing verbatim instead of re-composing it — which is how links
+        # briefing verbatim instead of re-composing it, which is how links
         # went missing in the system this replaces.
         "report": human,
     }
@@ -188,9 +188,9 @@ def handle_prep(ctx: Context) -> Exit:
 def _report(
     ctx: Context, ready: list[dict[str, Any]], blocked: list[dict[str, Any]], day: str
 ) -> str:
-    """The briefing itself — what the teacher reads, so what gets relayed."""
+    """The briefing itself: what the teacher reads, so what gets relayed."""
     label = ctx.config.label("session")
-    lines = [f"Lesson prep — {day}  ({len(ready)} of {len(ready) + len(blocked)} ready)"]
+    lines = [f"Lesson prep {day}  ({len(ready)} of {len(ready) + len(blocked)} ready)"]
     for entry in ready:
         lines.append(f"\n{entry['learner']}  (latest {label} {entry['week']} | {entry['date']})")
         if entry.get("titles"):
@@ -203,7 +203,7 @@ def _report(
                 lines.append(f"  {name.replace('_', ' ')}: (none stated)")
         lines.append(f"  page: {entry['notion_link']}")
     if blocked:
-        lines.append("\nBLOCKED — incomplete, not reported:")
+        lines.append("\nBLOCKED, incomplete, not reported:")
         for item in blocked:
             lines.append(f"  • {item['learner']}: missing {', '.join(item['missing'])}")
     return "\n".join(lines)

@@ -1,8 +1,8 @@
 """Edges of note text: an empty ``--text`` and what becomes a title.
 
 Two quiet failures of the old heuristics: ``--text ""`` was refused as
-"pass exactly one of --text or --file" — telling someone who passed --text to
-pass --text — and a note opening with a fence or a table was titled after
+"pass exactly one of --text or --file" (telling someone who passed --text to
+pass --text), and a note opening with a fence or a table was titled after
 that scaffolding line.
 """
 

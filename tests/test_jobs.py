@@ -1,6 +1,6 @@
 """Detached jobs and whole-run locking.
 
-These spawn real processes — that is the point. Everything else in the suite is
+These spawn real processes: that is the point. Everything else in the suite is
 in-process; a background runner can only be trusted after it has actually
 survived its parent's exit, recorded a real outcome, and been stopped by a real
 signal.
@@ -121,7 +121,7 @@ def test_detached_process_survives_its_parent(profile, capsys, tmp_path):
     """The whole reason --detach exists: the job must outlive the CLI call.
 
     Spawns a job that writes a file, from a `baton` process that has already
-    exited by the time we check — if the child died with its parent, the marker
+    exited by the time we check: if the child died with its parent, the marker
     would never appear.
     """
     marker = tmp_path / "survivor.txt"
@@ -205,7 +205,7 @@ def test_crashed_job_reads_as_orphaned(profile, capsys):
 
     # In real use the spawning CLI exits immediately and init adopts (and
     # reaps) the supervisor. In this test the spawner is pytest itself, so do
-    # the reaping here — otherwise the zombie keeps answering pid probes.
+    # the reaping here: otherwise the zombie keeps answering pid probes.
     with contextlib.suppress(ChildProcessError, OSError):
         os.waitpid(supervisor_pid, 0)
 
@@ -305,7 +305,7 @@ def test_pid_alive_rejects_nonsense():
 
 def test_wait_mirrors_an_exit_code_outside_the_contract(profile, capsys):
     """ffmpeg and shell scripts exit with codes the contract does not name.
-    `job wait` must still report the job's own verdict — as a number, not a
+    `job wait` must still report the job's own verdict: as a number, not a
     ValueError traceback with no envelope."""
     job_id = _spawn(
         profile,

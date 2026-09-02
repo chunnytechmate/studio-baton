@@ -6,7 +6,7 @@ tests fail instead.
 
 The second half is the load-bearing one. The whole point of the CLI is that a
 model never assembles an API call, so a skill that reintroduced `curl` or
-`python3 -c` would quietly undo it — and would look perfectly reasonable in
+`python3 -c` would quietly undo it, and would look perfectly reasonable in
 review.
 """
 

@@ -1,6 +1,6 @@
 """`baton song` end to end, over the real SQLite driver and the shipped seed.
 
-Ada Whitfield is seeded assigned to piece 2 (Blackbird) — the fixture for
+Ada Whitfield is seeded assigned to piece 2 (Blackbird): the fixture for
 the "refuses while a learner is assigned" tests.
 """
 
@@ -146,7 +146,7 @@ def test_update_with_no_flags_is_refused(studio, capsys):
 
 
 def test_update_an_unknown_id_is_a_usage_error_not_a_silent_success(studio, capsys):
-    """PostgREST would answer 200 with no rows here — the legacy song manager
+    """PostgREST would answer 200 with no rows here: the legacy song manager
     read that as a successful edit. Baton refuses instead."""
     assert call(studio, "update", "999", "--title", "Ghost") == Exit.USAGE
 

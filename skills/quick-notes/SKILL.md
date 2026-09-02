@@ -40,6 +40,6 @@ first heading, or the date.
 | Code | Do this |
 | --- | --- |
 | `0` | Report the page link |
-| `1` | Usually a missing parent page id — the message names the variable |
+| `1` | Usually a missing parent page id: the message names the variable |
 | `2` | Run `baton doctor` |
 | `6` | The store failed; nothing was created. Re-running is safe |

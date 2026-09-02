@@ -8,7 +8,7 @@
 3. Real personal data. Public CI cannot ship a list of real names, so the list
    lives outside the repository: point ``BATON_DENYLIST`` at a file with one
    term per line (the private overlay repo keeps one) and this check enforces
-   it. Without that variable the check is skipped and says so — it never
+   it. Without that variable the check is skipped and says so: it never
    pretends to have verified something it did not.
 
 Run directly, or as the `leaks` job in CI. Exits 1 on any finding.
@@ -119,7 +119,7 @@ def scan(root: Path) -> list[str]:
             if is_code:
                 for regex, label in FORBIDDEN_PATHS:
                     if regex.search(line):
-                        findings.append(f"{relative}:{number}: {label} — {line.strip()[:80]}")
+                        findings.append(f"{relative}:{number}: {label}: {line.strip()[:80]}")
             for regex, label in SECRET_PATTERNS:
                 if regex.search(line):
                     findings.append(f"{relative}:{number}: possible {label}")
@@ -139,7 +139,7 @@ def main() -> int:
     findings = scan(root)
 
     if not os.environ.get("BATON_DENYLIST"):
-        print("note: BATON_DENYLIST is not set — personal-name check was not run.")
+        print("note: BATON_DENYLIST is not set: personal-name check was not run.")
 
     if findings:
         print(f"\n{len(findings)} finding(s):\n", file=sys.stderr)

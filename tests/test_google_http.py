@@ -2,8 +2,8 @@
 
 `core.retry.http_request` forces a timeout onto every `requests` call and the
 encoder kills ffmpeg on its own clock, but `googleapiclient` builds its
-transport from `httplib2.Http()`, whose timeout defaults to the socket default
-— which is `None`. A Drive listing that never gets an answer never returned,
+transport from `httplib2.Http()`, whose timeout defaults to the socket default,
+which is `None`. A Drive listing that never gets an answer never returned,
 and under a harness that reads as a shell command hanging until it is killed,
 with a booking that may or may not have been made and nothing written down.
 
@@ -21,7 +21,7 @@ from baton.adapters import google_http
 def test_a_timeout_produces_an_authorized_transport():
     # Skipped on a core install: `google-auth-httplib2` arrives with the
     # `google` extra, and CI's test job installs only `dev`. The behaviour when
-    # it is missing has its own test below — that path is the one a core
+    # it is missing has its own test below: that path is the one a core
     # install actually takes.
     pytest.importorskip("google_auth_httplib2")
 
@@ -38,11 +38,11 @@ def test_the_transport_does_not_follow_308_as_a_redirect():
     """A resumable upload's ``308 Resume Incomplete`` must reach the API client.
 
     httplib2 ships 308 among its redirect codes, and a 308 from a resumable
-    upload carries `Range:` and no `Location:` — so httplib2 raises
+    upload carries `Range:` and no `Location:`, so httplib2 raises
     `RedirectMissingLocation` on the first chunk of any upload big enough to
     need a second one. Every YouTube upload over one chunk (8 MB) failed that
     way in 0.4.0, because taking the transport over here stopped
-    `googleapiclient.http.build_http` — which drops 308 — from ever running.
+    `googleapiclient.http.build_http` (which drops 308) from ever running.
 
     Nothing else in the suite catches this: the video pipeline's tests all run
     against fakes, and no fake speaks httplib2.
@@ -67,7 +67,7 @@ def test_a_missing_helper_library_is_not_fatal(monkeypatch):
     """A core install has no `google-auth-httplib2`, and that must still work.
 
     It ships with the API client, so on a `[google]` install it is always
-    there. Anywhere else — including CI's own test job — the deadline is
+    there. Anywhere else, including CI's own test job: the deadline is
     quietly skipped rather than made into a crash.
     """
     import builtins

@@ -1,9 +1,9 @@
-"""``baton song`` — the catalogue of pieces a studio's learners work through.
+"""``baton song``: the catalogue of pieces a studio's learners work through.
 
 A sibling of ``baton learner``, split out because a piece is not owned by any
 one learner: it is a shared catalogue, assigned and reassigned by
 ``learner assign``. Deleting one is refused outright while a learner still
-points at it — the studio's own foreign key already enforces this at the
+points at it: the studio's own foreign key already enforces this at the
 database, but the refusal is nicer read here, with the learners' names in it,
 than as a constraint-violation error from whichever driver is configured.
 """
@@ -259,7 +259,7 @@ def handle_remove(ctx: Context) -> Exit:
         store.close()
 
     if not deleted:
-        # get_piece just found it — a deletion that reports nothing removed
+        # get_piece just found it: a deletion that reports nothing removed
         # a moment later is a surprise worth surfacing, not swallowing.
         raise UpstreamError(
             f"{piece.title} was found but the delete removed nothing.",

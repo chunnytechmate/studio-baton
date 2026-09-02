@@ -36,7 +36,7 @@
         ],
         "properties": {
           "before": {
-            "description": "How it stood before — from the previous session, not a guess.",
+            "description": "How it stood before, taken from the previous session rather than guessed.",
             "type": "string",
             "minLength": 3,
             "maxLength": 300
@@ -80,7 +80,7 @@
       }
     },
     "focus": {
-      "description": "Difficulties, each paired with what to do about it. An issue with no fix is an observation, not teaching — so `fix` is required whenever an entry exists.",
+      "description": "Difficulties, each paired with what to do about it. An issue with no fix is an observation, not teaching, so `fix` is required whenever an entry exists.",
       "type": "array",
       "maxItems": 8,
       "items": {
@@ -116,7 +116,7 @@
       }
     },
     "callouts": {
-      "description": "References into the studio's own theory notes, by id. Baton substitutes the stored text. A model cannot invent theory content here — an id that does not exist is rejected.",
+      "description": "References into the studio's own theory notes, by id. Baton substitutes the stored text. A model cannot invent theory content here: an id that does not exist is rejected.",
       "type": "array",
       "maxItems": 6,
       "items": {

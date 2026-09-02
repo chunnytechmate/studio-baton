@@ -151,7 +151,7 @@ class NotionDocStore:
             )
         if response.status_code == 404:
             if op == "block-delete":
-                # The block is already gone — deleted by a person in Notion,
+                # The block is already gone: deleted by a person in Notion,
                 # or by an earlier run of this same publish that died before
                 # recording it. Deletion is idempotent; refusing here is what
                 # used to wedge a publish halfway with no way to resume.
@@ -164,8 +164,8 @@ class NotionDocStore:
             raise ConfigError(
                 f"Notion cannot see page `{page_id}` (404).",
                 remedy="Two causes, in order of likelihood. The page is not shared "
-                "with the integration — in Notion, open the page, ⋯ → Connections, "
-                "add this integration — or the page was deleted and the session "
+                "with the integration: in Notion, open the page, ⋯ → Connections, "
+                "add this integration, or the page was deleted and the session "
                 "points at a stale id. Share the page or fix the id, then re-run: "
                 "a publish that failed here had already appended, and re-running "
                 "replaces cleanly.",
@@ -230,7 +230,7 @@ class NotionDocStore:
 
         # Listing the page is a request of its own, and one more per hundred
         # blocks after that. Every caller used to pay it, including the ones
-        # that wanted a single status word — which, over a day's roster, is
+        # that wanted a single status word, which, over a day's roster, is
         # twice the calls for a number nobody read.
         blocks = self.list_blocks(doc_id) if with_blocks else None
         return DocStatus(
@@ -268,13 +268,13 @@ class NotionDocStore:
         The page is read first to learn what type every target column actually
         is. Notion validates the body against the property's type, so a payload
         assembled from a guess ("it is probably a select") is rejected outright
-        on the studios whose guess was wrong — and this is the write that
+        on the studios whose guess was wrong, and this is the write that
         finishes a session, which must not be the one that fails.
         """
         wanted = {key: str(value) for key, value in values.items() if str(value)}
         if not wanted:
             return []
-        # A caller says `done`; the profile decides that reads "Done" — or
+        # A caller says `done`; the profile decides that reads "Done", or
         # "เสร็จแล้ว". Resolving here means every caller can be written in
         # Baton's vocabulary.
         if "status" in wanted:
@@ -387,7 +387,7 @@ class NotionDocStore:
         """Create a sub-page, then append anything past the first request.
 
         Notion accepts at most 100 children when creating a page, so a longer
-        note is created with the first batch and topped up — rather than the
+        note is created with the first batch and topped up, rather than the
         caller being told to shorten it.
         """
         batches = [
@@ -439,7 +439,7 @@ class NotionDocStore:
         """Whatever holds this thing, and what kind of holder it is.
 
         A course page kept inside a callout reports a block parent, not a page
-        one. Both are usable — children can be listed from either — so the id
+        one. Both are usable (children can be listed from either), so the id
         is taken from whichever key is present instead of demanding a page.
         """
         parent = raw.get("parent") or {}

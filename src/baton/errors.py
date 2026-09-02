@@ -2,7 +2,7 @@
 
 Pipelines raise these; the CLI shell catches them, renders them (human or
 JSON), and exits with ``err.exit_code``. No pipeline calls ``sys.exit`` and no
-pipeline prints its own failure — that keeps the exit contract enforceable in
+pipeline prints its own failure: that keeps the exit contract enforceable in
 one place instead of scattered across every command.
 """
 
@@ -134,12 +134,12 @@ class DuplicateSendError(BatonError):
     A sibling of :class:`GateError` rather than a use of it: a gate blocks
     because data is *missing*, and its refusal is final by design. This one
     blocks because the work is already *done*, and the single thing it cannot
-    know is whether the message arrived. So it does carry an override —
-    ``--again`` — for the person who watched a phone stay silent. An agent is
+    know is whether the message arrived. So it does carry an override:
+    ``--again``: for the person who watched a phone stay silent. An agent is
     told, in the remedy, that the decision is not its own to make.
 
     Exit code stays :attr:`~baton.exits.Exit.GATE`: from a caller's side this
-    is the same event as any other refusal — nothing was sent, and re-running
+    is the same event as any other refusal, nothing was sent, and re-running
     the identical command will not change that.
     """
 

@@ -1,4 +1,4 @@
-"""FfmpegEncoder's command-line construction — the encoder that was timing
+"""FfmpegEncoder's command-line construction: the encoder that was timing
 out on CPU alone, and the GPU codec option added to fix that.
 
 `_args()` is pure (no subprocess, no real ffmpeg needed), so these pin the
@@ -49,7 +49,7 @@ def test_an_unknown_codec_is_refused_before_ffmpeg_ever_runs():
 
 
 def test_gpu_codec_still_concatenates_multiple_clips_on_cpu():
-    """Decode and the concat filter stay untouched by the codec choice —
+    """Decode and the concat filter stay untouched by the codec choice,
     only -c:v changes. Confirms the GPU path didn't accidentally also try to
     move the filter graph, which would need a whole different (and much more
     fragile) hwaccel pipeline."""
@@ -62,7 +62,7 @@ def test_gpu_codec_still_concatenates_multiple_clips_on_cpu():
 
 
 def test_passthrough_ignores_the_codec_entirely():
-    """A single clip with no re-encode needed skips codec selection — an
+    """A single clip with no re-encode needed skips codec selection: an
     unknown codec here must not raise, since it's never used."""
     args = ENCODER._args([CLIP], OUT, EncodeProfile(name="passthrough", codec="something_invalid"))
 
@@ -83,7 +83,7 @@ def test_gpu_codec_composes_with_the_1080p_profile():
 
 
 # --------------------------------------------------------------------------
-# Segment normalisation — the concat filter shares codecs but not frame sizes
+# Segment normalisation: the concat filter shares codecs but not frame sizes
 # --------------------------------------------------------------------------
 
 LANDSCAPE = ClipTraits(width=1920, height=1080, sample_rate="48000", channel_layout="stereo")
@@ -99,7 +99,7 @@ def _graph(args: list[str]) -> str:
 
 
 def _maps(args: list[str]) -> list[str]:
-    """The -map values in order — what ffmpeg will actually be told to keep."""
+    """The -map values in order: what ffmpeg will actually be told to keep."""
     return [arg for i, arg in enumerate(args) if i and args[i - 1] == "-map"]
 
 
@@ -153,7 +153,7 @@ def test_mixed_orientation_is_normalised_before_the_concat_not_after():
 
 def test_a_uniform_session_is_left_exactly_as_it_was():
     """Every clip already agreeing is the common case and it already worked.
-    Normalisation must not touch it — no rescale, no pillarbox, no re-tagging
+    Normalisation must not touch it, no rescale, no pillarbox, no re-tagging
     of output that has been going out to parents unchanged for months."""
     args = ENCODER._args(TWO_CLIPS, OUT, EncodeProfile(), [LANDSCAPE, LANDSCAPE])
 
@@ -220,7 +220,7 @@ def test_the_frame_rate_knob_is_off_by_default_and_applies_to_every_segment():
 
 
 def test_a_normalised_segment_ends_on_one_pixel_format():
-    """Whatever a chain did — rotate, tone-map, rescale — the concat has to
+    """Whatever a chain did (rotate, tone-map, rescale) the concat has to
     receive the same pixel format from every branch."""
     graph = _graph(ENCODER._args(TWO_CLIPS, OUT, EncodeProfile(), [LANDSCAPE, PORTRAIT]))
 
@@ -276,14 +276,14 @@ def test_a_single_clip_that_needs_work_gets_a_graph_not_a_dangling_map():
     )
     assert args[args.index("-map") + 1] == "[v0]"
     # The audio of a lone clip has no graph label, so it must be mapped as a
-    # stream specifier — a bracketed raw pad here is the whole bug (below).
+    # stream specifier: a bracketed raw pad here is the whole bug (below).
     assert _maps(args) == ["[v0]", "0:a:0"]
 
 
 def test_a_forced_frame_rate_on_a_lone_clip_maps_audio_as_a_stream_specifier():
     """2026-08-29 (น้องณตุล): forcing media.encode.fps gave a lone, otherwise
     uniform clip a video chain for the first time, and the audio map then
-    read `[0:a:0]` — which -map only accepts as a graph label, so ffmpeg
+    read `[0:a:0]`, which -map only accepts as a graph label, so ffmpeg
     refused the command outright ("Output with label '0:a:0' does not exist
     in any defined filter graph"). The unbracketed specifier beside a graph
     output was verified against real ffmpeg 5.1.9 and 8.1.2 before landing.
@@ -295,7 +295,7 @@ def test_a_forced_frame_rate_on_a_lone_clip_maps_audio_as_a_stream_specifier():
 
 
 # --------------------------------------------------------------------------
-# Reporting — the job record keeps one line, so it has to be the right one
+# Reporting: the job record keeps one line, so it has to be the right one
 # --------------------------------------------------------------------------
 
 CONCAT_FAILURE = "\n".join(
@@ -313,7 +313,7 @@ CONCAT_FAILURE = "\n".join(
 
 def test_the_reported_line_is_the_diagnosis_not_the_last_thing_to_unwind():
     """Verbatim stderr from the production failure. The old code reported the
-    final line — "stream #2:1" — which names neither the cause nor a clip."""
+    final line: "stream #2:1", which names neither the cause nor a clip."""
     reported = _one_line(CONCAT_FAILURE)
 
     assert "do not match" in reported

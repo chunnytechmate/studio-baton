@@ -6,7 +6,7 @@ do.**
 
 A read served from a stale replica is a slightly out-of-date answer. A write
 sent to a replica is a permanent divergence between two stores that nothing
-reconciles — the studio ends up with two different truths about who is learning
+reconciles: the studio ends up with two different truths about who is learning
 what. So a write during an outage fails loudly and the operator waits.
 
 Only genuine unreachability triggers a failover. A ``ConfigError`` (bad
@@ -36,8 +36,8 @@ NOTICE = (
 def degradation_notices(notify: Callable[[str], None]) -> Iterator[None]:
     """Route "this came from the replica" notices somewhere for one command.
 
-    The store cannot print — an adapter that writes to a stream is an adapter
-    that cannot be used from anything but a terminal — and the flag it sets
+    The store cannot print (an adapter that writes to a stream is an adapter
+    that cannot be used from anything but a terminal) and the flag it sets
     instead was read by nothing for as long as it existed. So the CLI lends it
     a way to speak for the length of one command, and a read served by the
     secondary says so on stderr while the operator is still looking at it.

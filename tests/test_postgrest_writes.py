@@ -1,13 +1,13 @@
 """Every PostgrestStore write must fail loudly when the server is silent.
 
-Every POST asks for ``Prefer: return=representation`` so the created row — and
-its database-assigned id — can be handed back. A server that answers 2xx with
+Every POST asks for ``Prefer: return=representation`` so the created row (and
+its database-assigned id) can be handed back. A server that answers 2xx with
 an empty body has still written the row: silently returning the caller's own
 object (id unset) hides that, and the next command that trusts the id reads
 as a failure or duplicates the row. The typed contract error is the honest
 outcome. `update_piece`/`delete_piece` have the same silence from the other
 direction: a 200 with an empty array means the filter matched nothing, which
-PostgREST itself does not treat as an error — the original script read that
+PostgREST itself does not treat as an error: the original script read that
 as a successful edit.
 """
 
@@ -162,7 +162,7 @@ def test_add_piece_returns_the_created_row(monkeypatch):
 
 def test_update_piece_on_an_unmatched_filter_returns_none(monkeypatch):
     """PostgREST answers 200 with an empty array when nothing matched the
-    filter — a silent success the legacy script reported as a real edit."""
+    filter: a silent success the legacy script reported as a real edit."""
     store = _store()
     monkeypatch.setattr(postgrest_module, "http_request", lambda *_a, **_k: _Reply(200, b"[]", []))
 

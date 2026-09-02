@@ -92,7 +92,7 @@ def test_the_upload_is_titled_with_the_learner_and_session(pipeline):
 
     built.run()
 
-    assert publisher.uploads[0]["title"] == "Ada Whitfield — week 3"
+    assert publisher.uploads[0]["title"] == "Ada Whitfield - week 3"
 
 
 # -- property 1: nothing is deleted until everything else succeeded ----------
@@ -100,7 +100,7 @@ def test_the_upload_is_titled_with_the_learner_and_session(pipeline):
 
 def test_the_source_survives_a_failed_upload(pipeline):
     """The clips are the only copy at this point. Losing them here would be
-    unrecoverable — the whole reason trashing is the last step."""
+    unrecoverable: the whole reason trashing is the last step."""
     built, source, _e, publisher, _d, _j = pipeline
     publisher.fail_with = UpstreamError("youtube is down", service="youtube")
 
@@ -282,7 +282,7 @@ def test_a_skipped_job_is_not_resumed(pipeline):
 def test_non_ascii_learner_folders_do_not_share_a_job_record(tmp_path):
     """A regression for the incident that shipped: `_slug` kept only ASCII, so
     two folders named entirely in Thai both stripped to "" and fell back to
-    the same literal "unknown" — the second learner's run read the first's
+    the same literal "unknown": the second learner's run read the first's
     completed job back, saw every step already done, and silently skipped
     downloading, uploading, and linking her own clips."""
     ikkyu = Learner(id="10", name="น้องอิคคิว", instrument="guitar")
@@ -398,7 +398,7 @@ def test_two_clips_with_the_same_filename_do_not_clobber_each_other(pipeline):
     """A phone's own numbering restarts across recording sessions, so two
     distinct clips sharing one filename (e.g. two `IMG_8131.MOV`) is normal.
     Downloading both to the same destination used to let the second silently
-    overwrite the first before either was combined — the run then reported
+    overwrite the first before either was combined: the run then reported
     success and trashed both originals, having actually used only one twice."""
     from baton.pipelines.video import VideoJob
 

@@ -1,7 +1,7 @@
 """Where Baton looks for a profile, and where it keeps working state.
 
 A *profile* is a directory holding one ``baton.yaml`` plus whatever private
-material an installation needs — theory notes, message templates, job state.
+material an installation needs: theory notes, message templates, job state.
 Keeping all of it in one directory is what lets the private overlay repository
 be nothing but config: the code never reaches outside the profile.
 """

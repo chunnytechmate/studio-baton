@@ -2,7 +2,7 @@
 
 Deterministic and total: the same structure always produces the same blocks,
 and every field the schema allows has a rendering. No model runs here, which is
-what makes the output reviewable — a change in the document means a change in
+what makes the output reviewable: a change in the document means a change in
 the data or in this file, never a change of mood in a language model.
 
 Section headings come from configuration so a studio can rename them and a
@@ -134,7 +134,7 @@ def to_blocks(
         for entry in covered:
             topic = entry.get("topic", "")
             detail = entry.get("detail", "")
-            blocks.append(_bullet(f"{topic} — {detail}" if detail else topic))
+            blocks.append(_bullet(f"{topic}: {detail}" if detail else topic))
             if entry.get("notation"):
                 blocks.append(_code(entry["notation"]))
 
@@ -193,7 +193,7 @@ def to_markdown(
         for entry in covered:
             topic = entry.get("topic", "")
             detail = entry.get("detail", "")
-            lines.append(f"- {topic} — {detail}" if detail else f"- {topic}")
+            lines.append(f"- {topic}: {detail}" if detail else f"- {topic}")
             if entry.get("notation"):
                 lines.append("")
                 lines.append("```")

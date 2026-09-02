@@ -21,7 +21,7 @@ def test_round_trip_preserves_non_ascii(tmp_path):
     jsonio.write_json(target, payload)
 
     assert jsonio.read_json(target) == payload
-    # Thai must survive as characters, not \u escapes — the file is read by
+    # Thai must survive as characters, not \u escapes: the file is read by
     # people as often as by code.
     assert "น้องมานี" in target.read_text(encoding="utf-8")
 

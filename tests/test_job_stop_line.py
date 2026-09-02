@@ -1,6 +1,6 @@
 """`job stop` says how the stop went, not just that it returned (M27).
 
-Exit 0 is kept deliberately — it reports the stop command, not the job's
+Exit 0 is kept deliberately: it reports the stop command, not the job's
 fate, which travels in the payload. The human line is where a stop that
 escalated past SIGTERM is said out loud instead of reading like a clean one.
 """

@@ -1,7 +1,7 @@
 """`calendar book` and `calendar schedule` through the real CLI.
 
 The scheduler is tested directly in `test_calendar.py`; what only the CLI can
-answer is the name-resolution contract at the booking boundary — which names
+answer is the name-resolution contract at the booking boundary, which names
 relax, which refuse, and what the report says when a slot is blocked.
 """
 
@@ -94,7 +94,7 @@ def out(capsys):
 
 def test_a_unique_partial_name_books_and_announces_the_match(studio, capsys):
     """The relaxation, end to end: "Ada" resolves because it lands on exactly
-    one person, the booking goes through, and the payload says so — an
+    one person, the booking goes through, and the payload says so: an
     announced match is checkable, a silent one is only a guess that worked."""
     _, docs, calendar = studio
 
@@ -166,7 +166,7 @@ def test_a_schedule_books_each_line_and_names_relaxed_matches(studio, capsys):
 def test_two_differently_typed_names_for_one_learner_block_the_second(studio, capsys):
     """The relaxation makes this an operator's slip ("Ada" and "Ada Whitfield")
     rather than a parse error, so one slot is blocked instead of the day
-    refused — and the message names the slot that already booked them."""
+    refused, and the message names the slot that already booked them."""
     text = "17:00 Ada\n19:00 Ada Whitfield"
 
     assert call(studio, "schedule", "2026-08-20", "--text", text) == Exit.NEEDS_HUMAN

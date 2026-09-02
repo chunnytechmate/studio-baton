@@ -1,6 +1,6 @@
 """`baton prep` and the sectioned reading its gate stands on.
 
-Real SQLite, a stubbed document store, a stubbed calendar — reaching Notion
+Real SQLite, a stubbed document store, a stubbed calendar: reaching Notion
 or Google in CI is not a test of anything Baton controls. The page blocks are
 the studio's own template shape, headings and all, because the reading is by
 headings and a page of plain paragraphs would prove nothing about it.
@@ -51,7 +51,7 @@ SECTIONED = [
 ]
 
 #: The same page without anything homework-shaped: no checklist, no practice
-#: goals — the page a teacher half-wrote before closing the laptop.
+#: goals: the page a teacher half-wrote before closing the laptop.
 _HOMEWORK_SHAPED = {"t1", "t2", "h3", "p3", "f1"}
 NO_HOMEWORK = [block for block in SECTIONED if block.id not in _HOMEWORK_SHAPED]
 
@@ -292,7 +292,7 @@ def test_the_report_names_the_page_it_came_from(studio, capsys):
     assert human_run == Exit.OK
     human = capsys.readouterr().out
 
-    assert "Lesson prep — 2026-08-22  (1 of 1 ready)" in human
+    assert "Lesson prep 2026-08-22  (1 of 1 ready)" in human
     assert "Ada Whitfield  (latest week 2 | 2026-06-01)" in human
     assert "titles: Paradiddle Basics" in human
     assert "page: https://notion.so/doc-ada-02" in human

@@ -1,13 +1,13 @@
 """Offering a learner's recorded works, and sending the chosen links.
 
-A studio records its learners — YouTube for sharing, Drive beside it for the
+A studio records its learners: YouTube for sharing, Drive beside it for the
 copy parents keep. Both live on the ``works`` row, and a parent asking "วีดีโอ
 ครั้งก่อนหน่อยครับ" means one specific recording, not whatever came out last.
 So sending is two steps and never guesses: list what exists, let a person pick
 one by number, then deliver exactly that one's links.
 
 The first step ends with :class:`~baton.errors.NeedsHumanError` because "which
-recording?" genuinely is a person's decision — the database orders by date,
+recording?" genuinely is a person's decision: the database orders by date,
 but the teacher knows whether the parent wanted Week 3 or the recital cut.
 That refusal carries the whole candidate list, so whoever drives Baton can
 relay it and answer with ``--pick N`` without anything being remembered.
@@ -27,7 +27,7 @@ def list_candidates(works: list[Work]) -> list[dict[str, Any]]:
     """Recorded works as numbered choices, newest first.
 
     The already-fetched list is passed in rather than queried here, so the
-    list a person reads is byte-for-byte the one ``--pick N`` indexes — one
+    list a person reads is byte-for-byte the one ``--pick N`` indexes: one
     read, one order, and no window where the store changes between listing
     and sending. Order stands as :meth:`LearnerStore.list_works` returned it:
     ``performed_date`` descending where the profile maps one, otherwise id
@@ -48,7 +48,7 @@ def list_candidates(works: list[Work]) -> list[dict[str, Any]]:
 
 
 #: The two homes a recording may have, with the label each gets in a message.
-#: One missing is ordinary — some sessions were filmed once; that side simply
+#: One missing is ordinary: some sessions were filmed once; that side simply
 #: does not appear.
 _LINK_LABELS = (
     ("video_link", "📹 YouTube:"),
@@ -72,7 +72,7 @@ def compose_recording(
     freshly cheerful about repeating oneself.
 
     Raises:
-        GateError: When neither home holds a link — a message announcing a
+        GateError: When neither home holds a link: a message announcing a
             recording with none in it is worse than no message, so the block
             is fail-closed like every other send gate.
     """
@@ -83,7 +83,7 @@ def compose_recording(
         raise GateError(
             f"The work “{work.title}” has no recording link to send.",
             missing=[{"field": name, "reason": f"`{name}` is empty"} for name, _ in _LINK_LABELS],
-            remedy="Record the links on the work — `baton learner add-work "
+            remedy="Record the links on the work: `baton learner add-work "
             "--video-link/--drive-link` writes a new one; the existing row can "
             "be edited where it lives.",
         )
@@ -107,11 +107,11 @@ def compose_recording(
     )
     if doc_url:
         # Without this line the message is a dead end: links to the recording,
-        # nothing saying which lesson it came from. Fail-open by design — the
+        # nothing saying which lesson it came from. Fail-open by design: the
         # old sender attached it when it could and sent without it when it
         # could not, and a link that cannot be found must not block the links
         # that exist.
-        body += f"\n\n📝 รายละเอียด Notion: {doc_url}"
+        body += f"\n\n📝 รายละเอียดการเรียน: {doc_url}"
     return header + body
 
 
@@ -133,7 +133,7 @@ def send_recording(
             uses the work's own value, so a caller with no date configuration
             gets exactly what the record holds.
         doc_url: The lesson page the recording belongs to, appended when given.
-            Empty omits the line — it is never a gate.
+            Empty omits the line: it is never a gate.
     """
     message = compose_recording(
         work, learner_name=learner_name, instrument=instrument, date=date, doc_url=doc_url
@@ -157,7 +157,7 @@ def send_recording(
 
 
 #: The heading a work's recording is filed under on a session page, the same
-#: words the studio's old push wrote — a family looking for the clip finds it
+#: words the studio's old push wrote: a family looking for the clip finds it
 #: under the same heading it has always been under.
 _RECORDS_HEADING = "🎬 ผลงาน Record"
 
@@ -227,7 +227,7 @@ def attach_work(docs: Any, doc_id: str, work: Work) -> dict[str, Any]:
         raise GateError(
             f"The work “{work.title}” has no link to put on the page.",
             missing=[{"field": name, "reason": f"`{name}` is empty"} for name, _ in _LINK_LABELS],
-            remedy="Record the link on the work first — `baton learner add-work` "
+            remedy="Record the link on the work first: `baton learner add-work` "
             "writes a new one; the existing row can be edited where it lives.",
         )
 

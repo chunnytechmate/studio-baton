@@ -20,7 +20,7 @@ from ...domain.models import Learner, Piece, Session, Work
 from ...errors import ConfigError
 
 #: A plain SQL identifier. Anything else is rejected rather than quoted, so a
-#: typo in baton.yaml surfaces as a config error instead of broken SQL — and a
+#: typo in baton.yaml surfaces as a config error instead of broken SQL, and a
 #: hand-edited profile cannot smuggle a fragment into a query.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -101,7 +101,7 @@ class FieldMap:
     def has(self, name: str) -> bool:
         """Whether a domain field is mapped at all.
 
-        Optional fields — a tone column a studio does not keep, say — are
+        Optional fields (a tone column a studio does not keep, say) are
         simply absent, and readers fall back to a default rather than failing.
         """
         return name in self.columns
@@ -120,7 +120,7 @@ class FieldMap:
 
         Raises:
             ConfigError: A key has no mapped column. Raised before anything
-                is written — dropping a column the studio relies on is how a
+                is written: dropping a column the studio relies on is how a
                 record ends up half-created.
         """
         resolved: dict[str, Any] = {}
@@ -139,7 +139,7 @@ class FieldMap:
 class LearnerStore(Protocol):
     """Read and write the records a teaching studio keeps.
 
-    Implementations must not raise for "not found" — they return ``None`` or an
+    Implementations must not raise for "not found": they return ``None`` or an
     empty list. Only genuine faults (unreachable service, bad credentials,
     schema mismatch) raise, and those raise the typed errors in
     :mod:`baton.errors` so the CLI maps them onto stable exit codes.
@@ -165,7 +165,7 @@ class LearnerStore(Protocol):
         ``extra`` carries studio-specific columns the model has no field for
         (a prompt level, a master link), keyed by domain name and mapped
         through ``db.fields`` like every other column. A key the profile does
-        not map is a configuration error raised before anything is written —
+        not map is a configuration error raised before anything is written:
         silently dropping a column the studio relies on is how a record ends
         up half-created.
         """
@@ -207,11 +207,11 @@ class LearnerStore(Protocol):
         """Change the mapped fields of one piece.
 
         Keys are domain field names; an empty string *clears* the field
-        rather than writing a literal empty value — the same convention the
+        rather than writing a literal empty value: the same convention the
         :class:`~baton.domain.models.Piece` model already uses for "no link",
         so a cleared field and a field that was never set read identically
         everywhere else in Baton. Returns the updated piece, or ``None`` when
-        no piece has that id — the caller decides whether that is an error,
+        no piece has that id: the caller decides whether that is an error,
         and it usually is: a typo in an id should not read as a successful
         edit.
         """
@@ -243,7 +243,7 @@ class LearnerStore(Protocol):
 
         Raises:
             BatonError: With the specific reason. Used by ``baton doctor``,
-                which is why it checks the schema and not just connectivity —
+                which is why it checks the schema and not just connectivity:
                 a renamed column should be caught before a pipeline hits it.
         """
         ...

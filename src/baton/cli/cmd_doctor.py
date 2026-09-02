@@ -1,4 +1,4 @@
-"""``baton doctor`` — check the installation before it is trusted with real work.
+"""``baton doctor``: check the installation before it is trusted with real work.
 
 This is the merged descendant of the per-skill preflight scripts. It runs every
 cheap check that can fail at 2am and reports all of them at once, because
@@ -7,7 +7,7 @@ finding three problems in one run beats discovering them one re-run at a time.
 Doctor changes nothing a caller can observe and never falls back to a secondary
 store: its job is to notice that the primary is down, not to paper over it. The
 one thing it writes is a probe file under the state directory, created and
-deleted again to prove the directory is writable — which also creates the state
+deleted again to prove the directory is writable, which also creates the state
 directory if it is missing.
 """
 
@@ -132,8 +132,8 @@ def _check_driver(
 def _check_schema(ctx: Context, report: Report) -> None:
     """Resolve the configured table and column names without touching a service.
 
-    Catches the single most common misconfiguration — a column renamed in
-    baton.yaml that does not exist, or a name that is not a legal identifier —
+    Catches the single most common misconfiguration (a column renamed in
+    baton.yaml that does not exist, or a name that is not a legal identifier)
     while still working on a laptop with no network.
     """
     from ..adapters.db.mapping import Schema
@@ -196,15 +196,15 @@ def _check_encoder(ctx: Context, report: Report, *, required: bool) -> None:
         report.add(
             f"Encoder `{binary}` is on PATH",
             passed=True,
-            detail="not found — `baton video` cannot encode until it is",
+            detail="not found: `baton video` cannot encode until it is",
         )
 
 
 def _probe(report: Report, label: str, run: Callable[[], None]) -> None:
     """Record one reachability check, whatever shape its failure arrives in.
 
-    `BatonError` carries its own remedy. Anything else — a vendor SDK raising
-    its own exception type, a socket giving up — is still a failed check, not a
+    `BatonError` carries its own remedy. Anything else (a vendor SDK raising
+    its own exception type, a socket giving up) is still a failed check, not a
     traceback: doctor exists to name every problem in one run, and a stack trace
     ends the run at the first one.
     """
@@ -250,7 +250,7 @@ def _check_reachable(ctx: Context, report: Report) -> None:
 
     # Only when the credentials are actually there. A profile that has never
     # been pointed at a Google project is not broken, but one whose refresh
-    # token has quietly expired is — and `learner in-progress` reads the
+    # token has quietly expired is, and `learner in-progress` reads the
     # calendar every morning, so that expiry has to surface here rather than
     # halfway through the first question of the day.
     if _calendar_configured(ctx):
@@ -408,7 +408,7 @@ def handle(ctx: Context) -> Exit:
     if failed:
         # The full report is printed above rather than replaced by an error, so
         # the operator sees every problem in one pass. The exit code still says
-        # "configuration is broken" — but quietly, since the detail is already
+        # "configuration is broken", but quietly, since the detail is already
         # on screen.
         return Exit.CONFIG
     return Exit.OK

@@ -1,7 +1,7 @@
 """Google Drive as a source, YouTube as a publisher.
 
 Both live behind the ``google`` extra. Importing the SDK lazily means the core
-install stays small and someone using Baton without video never installs it —
+install stays small and someone using Baton without video never installs it,
 and if they turn video on without it, they get a sentence telling them what to
 install rather than an ImportError traceback.
 """
@@ -24,7 +24,7 @@ _VIDEO_ID = re.compile(r"(?:youtu\.be/|[?&]v=|/embed/)(?P<id>[A-Za-z0-9_-]{11})"
 def extract_video_id(url: str) -> str | None:
     """The 11-character video id out of any of YouTube's URL shapes.
 
-    Pure string parsing — no API call, no `[google]` extra required — so a
+    Pure string parsing, no API call, no `[google]` extra required, so a
     caller can use this to decide whether a Notion link is even a YouTube
     link before paying for credentials or a network round trip.
     """
@@ -304,7 +304,7 @@ class YouTubePublisher:
 
         Refuses to touch a video the configured account does not own. The
         YouTube link on a session document is read off a Notion page, and
-        that field can legitimately hold a *reference* clip — a teacher's
+        that field can legitimately hold a *reference* clip: a teacher's
         tutorial on someone else's channel, not the learner's own upload.
         Skipping the ownership check would build the update body from that
         stranger's video and overwrite a third party's description with a
@@ -326,7 +326,7 @@ class YouTubePublisher:
                 f"Video {video_id} belongs to channel {owner_channel_id} "
                 f"('{snippet.get('channelTitle', '?')}'), not to the configured account.",
                 service="youtube",
-                remedy="Check the YouTube link on the document — it may be a reference "
+                remedy="Check the YouTube link on the document: it may be a reference "
                 "video rather than the learner's own recording. Not updated.",
             )
 

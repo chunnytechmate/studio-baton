@@ -1,6 +1,6 @@
 """Lesson drafts on their way to being published.
 
-A lesson is staged, then summarised, then published — often across separate
+A lesson is staged, then summarised, then published: often across separate
 commands, sometimes across separate days, and occasionally across a crash. Each
 draft is one atomically-written file under ``<state>/lessons/``.
 
@@ -49,8 +49,8 @@ def _slug(value: str) -> str:
 
     Ids come from a studio's own database and may be anything at all, so they
     are never used as a path component unescaped. A hash fallback (rather than
-    a bare "unknown") keeps two ids that both strip to nothing — non-ASCII
-    ones, in particular — from colliding on the same file. See the video
+    a bare "unknown") keeps two ids that both strip to nothing (non-ASCII
+    ones, in particular) from colliding on the same file. See the video
     pipeline's ``_slug`` for the incident that made this the pattern here too.
     """
     cleaned = _SAFE_NAME.sub("_", str(value)).strip("._")
@@ -316,7 +316,7 @@ class StagingStore:
         """Delete drafts, naming what was removed and what was deliberately not.
 
         A publish that did not finish leaves a draft with an unfinished target,
-        and that draft holds the only note that the work is still owed — the
+        and that draft holds the only note that the work is still owed: the
         next ``stage`` overwrites the file wholesale, and the published record
         only exists once the summary went out. So with ``keep_unfinished`` a
         draft in that state survives the sweep and is reported back instead;
@@ -326,7 +326,7 @@ class StagingStore:
         owed on it, so it clears either way.
 
         Returns:
-            ``(removed, kept)`` — the names deleted, and one entry per kept
+            ``(removed, kept)``: the names deleted, and one entry per kept
             draft carrying its name and each unfinished target's status.
         """
         removed: list[str] = []
@@ -349,7 +349,7 @@ class PublishedRecord:
     """What was published, kept after the draft is cleared.
 
     The message a parent receives is composed at publish time, and the command
-    that sends it runs later — often much later. Keeping the rendered message
+    that sends it runs later: often much later. Keeping the rendered message
     here means the send step never has to re-derive it, and so can never
     produce a different message from the one that was reviewed.
     """
@@ -419,8 +419,8 @@ class PublishedRecord:
     def note_youtube(self, learner_id: str, session_number: int, state: dict[str, Any]) -> None:
         """Fold a description-update outcome into an existing record.
 
-        The record is written before the description step runs — the message
-        must survive even when the video update fails — so the outcome is
+        The record is written before the description step runs (the message
+        must survive even when the video update fails), so the outcome is
         folded in afterwards rather than the record rewritten, and
         ``published_at`` keeps meaning "when the summary went out".
 
@@ -441,7 +441,7 @@ class PublishedRecord:
 
         The filename prefix alone cannot separate `ada` from `ada-1`: the
         shorter id is a prefix of the longer one, so a glob for one sweeps in
-        the other's records — and the wrong learner's message would be sent.
+        the other's records, and the wrong learner's message would be sent.
         The learner id stored inside each record is the identity; the filename
         is only the index.
         """
@@ -461,7 +461,7 @@ class PublishedRecord:
 
             `published_at` is written to the second, so two publishes inside
             one second compare equal and `max` falls back to whichever the
-            filesystem's glob happened to yield first — an ordering that
+            filesystem's glob happened to yield first: an ordering that
             differs between Linux and macOS and is not an ordering at all.
             Left there, `send lesson` with no `--session` could pick the
             earlier of the two and send last week's message. The session

@@ -4,7 +4,7 @@ Ported from the original workspace ``scripts/utils.py``, with the POSIX-only
 ``fcntl`` dependency replaced by a portable lock so Baton runs on Windows too.
 
 The guarantee callers rely on: a kill at any instant leaves either the previous
-file fully intact or the new file fully written — never a truncated one. Every
+file fully intact or the new file fully written, never a truncated one. Every
 piece of resumable pipeline state in Baton goes through here.
 """
 
@@ -65,7 +65,7 @@ def _snapshot(path: Path) -> None:
 
     The backup is the only recovery source when the live file is truncated, so
     it cannot itself be written in a way a crash can truncate. Copying straight
-    onto the destination — which is what this used to do — leaves a half-written
+    onto the destination (which is what this used to do) leaves a half-written
     backup if the power goes during the copy, losing the one good copy of the
     state at exactly the moment it is needed.
     """
@@ -81,7 +81,7 @@ def _snapshot(path: Path) -> None:
 def _quarantine(path: Path) -> Path | None:
     """Move an unreadable file aside, keeping its bytes for inspection.
 
-    Returns the new path, or ``None`` if it could not be moved — this runs on
+    Returns the new path, or ``None`` if it could not be moved: this runs on
     the failure path of a function that promises never to raise, so it must not
     become the thing that raises.
     """
@@ -124,7 +124,7 @@ def read_json(path: str | Path, default: Any = None) -> Any:
     """Read JSON, falling back to the ``.bak`` snapshot. Never raises.
 
     A missing file yields ``default``. A corrupt or unreadable file is retried
-    from the backup snapshot before giving up — so a state file truncated by a
+    from the backup snapshot before giving up, so a state file truncated by a
     power cut degrades to the previous good state instead of crashing a
     pipeline mid-run.
 
@@ -154,8 +154,8 @@ def read_json(path: str | Path, default: Any = None) -> Any:
     if ok:
         return value
 
-    # Both copies are gone. Returning `default` here is right — a pipeline
-    # should not die on unreadable state — but doing it silently makes a
+    # Both copies are gone. Returning `default` here is right (a pipeline
+    # should not die on unreadable state), but doing it silently makes a
     # corrupt draft indistinguishable from one that was never written, which
     # is how a lesson someone typed up disappears without anyone learning
     # that it did. Keep the bytes, and say so.

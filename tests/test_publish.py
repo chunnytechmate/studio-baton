@@ -30,7 +30,7 @@ EXISTING = [
 
 
 def test_rendering_is_deterministic():
-    """Same input, same output — every time. This is what makes a published
+    """Same input, same output: every time. This is what makes a published
     document reviewable rather than something a model felt like writing."""
     first = render.to_blocks(SUMMARY)
     second = render.to_blocks(SUMMARY)
@@ -131,7 +131,7 @@ def test_publishing_keeps_the_recording_and_removes_last_weeks_text():
 
 
 def test_publishing_appends_before_deleting():
-    """If deletion failed, the page would carry a duplicate section — which is
+    """If deletion failed, the page would carry a duplicate section, which is
     recoverable. Deleting first and then failing to append would leave the page
     empty of the lesson, with the recordings gone too."""
     docs = FakeDocStore(blocks={"doc1": list(EXISTING)})

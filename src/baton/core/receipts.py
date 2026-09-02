@@ -1,6 +1,6 @@
 """Proof that a message already went out, so it does not go out twice.
 
-The hole this fills is not a Baton bug — it is what a *harness* does to a
+The hole this fills is not a Baton bug: it is what a *harness* does to a
 correct program. An agent runs `baton send lesson …`; the platform accepts the
 message; before the JSON envelope reaches stdout the harness's per-call time
 limit expires and kills the process. The agent sees a killed command, concludes
@@ -9,7 +9,7 @@ and nothing in the logs looks wrong.
 
 LINE was already safe: `adapters.chat.drivers` computes a deterministic
 ``X-Line-Retry-Key`` from the token, recipient, and exact text, so LINE itself
-collapses the repeat — even across processes. Telegram and the generic webhook
+collapses the repeat, even across processes. Telegram and the generic webhook
 have no equivalent, and the legacy studio scripts this package replaced list
 "no idempotency key (risk of duplicate messages)" among their known issues. So
 the record is kept locally instead, where it protects every driver equally.
@@ -78,7 +78,7 @@ class Receipts:
             recipient_id: The platform id. The same summary to two households
                 is two sends, not one.
             material: What identifies *this* message. Callers that can name the
-                thing being sent pass an identity — ``"lesson|17|3"`` — and
+                thing being sent pass an identity: ``"lesson|17|3"``, and
                 callers that cannot pass the message text.
 
         Identity beats text wherever it is available, and `send lesson` is why:

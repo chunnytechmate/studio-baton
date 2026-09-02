@@ -134,7 +134,7 @@ class PostgrestStore:
         if response.status_code >= 400:
             detail = response.text[:300]
             # PostgREST reports an unknown column as 400 with the name in the
-            # body — the single most likely misconfiguration, so name it.
+            # body: the single most likely misconfiguration, so name it.
             raise ConfigError(
                 f"{self.driver} rejected the query: {detail}",
                 remedy="Usually a column named in db.fields that does not "
@@ -257,7 +257,7 @@ class PostgrestStore:
 
     @staticmethod
     def _represented(created: Any, what: str, driver: str, build: Any) -> Any:
-        """The row a write returned — or a loud refusal to pretend it has one.
+        """The row a write returned, or a loud refusal to pretend it has one.
 
         A server that ignores ``Prefer: return=representation`` may still have
         written the row. Handing back the caller's object would hide that, and
@@ -269,7 +269,7 @@ class PostgrestStore:
                 f"{driver} accepted the {what} but returned no representation "
                 f"to read the assigned id from.",
                 service=driver,
-                remedy="The row may exist on the server — check for it before "
+                remedy="The row may exist on the server: check for it before "
                 "retrying, or this add will run twice.",
             )
         return build(rows[0])
@@ -356,7 +356,7 @@ class PostgrestStore:
             prefer="return=representation",
         )
         # PostgREST answers 200 with an empty array when the filter matched
-        # nothing — a silent success the original script reported as an edit.
+        # nothing: a silent success the original script reported as an edit.
         rows = updated if isinstance(updated, list) else [updated]
         return self._piece(rows[0]) if rows and isinstance(rows[0], dict) else None
 

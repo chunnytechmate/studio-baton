@@ -1,4 +1,4 @@
-"""``baton learner`` — look up people, their sessions, pieces, and work.
+"""``baton learner``: look up people, their sessions, pieces, and work.
 
 Every subcommand that takes a name runs it through the resolution gate first,
 so an ambiguous name exits ``3`` with candidates rather than acting on a guess.
@@ -60,7 +60,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "latest",
         help="The most recent session that actually happened.",
         description=(
-            "The newest session whose document is marked done — not the highest "
+            "The newest session whose document is marked done, not the highest "
             "number. Sessions get skipped, so a high number proves nothing."
         ),
     )
@@ -72,7 +72,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="The lowest session a new lesson may land on.",
         description=(
             "A not-started page with no content is free. A page in progress is "
-            "the target while it is fresh — the studio's flow books a lesson, the "
+            "the target while it is fresh: the studio's flow books a lesson, the "
             "page turns In progress, and the summary is written onto that page. "
             "Only a page still in progress more than learner.next_stale_days "
             "past its date is passed over as abandoned. An unstarted page that "
@@ -87,7 +87,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Who still owes a summary, from the calendar window.",
         description=(
             "Reads the last learner.in_progress_days of calendar events (today "
-            "included) and checks only those learners' pages — one calendar call "
+            "included) and checks only those learners' pages: one calendar call "
             "plus one document read per lesson, not every page of every learner. "
             "A lesson counts only while its page still says In progress: "
             "cancelled and summarized lessons drop out on their own. Sessions "
@@ -182,8 +182,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "attach-work",
         help="Put a recorded work onto its session page.",
         description=(
-            "A recording that did not go through the video pipeline — a "
-            "teacher's own edit, a clip shared directly — has links in the "
+            "A recording that did not go through the video pipeline: a "
+            "teacher's own edit, a clip shared directly: has links in the "
             "database and nothing on the page. This writes the same section "
             "the old push wrote, under the same heading, onto the session "
             "In progress by default or --session N. Links already on the page "
@@ -283,7 +283,7 @@ def handle_list(ctx: Context) -> Exit:
     for item in learners:
         line = f"  {item.name:<{width}}  {item.instrument or '-':<10} {item.tone or '-'}"
         if item.current_piece_id:
-            line += f"  — {titles.get(item.current_piece_id, '?')}"
+            line += f"  : {titles.get(item.current_piece_id, '?')}"
         lines.append(line)
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
@@ -312,12 +312,12 @@ def handle_show(ctx: Context) -> Exit:
     lines.append(
         f"  latest done: {label} {latest['number']} ({latest['date'] or 'no date'})"
         if latest
-        else f"  latest done: none — no {label} is marked done yet"
+        else f"  latest done: none, no {label} is marked done yet"
     )
     lines.append(
         f"  next free  : {label} {upcoming['number']}"
         if upcoming
-        else f"  next free  : none — every {label} is started or has content"
+        else f"  next free  : none: every {label} is started or has content"
     )
     for view in payload["sessions"]["in_progress"]:
         lines.append(f"  in progress: {label} {view['number']}")
@@ -388,7 +388,7 @@ def handle_latest(ctx: Context) -> Exit:
         payload["sections_unreadable"] = unreadable
 
     lines = [
-        f"{learner.name} — {label} {view.number}"
+        f"{learner.name} {label} {view.number}"
         f"{f'  {view.doc.date}' if view.doc.date else ''}"
         f"{f'  {view.doc.titles}' if view.doc.titles else ''}",
         f"  doc: {view.session.doc_id}",
@@ -426,7 +426,7 @@ def handle_next(ctx: Context) -> Exit:
 
     ctx.report.result(
         payload,
-        human=f"{learner.name} — next free {label}: {view.number}\n  doc: {view.session.doc_id}",
+        human=f"{learner.name}: next free {label} is {view.number}\n  doc: {view.session.doc_id}",
     )
     return Exit.OK
 
@@ -478,7 +478,7 @@ def handle_in_progress(ctx: Context) -> Exit:
     def _mark(view) -> str:
         if not ctx.args.videos:
             return ""
-        return "  🎬" if recordings.get(view.session.doc_id) else "  —"
+        return "  🎬" if recordings.get(view.session.doc_id) else "  -"
 
     lines: list[str] = []
     if report.found:
@@ -540,7 +540,7 @@ def _resolve_pages(args: Any) -> list[tuple[int, str]]:
 
     ``--pages`` wins over ``--page-urls`` when both are given, matching the
     original script's order. A URL Baton cannot read a page id from is
-    refused rather than skipped — silently dropping a page a person meant to
+    refused rather than skipped: silently dropping a page a person meant to
     add is worse than stopping to ask about it.
 
     Raises:
@@ -585,8 +585,8 @@ def handle_add(ctx: Context) -> Exit:
 
     Nothing is written until every input has resolved: the name is not a
     duplicate, the instrument and tone (when the profile restricts them) are
-    known values, every page URL carries a page id, and every extra field —
-    a prompt level, a master link, a session's Notion database id — has a
+    known values, every page URL carries a page id, and every extra field:
+    a prompt level, a master link, a session's Notion database id: has a
     place to be written. A studio-specific column named on the command line
     with nowhere configured to put it is a configuration error, not a
     silently dropped write.
@@ -693,7 +693,7 @@ def handle_add(ctx: Context) -> Exit:
             raise UpstreamError(
                 f"{created.name} was enrolled, but a session page failed to write: {exc.message}",
                 service="db",
-                remedy="The learner and any listed sessions already exist — "
+                remedy="The learner and any listed sessions already exist: "
                 "check what landed before retrying the rest by hand.",
                 details={
                     "learner": created.to_dict(),
@@ -791,7 +791,7 @@ def handle_attach_work(ctx: Context) -> Exit:
                     f'"{ctx.args.name}" --title … (--video-link / --drive-link)`.',
                 )
             raise NeedsHumanError(
-                f"{learner.name} has {len(works)} recorded work(s) — which one goes on the page?",
+                f"{learner.name} has {len(works)} recorded work(s): which one goes on the page?",
                 candidates=list_candidates(works),
                 remedy="Re-run with --pick <number> from that list; 1 is the "
                 "most recent. Nothing was written.",
@@ -804,8 +804,8 @@ def handle_attach_work(ctx: Context) -> Exit:
                 details={"candidates": list_candidates(works)} if works else None,
             )
 
-        # Which page: the session in progress by default — the recording
-        # belongs to the lesson it came from — or the one named.
+        # Which page: the session in progress by default (the recording
+        # belongs to the lesson it came from) or the one named.
         history = _history(ctx, store)
         views = history.sessions(learner)
         if ctx.args.session is not None:

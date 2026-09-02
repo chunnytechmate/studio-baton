@@ -10,7 +10,7 @@ Layers, in the order a request travels them::
 
     core → cli → pipe → iface (protocol) → impl (concrete adapter) → svc
 
-``iface`` nodes are the protocol methods every pipeline shares — ``docs.*``,
+``iface`` nodes are the protocol methods every pipeline shares: ``docs.*``,
 ``store.*`` and friends. They are the interesting part: the crossings on the
 picture are pipelines meeting at one of these, which is a fact about the code
 rather than a choice about the layout.
@@ -51,7 +51,7 @@ IFACE_PREFIX = (
 )
 
 #: Where a protocol family ends up once the adapter has done its work.
-#: The publisher family is absent on purpose — its methods do not share one
+#: The publisher family is absent on purpose: its methods do not share one
 #: destination, so it lives in SERVICE_METHOD below.
 SERVICE = {
     "docs": "notion",
@@ -69,7 +69,7 @@ SERVICE = {
 #: method. ``publisher.upload`` is the media publisher whose protocol
 #: default calls YouTube directly. ``publisher.publish`` and
 #: ``publisher.plan`` resolve to SummaryPublisher, whose real work already
-#: shows up as edges into the docs protocol — a YouTube edge there would
+#: shows up as edges into the docs protocol: a YouTube edge there would
 #: claim the lesson summary is published as a video.
 SERVICE_METHOD = {
     "publisher": {"upload": "youtube"},
@@ -88,7 +88,7 @@ IMPL = {
     "adapters/media/ffmpeg": ("encoder", "ffmpeg"),
 }
 
-#: Teardown, not a data path — 22 callers of it would dominate the picture.
+#: Teardown, not a data path: 22 callers of it would dominate the picture.
 SKIP_CALLS = {"store.close"}
 
 
@@ -104,7 +104,7 @@ def _dotted(node: ast.AST) -> str:
 
 def _callee(call: ast.Call) -> str:
     """The callee reduced to its last two names, so ``self.docs.get_status``
-    becomes ``docs.get_status`` — the boundary, not the local variable."""
+    becomes ``docs.get_status``: the boundary, not the local variable."""
     func = call.func
     if isinstance(func, ast.Name):
         return func.id
@@ -159,7 +159,7 @@ def scan(
     """Parse every module once.
 
     Returns:
-        ``(defined, edges, methods)`` — where a name is defined, every call
+        ``(defined, edges, methods)``: where a name is defined, every call
         with the module it was made from, and each module's own methods.
     """
     defined: dict[str, list[str]] = defaultdict(list)
@@ -200,7 +200,7 @@ def build(root: Path) -> dict[str, object]:
         dmod = cmod.replace("/", ".")
         if dmod.startswith("cli."):
             # ``cli.cmd_calendar`` and ``cli.guard`` are both just "calendar"
-            # and "guard" — the cmd_ prefix is naming convention, not meaning.
+            # and "guard": the cmd_ prefix is naming convention, not meaning.
             layer, group = "cli", dmod.removeprefix("cli.").removeprefix("cmd_")
         elif dmod.startswith("pipelines.") or dmod.startswith("core.jobs"):
             layer = "pipe"
@@ -234,7 +234,7 @@ def build(root: Path) -> dict[str, object]:
             add(target, "pipe", tfn, tmod.replace("pipelines.", "").replace("core.", ""))
             link(caller, target)
 
-    # concrete adapters, and the private helper each public method leans on —
+    # concrete adapters, and the private helper each public method leans on:
     # the chunking, the SQL and the retries all live one level down
     iface_methods: dict[str, set[tuple[str, str]]] = defaultdict(set)
     for nid, node in list(nodes.items()):
@@ -311,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if not ROOT.is_dir():
-        print(f"error: {ROOT} is not there — run this from the repository", file=sys.stderr)
+        print(f"error: {ROOT} is not there: run this from the repository", file=sys.stderr)
         return 2
 
     graph = build(ROOT)

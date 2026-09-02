@@ -1,7 +1,7 @@
 """Shared fixtures.
 
 Every test runs against a throwaway profile. Nothing in the suite reads the
-developer's real profile or environment — a test that silently picks up
+developer's real profile or environment: a test that silently picks up
 ``$BATON_PROFILE`` would pass on one machine and fail on another.
 """
 

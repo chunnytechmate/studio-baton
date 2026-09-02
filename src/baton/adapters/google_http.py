@@ -5,7 +5,7 @@ instead of letting ``googleapiclient`` build it: the deadline it would not have
 given us, and the 308 handling it would have given us for free.
 
 ``googleapiclient`` builds its transport from ``httplib2.Http()``, whose
-timeout defaults to the process-wide socket default — which is ``None``. A
+timeout defaults to the process-wide socket default, which is ``None``. A
 Drive listing, a Calendar insert, or a YouTube upload chunk that never gets an
 answer therefore never returns either, and no retry policy above it ever runs
 because nothing above it is reached.
@@ -14,7 +14,7 @@ Every other remote call Baton makes is already bounded: `core.retry.http_request
 forces a timeout onto `requests`, and the encoder kills ffmpeg on its own
 deadline. This module closes the last hole. It matters most under an agent
 harness, where the visible symptom of an unbounded call is a shell command that
-hangs until the harness kills it — leaving a booking that may or may not have
+hangs until the harness kills it: leaving a booking that may or may not have
 been made, with nothing written down either way.
 
 The cost of taking the transport over is that ``googleapiclient.http.build_http``
@@ -70,7 +70,7 @@ def build_kwargs(credentials: Any, timeout: float | None) -> dict[str, Any]:
     # Incomplete`, carrying a `Range:` header and no `Location:`. httplib2
     # counts 308 among its redirect codes, so it reads that as a broken
     # redirect and raises `RedirectMissingLocation` before the API client ever
-    # sees the status it was waiting for — every YouTube upload past the first
+    # sees the status it was waiting for: every YouTube upload past the first
     # chunk dies there. `googleapiclient.http.build_http` drops 308 for exactly
     # this reason; assembling the transport here means dropping it here too.
     with contextlib.suppress(AttributeError):  # httplib2 < 0.15 has no such set

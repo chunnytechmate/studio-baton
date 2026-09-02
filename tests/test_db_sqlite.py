@@ -1,5 +1,5 @@
 """The SQLite driver, run against a real database built from the shipped
-migration — so a migration that drifts from `defaults.yaml` fails here."""
+migration, so a migration that drifts from `defaults.yaml` fails here."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def store(profile):
 
 def test_the_shipped_migration_satisfies_the_default_mapping(store):
     """If defaults.yaml names a column the migration does not create, this
-    fails — which is the only thing keeping the two files in step."""
+    fails, which is the only thing keeping the two files in step."""
     store.health()
 
 
@@ -197,7 +197,7 @@ def test_delete_piece_on_an_unknown_id_reports_nothing_deleted(store):
 
 def test_an_unmapped_extra_field_is_a_config_error_before_anything_is_written(store):
     """Silently dropping a column the studio relies on is how a record ends up
-    half-created — the profile has to say where `prompt_level` goes first."""
+    half-created: the profile has to say where `prompt_level` goes first."""
     with pytest.raises(ConfigError) as excinfo:
         store.add_learner(Learner(id="", name="Ghost"), extra={"prompt_level": 2})
 
@@ -243,7 +243,7 @@ def test_a_renamed_column_is_reported_as_config_not_a_crash(profile):
     try:
         with pytest.raises(ConfigError) as excinfo:
             opened.list_learners()
-        # The error names the column that is missing, not just "schema error" —
+        # The error names the column that is missing, not just "schema error":
         # that difference is the whole point of checking the table definition
         # instead of waiting for the query to fail.
         assert excinfo.value.details["missing"] == ["full_name"]
@@ -280,7 +280,7 @@ def test_missing_database_file_names_the_migration(profile):
     store = SqliteStore.from_config(config)
     try:
         # Connecting creates an empty file, so health fails on the missing
-        # tables rather than the missing file — either way it names the fix.
+        # tables rather than the missing file, either way it names the fix.
         with pytest.raises(ConfigError) as excinfo:
             store.health()
         assert "migrations/sqlite.sql" in (excinfo.value.remedy or "")
@@ -313,8 +313,8 @@ def test_a_busy_database_is_not_reported_as_a_broken_schema(profile, monkeypatch
 
     "database is locked" means another command is mid-write; it has nothing to
     do with the schema. Reporting it as a mapping error sent the operator to
-    run a migration against a database someone else was writing to, and — being
-    a ConfigError — it never reached the failover a busy primary is exactly the
+    run a migration against a database someone else was writing to, and (being
+    a ConfigError) it never reached the failover a busy primary is exactly the
     case for.
     """
     db_path = profile / "data" / "studio.db"

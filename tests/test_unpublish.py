@@ -1,10 +1,10 @@
-"""Taking a published summary back off the page — the mirror of `publish`.
+"""Taking a published summary back off the page: the mirror of `publish`.
 
 Runs the real SQLite staging pipeline against a scripted document store, so
 the only thing substituted is the network. Every attribution mode is reached
 through the CLI the way an operator reaches it, including the pre-block-ids
 "legacy" record, which is manufactured by stripping the block list a real
-publish wrote — the record otherwise being exactly what an older Baton left
+publish wrote: the record otherwise being exactly what an older Baton left
 behind.
 """
 
@@ -293,12 +293,12 @@ def test_a_legacy_record_is_matched_by_re_rendering(studio, capsys):
 
     assert payload["mode"] == "legacy"
     assert payload["ambiguous"] == []
-    # The footer cannot be re-rendered — it says when the clock ran — so this
+    # The footer cannot be re-rendered (it says when the clock ran), so this
     # passing means its blocks matched by the clock-independent pattern.
     #
     # The embed the piece renderer wrote stays where the recorded mode took it:
     # with no ids there is no proof Baton wrote it, and the preserve policy
-    # protects embeds. Less trust, less removed — which is the whole ordering.
+    # protects embeds. Less trust, less removed, which is the whole ordering.
     assert [block.id for block in docs.list_blocks("doc-ada-03")] == ["vid", "new-3"]
 
 

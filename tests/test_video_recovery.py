@@ -3,13 +3,13 @@
 Every scenario here is the 2026-08-27 production night, replayed against
 fakes:
 
-* a folder holds next week's clips while this week's job sits done — the run
+* a folder holds next week's clips while this week's job sits done: the run
   must start the new session itself, not wait for a hand-run `video forget`;
 * a completed job's trash step says ``moved`` and the source still lists the
-  clips — the next run or resume must reclaim them, not report success again
+  clips: the next run or resume must reclaim them, not report success again
   over the un-trashed files;
 * a rebuild of the session page drops the video block a finished step record
-  claims is there — the next pass must put it back;
+  claims is there: the next pass must put it back;
 * `resume` must never answer "nothing" while `run` would find work.
 """
 
@@ -46,7 +46,7 @@ class ReusableSource:
 
     The shared fake models a well-behaved source; the production incident was
     a source that kept listing clips after recording them moved. ``sticky``
-    holds the ids a trash call must *not* remove — exactly the failure the
+    holds the ids a trash call must *not* remove: exactly the failure the
     Drive API presented on the night of 2026-08-26/27: the update succeeded,
     the count came back, the clips stayed.
     """
@@ -92,7 +92,7 @@ class ReusableSource:
 def studio(tmp_path):
     """A one-learner studio whose sessions resolve like the CLI's own rule.
 
-    A recording attaches to the session in progress — the same first choice
+    A recording attaches to the session in progress: the same first choice
     `cmd_video` makes. A published (Done) session never takes a new recording,
     which is what makes a folder's next batch of clips *next week's*.
     """
@@ -152,7 +152,7 @@ def _publish(pipeline, number):
 
 def test_new_clips_after_a_done_job_start_the_next_session(studio):
     """The 19:10 case: W4 clips sat in the folder while the W3 job, done,
-    occupied the store — `run` reported nothing to do until a person ran
+    occupied the store: `run` reported nothing to do until a person ran
     `video forget`. The run itself must roll the job over."""
     source = ReusableSource(W3_CLIPS)
     pipeline = studio(source)
@@ -192,7 +192,7 @@ def test_a_done_job_stays_silent_when_no_new_clips_arrive(studio):
 
 def test_mixed_clips_reclaim_the_old_week_and_run_the_new(studio):
     """Re-running over a done job with mixed clips must not re-download or
-    re-upload the old week's material — only the fresh session's."""
+    re-upload the old week's material, only the fresh session's."""
     source = ReusableSource(W3_CLIPS)
     pipeline = studio(source)
     first = pipeline.run()[0]
@@ -278,7 +278,7 @@ def test_a_failed_reclaim_fails_the_job_loudly(studio):
 
 def test_a_page_rebuilt_without_the_video_block_gets_it_back(studio):
     """The 21:46 case: `doc_linked` recorded done at 13:56 against the right
-    document with the right URL, and the block was never on that page — the
+    document with the right URL, and the block was never on that page: the
     forced publish an hour later reported `preserved: 0`, and `video` is in
     the packaged preserve rules, so nothing that ran afterwards removed it.
     Whatever swallowed the append, the next pass must put the block back."""
@@ -307,7 +307,7 @@ def test_the_link_is_re_checked_even_though_the_step_says_done(studio):
     """Guards the change itself. The earlier reader skipped `_link` whenever
     the step record said done, which is precisely how a page could sit without
     its block while the job insisted the block was there. Nothing about the
-    job record is disturbed here — only the page."""
+    job record is disturbed here, only the page."""
     source = ReusableSource(W3_CLIPS)
     pipeline = studio(source)
     job = pipeline.run()[0]
@@ -342,7 +342,7 @@ def test_an_unreachable_page_does_not_unmake_a_finished_job(studio):
 
     The document store being down is not evidence that the link is gone, and
     the operator reading `video status` would see tonight's finished lesson as
-    a failure — with the upload, the linked page, and the trashed source all
+    a failure: with the upload, the linked page, and the trashed source all
     sitting behind it, done.
     """
     source = ReusableSource(W3_CLIPS, sticky={"w3a", "w3b"})
@@ -396,7 +396,7 @@ def test_resume_reclaims_a_done_job_the_run_would_see(studio):
 
 
 def test_resume_reports_waiting_clips_it_will_not_collect(studio):
-    """Resume must not start the new week itself — but it must say the clips
+    """Resume must not start the new week itself, but it must say the clips
     are there instead of an empty nothing, so the operator runs `video run`."""
     source = ReusableSource(W3_CLIPS)
     pipeline = studio(source)
@@ -418,7 +418,7 @@ def test_waiting_clips_is_zero_when_nothing_is_left(studio):
 
 def test_waiting_clips_does_not_count_a_done_jobs_own_clips(studio):
     """Clips a done job already owns are recovery, which resume has just
-    handled — counting them would send the operator to `run` for nothing."""
+    handled: counting them would send the operator to `run` for nothing."""
     source = ReusableSource(W3_CLIPS, sticky={"w3a"})
     pipeline = studio(source)
     pipeline.run()

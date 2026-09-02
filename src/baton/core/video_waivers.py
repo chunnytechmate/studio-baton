@@ -2,7 +2,7 @@
 
 `send lesson` refuses a session with no video (:mod:`baton.exits` ``NEEDS_HUMAN``)
 and used to accept ``--without-video`` as a bare flag past that stop. A bare
-flag is something anything that can run a command line can pass — including
+flag is something anything that can run a command line can pass, including
 an agent that has never asked anyone, and is following the CLI's own contract
 faithfully by doing so.
 
@@ -10,7 +10,7 @@ What is checked instead is a code nobody driving Baton can produce on their
 own: :func:`request` sends it to a real person over a channel Baton already
 trusts (the studio's configured messenger), and never returns it to whatever
 called the command. Only a person reading their own phone has it. ``send
-lesson --without-video <code>`` is then not a bypass — it is where that
+lesson --without-video <code>`` is then not a bypass: it is where that
 person's answer re-enters the process that asked the question, and
 :func:`verify_and_consume` accepts it exactly once.
 
@@ -99,7 +99,7 @@ class VideoWaivers:
 
         Returns:
             The code. The caller's only job with it is putting it in the
-            message a person will read — never in anything this process
+            message a person will read, never in anything this process
             prints, logs, or returns as a command's own result.
         """
         entries = self._load()
@@ -128,7 +128,7 @@ class VideoWaivers:
                 guessing whether to ask again or to type more carefully.
 
         A matching code is deleted before this returns, whether or not the
-        caller goes on to send anything — a code answers one question, and
+        caller goes on to send anything: a code answers one question, and
         leaving it live would let a killed-and-retried command spend it twice
         without anyone having answered a second time.
         """

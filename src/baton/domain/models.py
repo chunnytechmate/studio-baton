@@ -1,7 +1,7 @@
 """The things a teaching studio keeps track of.
 
 Deliberately small. A learner, the numbered sessions they work through, the
-pieces they are studying, and the recordings that come out of it — that is the
+pieces they are studying, and the recordings that come out of it: that is the
 whole model, and every adapter maps its own storage onto exactly this.
 
 Each model keeps a ``raw`` dict of the source record. Studios have columns
@@ -65,7 +65,7 @@ class Session:
 
 @dataclass(frozen=True)
 class Piece:
-    """Something being studied — a song, an étude, an exam piece."""
+    """Something being studied: a song, an étude, an exam piece."""
 
     id: str
     title: str
@@ -93,7 +93,7 @@ class Work:
     title: str
     type: str = "performance"
     video_link: str = ""
-    #: A second home of the same recording — the Drive file beside the YouTube
+    #: A second home of the same recording: the Drive file beside the YouTube
     #: upload. Studios that keep only one link leave it empty.
     drive_link: str = ""
     performed_date: str = ""

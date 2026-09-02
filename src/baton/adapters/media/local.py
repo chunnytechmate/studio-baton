@@ -1,7 +1,7 @@
 """A watched directory as a clip source.
 
-For a studio that already has the recordings on disk — an SD card copied into
-a folder, a NAS share — and for trying the pipeline without a Google account.
+For a studio that already has the recordings on disk (an SD card copied into
+a folder, a NAS share) and for trying the pipeline without a Google account.
 
 "Trashing" moves files into a ``.collected`` subdirectory rather than deleting
 them. The pipeline's contract is "the source is the only copy until the upload

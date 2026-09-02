@@ -1,7 +1,7 @@
 """Amending one field of a staged lesson without re-running the stage step.
 
 A typo in the teacher's notes or a wrong title used to mean discarding the
-draft and staging again — losing whatever the stage step had gathered. The
+draft and staging again: losing whatever the stage step had gathered. The
 amend path is deliberately narrow instead: three plain-text fields, the
 summary still only through `lesson ingest`, and a published draft refuses
 the amendment because the published record is what the next lesson is
@@ -95,7 +95,7 @@ def test_only_the_three_plain_text_fields_are_settable(studio, capsys):
     assert call(studio, "stage-set", "Ada Whitfield", "--field", "summary", "--value", "{}") == (
         Exit.USAGE
     )
-    # Refused while parsing, before anything was read or written — and still
+    # Refused while parsing, before anything was read or written, and still
     # as an envelope, so an agent driving Baton reads one shape either way.
     payload = out(capsys)
     assert payload["error"] == "usage"

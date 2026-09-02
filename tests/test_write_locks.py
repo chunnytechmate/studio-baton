@@ -1,7 +1,7 @@
 """Two agents, one profile, one writer at a time.
 
 `video` has always held a whole-run lock. The commands that publish, book, and
-send did not — and in this studio's actual deployment there are two agents (a
+send did not, and in this studio's actual deployment there are two agents (a
 Claude Code session and an OpenClaw container) pointed at the same profile,
 neither of which knows the other exists. Exit 8 already means "something else
 is in the way"; these tests are about the commands that never used to say it.
@@ -63,7 +63,7 @@ def test_listing_recordings_is_not_blocked_by_a_send_in_flight(studio, held, cap
     """`send recording` with no --pick is a listing wearing a sender's name."""
     held("send")
 
-    # Exit 3 is the listing's own answer: "which one goes out?" — reached only
+    # Exit 3 is the listing's own answer: "which one goes out?": reached only
     # because the lock let a read-only invocation through.
     assert call(studio, "recording", "Ada Whitfield") in (Exit.NEEDS_HUMAN, Exit.GATE)
 

@@ -11,7 +11,7 @@ a killed run leaves nothing at the destination. A half-written mp4 is
 indistinguishable from a finished one, and the next run would happily upload it.
 
 **Every segment is made concat-compatible first.** ``concat`` the *filter* is
-forgiving about codecs, which is why it is used here instead of the demuxer —
+forgiving about codecs, which is why it is used here instead of the demuxer,
 but it still requires every segment to share a frame size and sample aspect
 ratio, and every audio segment to share a sample rate and channel layout.
 Phone clips routinely do not: one lesson filmed half in landscape and half in
@@ -69,7 +69,7 @@ _INPUT_FLAGS = ["-fflags", "+genpts+igndts"]
 
 #: Encoder args per `EncodeProfile.codec`. Deliberately CPU-decode,
 #: CPU-filter (rotation/scale/tone-map/concat), GPU-encode-only when a codec
-#: asks for NVENC — offloading decode and the filter graph too would need a
+#: asks for NVENC: offloading decode and the filter graph too would need a
 #: hwaccel/hwupload pipeline (format-mismatch prone, and a real VRAM cost for
 #: every concurrent decode surface); the encode itself is the expensive step
 #: that was timing out, and NVENC's own footprint for it is small regardless
@@ -90,7 +90,7 @@ _HDR_PRIMARIES = ("bt2020",)
 _HDR_PIXEL_MARKERS = ("10le", "10be", "12le", "12be", "p010", "p012")
 
 #: ffmpeg reports one fault across many lines. Everything below is downstream
-#: of the real diagnosis — the encoder shutting down, the muxer finding
+#: of the real diagnosis: the encoder shutting down, the muxer finding
 #: nothing to write, the task threads unwinding. Skipping these is what makes
 #: the difference between a job record that says
 #: "Error while processing the decoded data for stream #2:1" and one that says
@@ -119,7 +119,7 @@ _ADDRESS = re.compile(r"\[([^\]@]+) @ 0x[0-9a-f]+\]")
 class ClipTraits:
     """What one source clip looks like to the concat filter.
 
-    ``width``/``height`` are the *displayed* size — the rotation in the
+    ``width``/``height`` are the *displayed* size: the rotation in the
     display matrix already applied, because that is the size the filter graph
     sees, and disagreeing about it is the failure this class exists to detect.
     """
@@ -269,7 +269,7 @@ class FfmpegEncoder:
         Returns ``(chains, video_labels, audio_labels)``. When nothing needs
         normalising the chain list comes back empty and the labels are the raw
         input pads, which is byte-for-byte the graph this encoder built before
-        segment normalisation existed — an already-uniform session encodes
+        segment normalisation existed: an already-uniform session encodes
         exactly as it always did.
         """
         # "1080p" always lands on the target frame. Every other profile only
@@ -349,12 +349,12 @@ class FfmpegEncoder:
             args += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
         elif chains:
             graph = ";".join(chains)
-            # A lone input's audio never earns a real label — there is nothing
-            # to reconcile it with — so what `_segment_chains` handed back is
+            # A lone input's audio never earns a real label (there is nothing
+            # to reconcile it with), so what `_segment_chains` handed back is
             # the raw input pad spelled `[0:a:0]`. Inside a filter graph that
             # spelling means "audio stream 0 of input 0"; in `-map`, brackets
             # mean "a label the graph defined", and no graph defines one
-            # called `0:a:0` — mapping it verbatim fails the whole command
+            # called `0:a:0`: mapping it verbatim fails the whole command
             # with "Output with label '0:a:0' does not exist in any defined
             # filter graph". This is dormant until a lone clip grows a video
             # chain (a forced fps, the 1080p profile, tone-mapping), which is
@@ -389,7 +389,7 @@ class FfmpegEncoder:
         Raises:
             ConfigError: No inputs, ffmpeg is missing, or the profile names an
                 unknown ``codec``.
-            UpstreamError: ffmpeg failed or exceeded its timeout — this is also
+            UpstreamError: ffmpeg failed or exceeded its timeout: this is also
                 what a GPU codec configured but not actually available at run
                 time (driver gone, card busy) surfaces as, since ffmpeg is the
                 one that discovers that, not Baton.

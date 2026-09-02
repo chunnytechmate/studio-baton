@@ -1,4 +1,4 @@
-"""``baton job`` — detached execution for work that outlives a session.
+"""``baton job``: detached execution for work that outlives a session.
 
 Long pipelines are started with ``job spawn`` (or a pipeline's own ``--detach``
 flag) and managed with ``list`` / ``status`` / ``wait`` / ``stop`` / ``logs``.
@@ -55,7 +55,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "list",
         help="List jobs, newest first.",
         description=(
-            "Finished jobs older than a few days are hidden — they are history, "
+            "Finished jobs older than a few days are hidden: they are history, "
             "not live work. Use --all to see them; `job prune` deletes them."
         ),
     )
@@ -132,8 +132,8 @@ def _require_subcommand(ctx: Context) -> Exit:
 def _mirror_exit(code: int | None) -> Exit | int:
     """A waiter's exit code, from the supervised command's own.
 
-    Codes inside the contract keep their meaning. Anything else — ffmpeg's
-    1, a script's 9, a shell's 127 — is passed through as-is, which is what
+    Codes inside the contract keep their meaning. Anything else: ffmpeg's
+    1, a script's 9, a shell's 127: is passed through as-is, which is what
     "the waiter inherits the job's own verdict" has always promised; mapping
     them onto a contract code would tell an agent the job was a *config*
     problem when it was no such thing.
@@ -270,7 +270,7 @@ def handle_wait(ctx: Context) -> Exit | int:
         info.to_dict(),
         human=f"{mark} job {info.id} {info.status}  (exit {info.exit_code})",
     )
-    # The waiter inherits the job's own verdict — including non-zero codes, so
+    # The waiter inherits the job's own verdict, including non-zero codes, so
     # an agent waiting on `video run --detach` sees exactly what a foreground
     # run would have exited with. The real code is in the result payload too.
     return _mirror_exit(info.exit_code)
@@ -280,19 +280,19 @@ def _stop_line(info: JobInfo) -> str:
     """The human line for a stop outcome, escalation included.
 
     ``job stop`` keeps exit 0 on purpose (M27): the exit code reports whether
-    the stop command ran, not how the job took the stop — callers that need
+    the stop command ran, not how the job took the stop: callers that need
     the outcome read it from the payload's ``status``. The line is where the
     difference is said out loud, because a kill that escalated past SIGTERM
     is not the same fact as a clean stop.
     """
     if info.status == "orphaned":
         return (
-            f"⏹ job {info.id} ignored SIGTERM and was killed hard — "
+            f"⏹ job {info.id} ignored SIGTERM and was killed hard: "
             f"it recorded no outcome (orphaned)."
         )
     if info.status == "running":
         return (
-            f"⏹ job {info.id} was signalled but is still running — "
+            f"⏹ job {info.id} was signalled but is still running: "
             f"no outcome recorded yet; re-check with `job show`."
         )
     return f"⏹ job {info.id} {info.status}  (exit {info.exit_code})"

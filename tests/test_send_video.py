@@ -1,4 +1,4 @@
-"""`send video` — the video on its own, not the summary again.
+"""`send video`: the video on its own, not the summary again.
 
 A parent asking for the video meant the video. The old skill registry kept
 this request separate from both the summary and the recorded works; the
@@ -144,7 +144,7 @@ def test_the_video_leads_and_the_summary_rides_along():
 
     lines = message.splitlines()
     assert lines[0] == "🥁 วีดีโอบทเรียนของน้องปิติ (กลอง)"
-    assert lines[1] == "week 12 — 23 ส.ค. 2569"
+    assert lines[1] == "week 12 (23 ส.ค. 2569)"
     assert "🎵 ขุนแผนมนต์พระกาฬ" in message
     assert SECTIONS["overview"] in message
     assert message.rstrip().endswith("🎬 https://youtu.be/CSLzpVffEoI")
@@ -153,7 +153,7 @@ def test_the_video_leads_and_the_summary_rides_along():
 
 
 def test_no_video_is_refused_not_sent_empty():
-    """This command *is* the video, so an empty one is a gate — and a
+    """This command *is* the video, so an empty one is a gate, and a
     different refusal from `send recording`'s, which is about a work."""
     import pytest
 
@@ -209,7 +209,7 @@ def test_sends_the_latest_sessions_video(studio, capsys):
 
 
 def test_the_date_arrives_in_the_studios_format(studio, capsys):
-    """The same chat.date formatting the lesson message uses — 23 ส.ค. 2569,
+    """The same chat.date formatting the lesson message uses: 23 ส.ค. 2569,
     not the document's raw 2026-08-23."""
     profile = studio[0]
     (profile / "baton.yaml").write_text(
@@ -234,7 +234,7 @@ def test_the_date_arrives_in_the_studios_format(studio, capsys):
 
 
 def test_a_session_without_a_video_blocks_the_send(studio, capsys, monkeypatch):
-    """A published session whose page never got its recording — the parent's
+    """A published session whose page never got its recording: the parent's
     request is refused with the reason, not answered with an empty message."""
     _profile, messenger, docs = studio
     docs.blocks["doc-ada-03"] = [

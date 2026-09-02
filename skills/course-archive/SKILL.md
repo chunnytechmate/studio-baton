@@ -9,7 +9,7 @@ A course ends and the same pages are reused for the next one. File a copy
 first, prove it is complete, and only then empty them.
 
 Baton does everything except the copy. **You make the copy** with the
-harness's duplicate tool — the documents API cannot reproduce a table's
+harness's duplicate tool: the documents API cannot reproduce a table's
 layout, and a rebuilt table looks like an archive without being one.
 
 ## Triggers
@@ -42,7 +42,7 @@ belongs), `rows` (how many rows the copy must end up with).
 ### 2. Confirm
 
 Show the name the copy will take and how many sessions it holds. This step
-destroys a course's contents afterwards — do not skip it, and do not accept a
+destroys a course's contents afterwards: do not skip it, and do not accept a
 vague yes. If `renames_live_page` is true, say so: the live page already
 carries that name and will need renaming for the new course.
 
@@ -58,7 +58,7 @@ Duplicate `course.page_id` with the harness's duplicate tool, then:
 
 Keep the id the duplicate tool returned. It is not `course.page_id`, and for a
 studio that names its live page after the span it is teaching the two carry the
-same title — verify refuses that mistake, which is the only thing standing
+same title: verify refuses that mistake, which is the only thing standing
 between a clear and the course it was meant to preserve.
 
 ### 4. Verify
@@ -69,7 +69,7 @@ baton course verify "<name>" --page <copy-id> --json
 
 Exit `0` means the copy's name, filing, and every row match the live course.
 **Exit `5` means stop.** `problems` says what is wrong. Fix the copy and verify
-again — never clear on a failed verify.
+again, never clear on a failed verify.
 
 ### 5. Clear
 
@@ -82,7 +82,7 @@ Empties every session page and its properties. The rows stay, keeping their
 numbers, so the next course reuses them.
 
 Clear enforces the archive itself: it re-reads the filed copy and refuses
-(exit `5`) unless it is complete — a copy that passed verify yesterday but
+(exit `5`) unless it is complete: a copy that passed verify yesterday but
 was trashed today no longer protects anything. If the plan used `--label`,
 pass the same `--label` to clear, or it will look for a copy filed under the
 wrong name.
@@ -90,16 +90,16 @@ wrong name.
 ## Rules
 
 **Only when asked.** These commands are destructive and are never a repair
-step. Do not reach for `clear` to undo a bad summary — `baton lesson unpublish
+step. Do not reach for `clear` to undo a bad summary: `baton lesson unpublish
 "<name>"` takes one summary back off its page, leaving the rest of the course
 alone.
 
 **Clear checks.** It refuses (exit `5`) unless a complete copy of the course
-is filed — re-read at clear time, not remembered from step 4. There is no
+is filed: re-read at clear time, not remembered from step 4. There is no
 flag that bypasses this; the only way through is a complete archive.
 
 **One session is not a course.** `--session N` empties a single page and
-skips the archive rule — a partial clear is a mid-course tool with no
+skips the archive rule: a partial clear is a mid-course tool with no
 finished course to file. It is the one deliberate exception; `--dry-run` is
 the other (it empties nothing).
 

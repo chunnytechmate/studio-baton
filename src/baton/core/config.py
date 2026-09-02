@@ -14,7 +14,7 @@ with the env vars redacted.
 Where those variables come from: :func:`load` reads the profile's ``.env`` into
 the process environment before anything asks for a credential. A variable
 already set in the real environment always wins, so a shell export overrides
-the file rather than the other way around — the file is the default, the
+the file rather than the other way around: the file is the default, the
 environment is the override. Loading it into ``os.environ`` rather than into a
 private mapping is deliberate: ``doctor``, detached jobs, and vendor SDKs that
 read the environment for themselves then all see one set of values.
@@ -36,7 +36,7 @@ from . import paths
 ENV_PREFIX = "BATON__"
 _MISSING = object()
 
-#: A POSIX environment variable name — what a `.env` line may declare.
+#: A POSIX environment variable name: what a `.env` line may declare.
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -67,8 +67,8 @@ def _coerce(raw: str) -> Any:
 def _env_overrides() -> dict[str, Any]:
     """Collect ``BATON__A__B=value`` variables into a nested dict.
 
-    Two variables that fold onto the same setting — one scalar, one nested
-    under it — are rejected instead of resolved: the winner used to depend on
+    Two variables that fold onto the same setting (one scalar, one nested
+    under it) are rejected instead of resolved: the winner used to depend on
     ``os.environ``'s iteration order, which a user can neither see nor rely
     on, and the loser was silently converted (a scalar became a dict, or a
     whole section was replaced by a scalar) on the way. Naming both variables
@@ -88,7 +88,7 @@ def _env_overrides() -> dict[str, Any]:
             raise ConfigError(
                 f"`{duplicate}` and `{name}` both set the same override "
                 f"(`{ENV_PREFIX}{'__'.join(trail).upper()}`).",
-                remedy="Remove one of the two — which one would win is not deterministic.",
+                remedy="Remove one of the two: which one would win is not deterministic.",
             )
         sources[trail] = name
 
@@ -118,7 +118,7 @@ def parse_env_file(text: str, source: Path) -> dict[str, str]:
     The format is the small, boring subset every ``.env`` file agrees on:
     ``KEY=value`` one per line, blank lines and ``#`` comment lines ignored, an
     optional ``export`` prefix tolerated, and a value wrapped in matching
-    single or double quotes unwrapped. Everything else is taken literally —
+    single or double quotes unwrapped. Everything else is taken literally:
     there is no escape processing and no inline-comment stripping, so a ``#``
     inside a token stays part of the token rather than silently truncating a
     credential.
@@ -161,7 +161,7 @@ def apply_env_file(profile_dir: Path) -> dict[str, str]:
 
     A variable that already holds a non-empty value is left alone: an export in
     the shell, or a variable injected by a container, outranks the file. Empty
-    counts as unset here for the same reason it does in :meth:`Config.secret` —
+    counts as unset here for the same reason it does in :meth:`Config.secret`:
     an exported-but-blank credential is a hole, not a decision.
 
     Args:
@@ -233,7 +233,7 @@ class Config:
         Args:
             dotted: Dot-separated path into the config tree.
             default: Returned when the key is absent. Omit it to make the key
-                required — a missing required key is a :class:`ConfigError`,
+                required: a missing required key is a :class:`ConfigError`,
                 not a ``None`` that surfaces as a confusing failure later.
 
         Raises:

@@ -1,6 +1,6 @@
 """Reading a Notion page id and a week number out of a URL a person pasted.
 
-``learner add`` takes the links straight from whatever a browser produced —
+``learner add`` takes the links straight from whatever a browser produced:
 ``notion.site``, ``notion.so``, and the ``app.notion.com/p/…`` share form all
 carry the same 32 hex characters, dashed or not. Getting this wrong writes a
 session pointed at the wrong page, so an unrecognised URL is refused rather
@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 
 #: 32 hex characters, dashed or not, ending at a query string, a path
-#: separator, or the end of the string — so a page id embedded mid-URL is
+#: separator, or the end of the string, so a page id embedded mid-URL is
 #: found without also matching a longer hex run that happens to contain one.
 _PAGE_ID = re.compile(
     r"([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})(?=[?/]|$)"
@@ -45,7 +45,7 @@ def parse_page_id(url: str) -> str | None:
 def detect_week(url: str) -> int | None:
     """The week a URL's slug names, or ``None`` when it names none.
 
-    Reads the number Notion's own URL puts in front of a page's id — which is
+    Reads the number Notion's own URL puts in front of a page's id, which is
     the page title, so it tracks whatever a person named the page rather than
     an assumption about ordering.
     """

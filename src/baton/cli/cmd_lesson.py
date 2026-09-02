@@ -1,4 +1,4 @@
-"""``baton lesson`` — stage a lesson, validate a written summary, publish it.
+"""``baton lesson``: stage a lesson, validate a written summary, publish it.
 
 The loop an agent follows, and the reason it is three commands rather than one:
 
@@ -10,7 +10,7 @@ The loop an agent follows, and the reason it is three commands rather than one:
     baton lesson publish  "Ada"              # onto the document
 
 `contract` hands the model everything it needs and tells it exactly what shape
-to return. `ingest` is where a wrong shape stops — nothing is stored, and every
+to return. `ingest` is where a wrong shape stops, nothing is stored, and every
 violation comes back at once with a pointer, so the next attempt is informed
 rather than another guess.
 """
@@ -164,7 +164,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Write the summary onto the session document.",
         description=(
             "Appends the summary and removes the previous replaceable blocks. "
-            "Blocks matching docs.preserve — recordings, embeds — are kept."
+            "Blocks matching docs.preserve (recordings, embeds) are kept."
         ),
     )
     _name_argument(publish)
@@ -186,7 +186,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "unpublish",
         help="Take a published summary back off the session document.",
         description=(
-            "Removes only the blocks there is evidence Baton wrote — those the "
+            "Removes only the blocks there is evidence Baton wrote: those the "
             "publish recorded, or an exact match of the stored rendering. A block "
             "edited or added by hand stops the command (exit 3) rather than being "
             "deleted. The session returns to in-progress and the draft comes back, "
@@ -219,7 +219,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Amend one field of a staged lesson.",
         description=(
             "For correcting a typo or a title after staging without re-running "
-            "the stage step. Only the fields that are plain text can be set — "
+            "the stage step. Only the fields that are plain text can be set: "
             "the summary itself is only accepted through `lesson ingest`."
         ),
     )
@@ -246,7 +246,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--force",
         action="store_true",
         help=(
-            "Also clear drafts whose publish left unfinished targets — the "
+            "Also clear drafts whose publish left unfinished targets: the "
             "draft file is the only record that the work is still owed."
         ),
     )
@@ -274,7 +274,7 @@ def _published(ctx: Context) -> PublishedRecord:
 def _named(ctx: Context) -> str:
     """The learner this invocation is about, from NAME or ``--learner``.
 
-    Both is fine when they agree — an agent that passes the flag and the
+    Both is fine when they agree: an agent that passes the flag and the
     positional has said the same thing twice, not two different things. Two
     different names is refused rather than one of them silently winning: the
     cost of publishing the wrong person's lesson is a message to the wrong
@@ -325,7 +325,7 @@ def _piece_sources(
     """URLs on the page that are the piece being learnt, not this recording.
 
     The song a lesson works on sits on the same page as the lesson, and Notion
-    turns a pasted song URL into a bookmark and an embed — shapes
+    turns a pasted song URL into a bookmark and an embed: shapes
     `find_video_link` reads. A song on YouTube looks exactly like a recording
     on YouTube, which is how a publish once tried to write a lesson summary
     onto a record label's music video and was refused by YouTube itself.
@@ -375,7 +375,7 @@ def _body_rules(ctx: Context, learner: Learner) -> dict[str, Any]:
     Learner-aware in one place only: the phrases that put a goal inside the
     next lesson are refused for someone who can practise at home and accepted
     for someone who cannot, because for them the next lesson is where the
-    goals honestly belong. The attitude phrases are refused either way —
+    goals honestly belong. The attitude phrases are refused either way:
     nobody can tick off "be more open".
     """
     rules = ctx.config.section("summary.body")
@@ -472,7 +472,7 @@ def _voice(ctx: Context, learner: Learner) -> list[str]:
 
     The learners table has carried a `tone`, an `instrument`, and whether there
     is an instrument at home since the first migration, and all three reached
-    the model as bare words with nothing saying what to do about them — so a
+    the model as bare words with nothing saying what to do about them, so a
     six-year-old and an exam candidate got the same voice, and a drum lesson
     and a guitar lesson got the same notation. An unrecognised value
     contributes nothing rather than guessing: these columns are free text, and
@@ -545,7 +545,7 @@ def _previous_context(ctx: Context, record: Mapping[str, Any] | None) -> str:
 
     The full summary where the record has one, the parent's message otherwise.
     Only the message used to be kept, and three bullet lines are a thin thing
-    to judge a week's progress from — the `progress` section asks what changed
+    to judge a week's progress from: the `progress` section asks what changed
     since last time, and the answer has to be compared against what actually
     happened, not against the sentence a family was sent about it.
 
@@ -568,7 +568,7 @@ def _titles_from(summary: dict[str, Any] | None) -> str:
     """What the session covered, as one line for the document's own column.
 
     Falls back to the topics the summary already lists, because the column is
-    read by `prep` and by anyone scanning the course at a glance — and a
+    read by `prep` and by anyone scanning the course at a glance, and a
     studio that never passes `--titles` would otherwise leave it empty
     forever.
     """
@@ -590,7 +590,7 @@ def _update_youtube_description(
 
     Returns ``None`` when there was nothing to do (no YouTube configured, no
     video on the document yet, or the link on the document is not a YouTube
-    URL at all) — that is the ordinary case for most sessions, not a failure.
+    URL at all): that is the ordinary case for most sessions, not a failure.
     ``exclude`` names URLs that are the piece's own source rather than the
     recording, so the summary is never written onto the song's own video.
     A configured-but-failing update (wrong owner, API error) is reported but
@@ -623,11 +623,11 @@ def _update_youtube_description(
     try:
         # Credentials are resolved lazily (on first API call, not on
         # construction), so a studio that never configured YouTube only
-        # surfaces `ConfigError` here — not from `open_publisher` itself.
+        # surfaces `ConfigError` here, not from `open_publisher` itself.
         publisher = open_publisher(ctx.config)
         publisher.update_description(video_id, description)
     except ConfigError:
-        # This studio has not configured YouTube at all — nothing to update.
+        # This studio has not configured YouTube at all, nothing to update.
         return None
     except BatonError as exc:
         return {"status": "error", "video_id": video_id, "error": str(exc)}
@@ -661,7 +661,7 @@ def _retry_youtube_description(
 
     Returns the outcome dict (``status`` plus extras) once recorded on the
     draft and folded into the published record, or ``None`` when there was
-    nothing to do — already done, out of attempts, or still no video to
+    nothing to do: already done, out of attempts, or still no video to
     describe.
     """
     recorded = dict((published_record or {}).get("youtube") or {})
@@ -710,7 +710,7 @@ def _uploaded_recording(ctx: Context, draft: LessonDraft) -> str:
     Baton can answer "is there one?" once the run has ended.
 
     Archived jobs are read too. A folder holds one live job, and the week a
-    learner's next lesson is collected the finished one is moved aside — so
+    learner's next lesson is collected the finished one is moved aside, so
     without this, a page could only be repaired until the next lesson was
     filmed, which is exactly the stretch of days a repair is wanted for.
     """
@@ -735,7 +735,7 @@ def _uploaded_recording(ctx: Context, draft: LessonDraft) -> str:
     ]
     if not candidates:
         return ""
-    # One session can leave more than one record — a job archived, then a
+    # One session can leave more than one record: a job archived, then a
     # re-run of the same week. The most recent one is the upload that stands,
     # and `list` yields live records before archived ones, so a tie on a
     # timestamp written to the second still resolves to the live job.
@@ -750,8 +750,8 @@ def _stitch_recording(
 
     The video pipeline links the recording itself, and in the ordinary run it
     has done so long before anyone publishes. But a run that uploaded and then
-    failed — the upload is recorded before anything else can fail, on purpose
-    — leaves the video on YouTube and the page with no link to it. Nothing
+    failed (the upload is recorded before anything else can fail, on purpose)
+    leaves the video on YouTube and the page with no link to it. Nothing
     downstream recovers from that on its own: `send` refuses for a missing
     recording and says to add a video block by hand, which is exactly what a
     studio had to do at half past nine at night.
@@ -759,7 +759,7 @@ def _stitch_recording(
     So publish repairs it. Publish is where a person already is when the
     recording matters, and it is the last step before the message goes out.
 
-    Returns ``None`` when there was nothing to do — the page already shows a
+    Returns ``None`` when there was nothing to do: the page already shows a
     recording, or no upload has happened for this session. A failure to append
     is reported rather than raised: the summary is on the page by now, and the
     remedy the gate prints still works.
@@ -833,7 +833,7 @@ def _finish_session(
             f"{draft.session_number} could not be marked done: {exc}",
             service="docs",
             remedy=f'Re-run `baton lesson publish "{learner_name}"`. The summary is '
-            f"already published, so a re-run only finishes the {label} — it will "
+            f"already published, so a re-run only finishes the {label}. It will "
             "not append a second copy.",
         ) from exc
 
@@ -853,7 +853,7 @@ def _finish_session(
                 "youtube": youtube_result,
                 "recording": recording,
             },
-            human=f"{learner_name} — {label} {draft.session_number} was already "
+            human=f"{learner_name} {label} {draft.session_number} was already "
             f"published; marked it done now{youtube_line}.{_recording_line(recording)}",
         )
     return Exit.OK
@@ -1001,7 +1001,7 @@ def handle_stage(ctx: Context) -> Exit:
     label = ctx.config.label("session")
     ctx.report.result(
         draft.summary_view(),
-        human=f"Staged {learner.name} — {label} {draft.session_number}\n"
+        human=f"Staged {learner.name} {label} {draft.session_number}\n"
         f'  next: baton lesson contract "{learner.name}"'
         + (
             "\n  corrected notes recorded: the contract serves these, the raw "
@@ -1071,7 +1071,7 @@ def handle_contract(ctx: Context) -> Exit:
             "Say what is still difficult plainly; pair each difficulty with a fix.",
             "Use `previous_session_summary` to judge what is new, not to repeat it.",
             "Put what changed in `progress`, as the state before and the state "
-            "now — not as a rating. `overview` says how the session went; "
+            "now, not as a rating. `overview` says how the session went; "
             "`progress` says what is different; `covered` says what was worked "
             f"on; `focus` says what is still hard; {goals_rule}. "
             "One fact belongs in one of them.",
@@ -1128,14 +1128,14 @@ def handle_ingest(ctx: Context) -> Exit:
 
     # Layer three of the vocabulary design: after acceptance, never a gate. A
     # summary rejected over a spelling is a summary that stops being produced,
-    # so a near-miss is reported to the operator — on stderr, in `--json` mode
-    # too — and the lesson stays on its way to render and publish.
+    # so a near-miss is reported to the operator: on stderr, in `--json` mode
+    # too, and the lesson stays on its way to render and publish.
     vocabulary = _vocabulary(ctx)
     warnings = contracts.vocabulary_near_misses(summary, vocabulary) if vocabulary else []
 
     ctx.report.result(
         {**draft.summary_view(), "warnings": warnings},
-        human=f"Accepted summary for {learner.name} — "
+        human=f"Accepted summary for {learner.name}, "
         f"{ctx.config.label('session')} {draft.session_number}\n"
         f'  next: baton lesson render "{learner.name}"'
         + "".join(f"\n  note: {text}" for text in warnings),
@@ -1238,10 +1238,10 @@ def _target_remedy(name: str, learner_name: str) -> str:
     if name == "youtube":
         return (
             f're-run `baton lesson publish "{learner_name}"` to retry the '
-            "description update — attempts are capped, so read the error first"
+            "description update: attempts are capped, so read the error first"
         )
     return (
-        f're-run `baton lesson publish "{learner_name}"` — it resumes where it '
+        f're-run `baton lesson publish "{learner_name}"`: it resumes where it '
         "stopped and does not append the summary twice"
     )
 
@@ -1277,7 +1277,7 @@ def handle_list(ctx: Context) -> Exit:
     for draft in drafts:
         view = draft.summary_view()
         states = _list_target_states(ctx, draft)
-        # `targets` here is the full state per target — stage and ingest keep
+        # `targets` here is the full state per target: stage and ingest keep
         # returning the compact one-word view, but this listing is what a
         # heartbeat reads to decide whether a lesson is stuck, and one word
         # cannot carry an error message or a spent retry.
@@ -1301,7 +1301,7 @@ def handle_list(ctx: Context) -> Exit:
     for draft, view in zip(drafts, lessons, strict=True):
         lines.append(
             f"  {draft.learner_name:<{width}}  {label} {draft.session_number:<3} "
-            f"{draft.status}" + ("  summary ✓" if draft.summary else "  summary —")
+            f"{draft.status}" + ("  summary ✓" if draft.summary else "  summary -")
         )
         lines.extend(_target_detail_lines(draft.learner_name, view["targets"], view["recording"]))
     ctx.report.result(payload, human="\n".join(lines))
@@ -1427,12 +1427,12 @@ def handle_publish(ctx: Context) -> Exit:
         if youtube_result is not None:
             if youtube_result["status"] == "ok":
                 human = (
-                    f"{learner.name} — {label} {draft.session_number} was already "
+                    f"{learner.name} {label} {draft.session_number} was already "
                     "published; updated the YouTube description now."
                 )
             else:
                 human = (
-                    f"{learner.name} — {label} {draft.session_number} was already "
+                    f"{learner.name} {label} {draft.session_number} was already "
                     f"published; the YouTube description still failed: "
                     f"{youtube_result['error']}"
                 )
@@ -1444,12 +1444,12 @@ def handle_publish(ctx: Context) -> Exit:
 
         ctx.report.result(
             {**draft.summary_view(), "skipped": "already published", "recording": recording},
-            human=f"{learner.name} — {label} {draft.session_number} "
+            human=f"{learner.name} {label} {draft.session_number} "
             f"was already published. Use --force to publish again.{_recording_line(recording)}",
         )
         return Exit.OK
 
-    ctx.report.step(f"publishing {learner.name} — {label} {draft.session_number}")
+    ctx.report.step(f"publishing {learner.name} {label} {draft.session_number}")
     try:
         result = publisher.publish(
             draft.doc_id,
@@ -1505,7 +1505,7 @@ def handle_publish(ctx: Context) -> Exit:
             "youtube": youtube_result,
             "recording": recording,
         },
-        human=f"Published {learner.name} — {label} "
+        human=f"Published {learner.name} {label} "
         f"{draft.session_number}\n"
         f"  appended {result.appended}, removed {result.deleted}, kept {result.preserved}\n"
         f"  marked the {label} done"
@@ -1527,7 +1527,7 @@ def handle_unpublish(ctx: Context) -> Exit:
     records = _published(ctx)
     if ctx.args.session is not None:
         # Unlike `publish`, where --session asserts which draft is meant, a
-        # learner has many published sessions and this is a selector — same
+        # learner has many published sessions and this is a selector: same
         # meaning it carries in `send lesson --session`.
         session = int(ctx.args.session)
         record = records.get(learner.id, session)
@@ -1590,7 +1590,7 @@ def handle_unpublish(ctx: Context) -> Exit:
             human=f"Would remove {len(plan.delete_blocks)} block(s) from {doc_id} "
             f"({plan.mode} attribution), keep {len(plan.keep_blocks)}."
             + (
-                f" {len(plan.edited)} edited, {len(plan.ambiguous)} ambiguous — "
+                f" {len(plan.edited)} edited, {len(plan.ambiguous)} ambiguous: "
                 "those would stop the unpublish."
                 if plan.needs_human
                 else ""
@@ -1608,7 +1608,7 @@ def handle_unpublish(ctx: Context) -> Exit:
             "whole page down with --whole-page --force.",
         )
 
-    ctx.report.step(f"unpublishing {learner.name} — {label} {session}")
+    ctx.report.step(f"unpublishing {learner.name} {label} {session}")
     removed = apply_plan(docs, plan)
     # The inverse of the publish's completion write, so `prep` and `next` see
     # a lesson still in progress rather than finished history.
@@ -1629,7 +1629,7 @@ def handle_unpublish(ctx: Context) -> Exit:
     record_removed = records.remove(learner.id, session)
 
     lines = [
-        f"Unpublished {learner.name} — {label} {session}",
+        f"Unpublished {learner.name} {label} {session}",
         f"  removed {removed} block(s), kept {len(plan.keep_blocks)}",
     ]
     if plan.missing:
@@ -1662,7 +1662,7 @@ def handle_stage_set(ctx: Context) -> Exit:
     staging = _staging(ctx)
     draft = staging.require(learner.id, learner.name)
     if draft.status == PUBLISHED:
-        # Amending a published draft would fork it from the published record —
+        # Amending a published draft would fork it from the published record:
         # the record, not the draft, is what the next lesson is compared
         # against, so the change would be silently irrelevant anyway.
         raise UsageError(
@@ -1694,7 +1694,7 @@ def handle_stage_set(ctx: Context) -> Exit:
             "from": old_value,
             "to": new_value,
         },
-        human=f"{learner.name} — {ctx.config.label('session')} {draft.session_number}: "
+        human=f"{learner.name} {ctx.config.label('session')} {draft.session_number}: "
         f"{field}\n  เดิม: {old_display}\n  ใหม่: {new_display}",
     )
     return Exit.OK

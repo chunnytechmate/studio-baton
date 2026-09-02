@@ -4,11 +4,11 @@ Regression (M13): `seed_example.sql` inserted the sample rows with plain
 `INSERT INTO` and explicit ids for `pieces`/`learners`. A second
 `init --force --sample-data` against the same directory re-ran the same
 script against the schema `--force` had left in place, colliding on those
-ids — a raw ``sqlite3.IntegrityError`` escaped past the JSON error envelope
+ids: a raw ``sqlite3.IntegrityError`` escaped past the JSON error envelope
 instead of a clean result.
 
 The fix appends ``ON CONFLICT DO NOTHING`` to every insert in the seed
-script, so a repeat run is a no-op rather than a collision — and
+script, so a repeat run is a no-op rather than a collision, and
 deliberately leaves ``--force``'s own semantics untouched, so a bare
 `init --force` (no `--sample-data`) still only re-runs the idempotent
 schema DDL and never touches, let alone deletes, an existing profile's
@@ -52,7 +52,7 @@ def test_bare_force_never_touches_existing_rows(tmp_path, capsys):
     fresh verifier caught: deleting the sqlite file on any `--force` wiped
     whatever a learner already had, whether or not `--sample-data` was ever
     passed. The seed-idempotency fix touches nothing about `--force`, so it
-    cannot reintroduce that risk — asserted here directly.
+    cannot reintroduce that risk: asserted here directly.
     """
     init(tmp_path, "--sample-data")
     capsys.readouterr()

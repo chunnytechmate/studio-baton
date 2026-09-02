@@ -1,7 +1,7 @@
 """Document-store behaviour: the preserve policy, and Notion's shapes.
 
 The preserve policy is the safety-critical half. It encodes what used to be a
-prose warning — "never clear the whole page, the recordings are on it" — so a
+prose warning: "never clear the whole page, the recordings are on it", so a
 summary rewrite physically cannot destroy an uploaded video.
 """
 
@@ -65,7 +65,7 @@ def test_startswith_narrows_by_text():
 def test_an_unknown_block_type_is_replaceable_not_silently_protected():
     """The policy is an allowlist: a type nobody configured is summary text.
 
-    The alternative — protecting anything unrecognised — would quietly stop
+    The alternative (protecting anything unrecognised) would quietly stop
     rewrites from working and be very hard to diagnose.
     """
     exotic = Block(id="z", type="synced_block", text="")
@@ -192,7 +192,7 @@ class _Reply:
 
 def test_a_page_404_names_the_page_and_both_ways_to_fix_it(monkeypatch):
     """One code, two causes, one order. The remedy must let a person fix the
-    sharing (or an agent re-check the id) without a debugging session — the
+    sharing (or an agent re-check the id) without a debugging session: the
     old message stopped at "usually not shared"."""
     import baton.adapters.docs.notion as notion_module
 
@@ -230,7 +230,7 @@ def test_deleting_a_block_that_is_already_gone_counts_as_deleted(monkeypatch):
 
 
 def test_a_status_read_can_decline_to_count_the_blocks(monkeypatch):
-    """Counting means listing the page — a request of its own, and one more
+    """Counting means listing the page: a request of its own, and one more
     per hundred blocks. Every caller used to pay it, including the ones that
     wanted a single status word."""
     import baton.adapters.docs.notion as notion_module

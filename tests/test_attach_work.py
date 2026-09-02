@@ -1,8 +1,8 @@
-"""`learner attach-work` — a recording that skipped the pipeline, put on its page.
+"""`learner attach-work`: a recording that skipped the pipeline, put on its page.
 
 The video pipeline writes the lesson's own recording onto the session page,
-but it is the only writer. A recording that did not go through it — a
-teacher's own edit, a clip shared directly — had links in the database and
+but it is the only writer. A recording that did not go through it: a
+teacher's own edit, a clip shared directly: had links in the database and
 nothing on any page, and the Drive side of a recording never landed on a page
 at all.
 """
@@ -29,7 +29,7 @@ MIGRATIONS = Path(baton.__file__).resolve().parent / "migrations"
 WORK = {
     "id": "w1",
     "learner_id": "1",
-    "title": "Blackbird — full take",
+    "title": "Blackbird: full take",
     "type": "performance",
     "video_link": "https://youtu.be/attach-me",
     "drive_link": "https://drive.google.com/file/keep-me/view",
@@ -134,7 +134,7 @@ def test_a_fresh_work_writes_the_whole_section(studio):
 
 
 def test_a_link_already_on_the_page_is_not_written_twice(studio):
-    """The old rule cleared every video and bookmark first — safe when it was
+    """The old rule cleared every video and bookmark first: safe when it was
     the only writer, fatal now that the pipeline puts the lesson's own video
     on the same page. The guard is the URL."""
     docs = studio[1]

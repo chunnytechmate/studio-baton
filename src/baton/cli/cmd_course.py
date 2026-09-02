@@ -1,4 +1,4 @@
-"""``baton course`` — archive a finished course, then empty it for the next one.
+"""``baton course``: archive a finished course, then empty it for the next one.
 
 A course ends and the studio starts again on the same pages: the sessions keep
 their numbers, the summaries are replaced, the dates move on. What must not
@@ -6,7 +6,7 @@ happen is the year of teaching that was on those pages disappearing, so a copy
 is filed first and the pages are only emptied once that copy is proven.
 
 Baton does not make the copy. Duplicating a page with its embedded table, every
-row, and the table's own layout is something the documents API cannot do —
+row, and the table's own layout is something the documents API cannot do:
 rebuilding it call by call produces a table that holds the right words in the
 wrong shape, which is worse than no copy at all because it looks like one. The
 harness driving Baton has a duplicate tool; it makes the copy, and Baton does
@@ -18,7 +18,7 @@ everything around it:
 
 `clear` enforces the rule itself. It does not trust that `verify` ran: it
 re-reads the filed copy, now, and refuses to empty anything unless one copy is
-complete — its name, where it sits, and every row. A copy verified yesterday
+complete: its name, where it sits, and every row. A copy verified yesterday
 and trashed today protects nothing, so the gate is read at clear time, every
 time. A copy made by hand satisfies it as well as a duplicated one; what the
 gate demands is that the copy exists and holds the course, not how it was
@@ -51,7 +51,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "course",
         help="Archive a finished course and empty it for the next one.",
         description=(
-            "The copy itself is made by the harness's duplicate tool — the "
+            "The copy itself is made by the harness's duplicate tool: the "
             "documents API cannot reproduce a table's layout, and a rebuilt "
             "one looks like an archive without being one."
         ),
@@ -95,7 +95,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Deletes each page's contents and empties its properties. The rows "
             "stay, so the next course reuses them. Refuses unless a complete "
-            "archived copy is filed — the copy is re-read at clear time, so "
+            "archived copy is filed: the copy is re-read at clear time, so "
             "`course verify` passing earlier is not enough on its own. "
             "`--session N` empties a single page and skips the archive rule; "
             "`--dry-run` only lists."
@@ -188,7 +188,7 @@ def _destination(ctx: Context, docs: DocStore, course: DocPage) -> tuple[str, st
     """Where this studio files this learner's finished courses, and how.
 
     Two arrangements are in use and both are correct. Some learners have a
-    folder page beside their course — the copy belongs inside it. The rest keep
+    folder page beside their course: the copy belongs inside it. The rest keep
     finished courses in the same place as the live one, which is where a
     duplicate already lands, so nothing needs moving. Detecting it per learner
     is what lets one command serve both without anybody tidying Notion first.
@@ -252,7 +252,7 @@ def _read_copy(
     tables = [child for child in docs.list_children(page_id) if child.kind == "table"]
     rows: list[TableRow] = []
     if not tables:
-        problems.append("the copy has no course table yet — the duplicate may still be running")
+        problems.append("the copy has no course table yet: the duplicate may still be running")
     else:
         rows = docs.table_rows(tables[0].child_id)
         live = docs.table_rows(plan["course"]["table_id"])
@@ -315,7 +315,7 @@ def _plan(ctx: Context, *, allow_existing: bool) -> dict[str, Any]:
             f"`{title}` is already filed.",
             missing=[{"field": "unfiled_course", "title": title, "existing": already}],
             remedy=(
-                "If that copy is complete, this course is archived — clear it. "
+                "If that copy is complete, this course is archived: clear it. "
                 "To file a second copy anyway, pass --allow-existing."
             ),
         )
@@ -351,7 +351,7 @@ def handle_plan(ctx: Context) -> Exit:
     archive = payload["archive"]
 
     lines = [
-        f"{payload['learner']} — {payload['course']['title']}",
+        f"{payload['learner']}: {payload['course']['title']}",
         f"  copy this page : {payload['course']['page_id']}",
         f"  name it        : {archive['title']}",
     ]
@@ -362,7 +362,7 @@ def handle_plan(ctx: Context) -> Exit:
     lines.append(f"  rows to expect : {payload['rows']}")
     if payload["renames_live_page"]:
         lines.append(
-            "  note           : the live page already carries this name — rename it "
+            "  note           : the live page already carries this name: rename it "
             "for the new course once the copy is filed"
         )
     ctx.report.result(payload, human="\n".join(lines))
@@ -402,7 +402,7 @@ def handle_verify(ctx: Context) -> Exit:
 def _require_archive(ctx: Context, docs: DocStore) -> dict[str, Any]:
     """The copy that stands between this clear and the course it empties.
 
-    `clear` does not remember that `verify` ran — it looks for the filed copy
+    `clear` does not remember that `verify` ran: it looks for the filed copy
     now, holds it to the same standard `verify` holds, and refuses unless one
     passes. That is the rule: no complete copy, no clear.
     """
@@ -420,7 +420,7 @@ def _require_archive(ctx: Context, docs: DocStore) -> dict[str, Any]:
             ],
             remedy=(
                 "Run `baton course plan`, duplicate the page, then "
-                "`baton course verify` — clear refuses to empty an unarchived course."
+                "`baton course verify`: clear refuses to empty an unarchived course."
             ),
         )
 
@@ -436,7 +436,7 @@ def _require_archive(ctx: Context, docs: DocStore) -> dict[str, Any]:
         missing=[{"field": "archive", "copies": failures}],
         remedy=(
             "Run `baton course verify` to see what is wrong, fix the copy or "
-            "file a new one — clear refuses to empty an unarchived course."
+            "file a new one: clear refuses to empty an unarchived course."
         ),
     )
 
@@ -480,7 +480,7 @@ def handle_clear(ctx: Context) -> Exit:
     archive: dict[str, Any] | None = None
     if wanted is None:
         # The full clear is the destructive one, so it carries the gate. A
-        # partial clear is a mid-course tool — there is no finished course to
+        # partial clear is a mid-course tool: there is no finished course to
         # file, so demanding an archive for it would make it unusable.
         archive = _require_archive(ctx, docs)
 

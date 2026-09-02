@@ -11,7 +11,7 @@ locale: en          # message catalogue: en | th (see src/baton/locale/)
 timezone: UTC       # IANA name; every date Baton prints or writes uses it
 
 # Domain vocabulary. Baton's model is "one person, taught one-to-one, across
-# numbered sessions" — these labels rename that model for your studio without
+# numbered sessions": these labels rename that model for your studio without
 # touching code. They affect human-readable output only; JSON keys are stable.
 labels:
   learner: student
@@ -92,13 +92,13 @@ learner:
   # A session left In progress past its date by more than this many days is
   # treated as abandoned: `learner next` moves on to the following session
   # instead of pointing at it forever. A fresh In-progress page is always the
-  # target — the studio's flow books a lesson, the page turns In progress, and
+  # target: the studio's flow books a lesson, the page turns In progress, and
   # the summary is written onto that page. `null` never abandons a page (the
   # legacy system's behaviour).
   next_stale_days: 1
 
   # `learner in-progress` reads the calendar for this many days back (today
-  # included) and checks only those learners' pages — the morning "who still
+  # included) and checks only those learners' pages: the morning "who still
   # owes a summary" question costs one calendar call plus one document read
   # per candidate, instead of reading every session page of every learner.
   in_progress_days: 14
@@ -165,7 +165,7 @@ docs:
     next_goal: [ครั้งถัดไป]
     homework: [การบ้าน, Homework]
 
-  # Block types that are homework wherever they sit on the page — a checklist
+  # Block types that are homework wherever they sit on the page: a checklist
   # under "overview" is still a thing to practise.
   homework_types: [to_do]
 
@@ -179,7 +179,7 @@ prep:
   # The report is a gate, not a summary: a learner listed only when every
   # required field of their latest session is present, so nothing half-read
   # reaches the teacher. Fields a studio tracks loosely belong in `warning`
-  # instead — reported when missing, never blocking.
+  # instead: reported when missing, never blocking.
   required: [week, date, titles, notion_link, overview, content, homework]
   warning: [next_goal]
 
@@ -198,7 +198,7 @@ courses:
 
     # Sub-pages beside the course page whose title contains one of these are
     # treated as the folder finished courses belong in. When a learner has no
-    # such folder, the copy stays where the live course is — which is where a
+    # such folder, the copy stays where the live course is, which is where a
     # duplicate already lands, so nothing has to move.
     folder_titles: [Archives, Archive]
 
@@ -211,7 +211,7 @@ courses:
       # and to the opening end as well when the two fall in different years.
       format: "%d/%m"
       year: "%y"
-      # gregorian | buddhist — applied to the year only, so a studio that
+      # gregorian | buddhist: applied to the year only, so a studio that
       # writes 2569 for 2026 gets the names its shelves already use.
       era: gregorian
       separator: " - "
@@ -224,17 +224,17 @@ chat:
   driver: line            # line | telegram | webhook
 
   # How a lesson's date is written in the message families read. The date is
-  # taken from the session document, whose property is deliberately flexible —
+  # taken from the session document, whose property is deliberately flexible:
   # anything this cannot parse is passed through exactly as it was typed.
   #
   # An empty format leaves every date alone, which is the default: no studio
   # gets its dates rewritten without asking.
   date:
     # strftime, with {month} replaced from `months` below before strftime sees
-    # it. %B is avoided for the usual reason — it renders English wherever the
+    # it. %B is avoided for the usual reason: it renders English wherever the
     # studio's locale is not installed, which in a container is nearly always.
     format: ""
-    # gregorian | buddhist — applied to the year only, as in courses.archive.
+    # gregorian | buddhist: applied to the year only, as in courses.archive.
     era: gregorian
     # Twelve names, January first, or none to leave %B to strftime.
     months: []
@@ -253,7 +253,7 @@ chat:
     secret_env: BATON_WEBHOOK_SECRET
 
   # Named recipients. `id_env` holds the platform user/chat id; `aliases` are
-  # the words a person might actually type. Resolution is exact-or-alias only —
+  # the words a person might actually type. Resolution is exact-or-alias only:
   # a partial match is reported as ambiguous rather than guessed.
   contacts: {}
   # contacts:
@@ -311,18 +311,18 @@ media:
   encode:
     driver: ffmpeg
     binary: ffmpeg
-    # auto        — every clip keeps its own frame size when the session is
+    # auto: every clip keeps its own frame size when the session is
     #               already uniform, and is fitted into 1920x1080 only when
     #               the clips disagree (landscape mixed with portrait, say).
-    # 1080p       — always fit into 1920x1080, uniform session or not.
-    # passthrough — a lone clip is copied without re-encoding. More than one
+    # 1080p: always fit into 1920x1080, uniform session or not.
+    # passthrough: a lone clip is copied without re-encoding. More than one
     #               clip still has to be decoded and joined, so this behaves
     #               as `auto` there.
     profile: auto
-    # libx264 (CPU) or h264_nvenc (NVIDIA GPU — needs the driver in the
+    # libx264 (CPU) or h264_nvenc (NVIDIA GPU: needs the driver in the
     # container and an ffmpeg build with NVENC compiled in; check with
     # `ffmpeg -encoders | grep nvenc`). Only the final encode moves to the
-    # GPU — decode and the concat filter stay on CPU either way — so this is
+    # GPU (decode and the concat filter stay on CPU either way), so this is
     # a small, predictable VRAM cost even on a card with little to spare.
     codec: libx264
     # Tone-map HDR clips (iPhone HLG, and anything BT.2020 or 10-bit) down to
@@ -373,7 +373,7 @@ calendar:
   #   มร: 2        # the day after tomorrow
 
   # Weekday names, mapped to their day (0 = Monday). A name typed anywhere in
-  # a date expression means that weekday's NEXT occurrence — today never
+  # a date expression means that weekday's NEXT occurrence: today never
   # counts, so "วันศุกร์" said on a Friday means the Friday after. The Thai
   # names ship as defaults because that is who this package is for; a studio
   # that types other names replaces the whole map with its own.
@@ -389,7 +389,7 @@ calendar:
   # How a studio says a time of day. `hour_units` name the counting words
   # ("6 โมง", "6 นาฬิกา"); the number is read literally, so "9 โมง" is 09:00.
   # A word from `morning` keeps the hour; a word from `evening` adds twelve
-  # below noon — either applies to every hour unit. `special` words are a
+  # below noon, either applies to every hour unit. `special` words are a
   # time by themselves, and `evening_count` words count from an evening hour
   # ("3 ทุ่ม" = 21:00 with ทุ่ม: 18; "ตี 3" = 03:00 with ตี: 0). A time past
   # 23 hours is refused, never wrapped around. Clearing a section turns its
@@ -428,7 +428,7 @@ calendar:
 # ---------------------------------------------------------------------------
 notes:
   # The page new notes are created under. Markdown is converted to blocks by
-  # Baton — the conversion is mechanical, and a model that drops a line while
+  # Baton: the conversion is mechanical, and a model that drops a line while
   # doing it produces a note that simply looks shorter than you remembered.
   parent_id_env: BATON_NOTES_PARENT
 
@@ -464,7 +464,7 @@ llm:
   # driving the CLI and submitted as JSON validated against a schema. Leaving
   # this as "none" is what lets a local model of any size drive Baton safely.
   #
-  # Nothing in the code reads this to decide anything — there is no client to
+  # Nothing in the code reads this to decide anything: there is no client to
   # select. It is a claim about the design, and `baton doctor` checks it: a
   # profile that names a provider is a profile expecting Baton to call one,
   # which it will never do, and finding that out at the first missing summary
@@ -485,7 +485,7 @@ summary:
   # keeps them across a later rewrite.
   callout_icon: ""
 
-  # A disclosure appended to every published summary — who wrote it, when, and
+  # A disclosure appended to every published summary: who wrote it, when, and
   # that it came from an assistant. Parents read these pages, so a studio that
   # publishes AI-written summaries almost certainly wants one. Empty by
   # default: no studio gets a disclaimer it did not ask for.
@@ -495,11 +495,11 @@ summary:
   footer:
     lines: []
     # {month} is replaced from `months` below before strftime sees this, since
-    # %B renders English wherever the studio's locale is not installed — which
+    # %B renders English wherever the studio's locale is not installed, which
     # in a container is nearly always.
     date_format: "%-d %B %Y"
     time_format: "%H:%M"
-    # gregorian | buddhist — applied to the year only, as in courses.archive.
+    # gregorian | buddhist: applied to the year only, as in courses.archive.
     era: gregorian
     # Twelve names, January first, or none to leave %B to strftime.
     months: []
@@ -515,15 +515,15 @@ summary:
   # are; write yours in the language you publish in if that reads better.
   #
   # These four are examples of the *shape*, not advice about teaching. A real
-  # studio's definitions can be the opposite of them — the one this was built
+  # studio's definitions can be the opposite of them: the one this was built
   # for wants ordinary technical vocabulary in `standard`, where the default
-  # below avoids it — so replace them with what your studio actually means.
+  # below avoids it, so replace them with what your studio actually means.
   tones:
     standard: >-
       Write for a parent who follows the lessons but does not teach: name what
       was worked on and what changed, in plain words.
     child: >-
-      The learner is young. Describe what they did, never what they are — a
+      The learner is young. Describe what they did, never what they are: a
       skill still being built, not a trait they have. Short sentences, warm
       without praising for its own sake.
     exam: >-
@@ -537,7 +537,7 @@ summary:
 
   # How notation is written for each instrument, keyed by the `instrument`
   # column. The `notation` field of a covered entry renders as a code block, so
-  # it keeps its alignment — but nothing said what *shape* belonged in it, and
+  # it keeps its alignment, but nothing said what *shape* belonged in it, and
   # a drum part written as guitar tab is unreadable to the family it is for.
   # Same rule as `tones`: an instrument with no entry adds nothing.
   instruments:
@@ -551,7 +551,7 @@ summary:
 
   # What changes for a learner with no instrument at home (`has_instrument`
   # false). A practice goal they cannot possibly do is the fastest way to teach
-  # a family that the goals are not meant seriously — and calling the section
+  # a family that the goals are not meant seriously, and calling the section
   # "homework" when there is nothing at home to do it on says the same thing
   # from the heading down. So the section is renamed as well as reworded: for
   # these learners `goals` is what the next lesson aims at, plus whatever can
@@ -564,7 +564,7 @@ summary:
     instruction: >-
       This learner has no instrument at home. Do not ask for practice that
       needs one. Write `goals` as what the next lesson will work towards,
-      together with anything that can be done without an instrument —
+      together with anything that can be done without an instrument:
       listening, counting, clapping, reading, singing a line back.
     section: Goals for next lesson
     message_label: Next lesson
@@ -578,13 +578,13 @@ summary:
   # studio that keeps a per-learner prompt level in its own column maps it
   # through `db.fields.learner.prompt_level` and gives each level a line here.
   # Keyed by the value as written (`1`, `2`, …). Empty by default, and a level
-  # with no entry adds nothing — the same stance as `tones`: a studio that
+  # with no entry adds nothing: the same stance as `tones`: a studio that
   # invented a scale has not yet said what its numbers mean, and a guess would
   # be this tool inventing a teaching voice for someone else's studio.
   prompt_levels: {}
 
   # The spellings the studio has settled on: a piece title, a term, a name as
-  # the family writes it. Three layers, in order of softness — the pool is
+  # the family writes it. Three layers, in order of softness: the pool is
   # handed to the model in `lesson contract` as `constraints.vocabulary` with
   # an instruction to use exactly these spellings; `lesson stage --corrected`
   # lets the teacher hand over notes with the spellings already right, which
@@ -599,7 +599,7 @@ summary:
   # writes past it. These are what keep each section carrying a different kind
   # of information instead of restating the others.
   body:
-    # How many places one fact may appear in. Two is a restatement — the
+    # How many places one fact may appear in. Two is a restatement: the
     # overview naming what the covered list details. Three is padding, and it
     # is how a summary grows long while saying less.
     max_repeats: 2
@@ -611,7 +611,7 @@ summary:
     #
     # `กำลังพัฒนาดี` is here because the studio this came from had already
     # named it: its previous summariser carried a rule headed "Accuracy Over
-    # Flattery" reading `"ยังติด" คือ "ยังติด" ไม่ใช่ "กำลังพัฒนาดี"` —
+    # Flattery" reading `"ยังติด" คือ "ยังติด" ไม่ใช่ "กำลังพัฒนาดี"`:
     # a rule stated in prose, which is exactly the kind that gets written past.
     vague_phrases:
       - ทำได้ดีมาก
@@ -628,7 +628,7 @@ summary:
       - excellent progress
 
     # Words that describe the child instead of the skill. "A weak point" is a
-    # thing someone *is*; "still being built" is a thing a lesson *changes* —
+    # thing someone *is*; "still being built" is a thing a lesson *changes*,
     # and a family reads the first as a verdict on their child. Separate from
     # the list above because the correction is different: not "be specific"
     # but "say it about the playing".
@@ -669,7 +669,7 @@ summary:
       - be more
 
   # Constraints enforced on the parent-facing message. These are validated in
-  # code, not merely requested in a prompt — a prose instruction not to use
+  # code, not merely requested in a prompt: a prose instruction not to use
   # emoji is exactly what a small model ignores.
   short_summary:
     max_lines: 5

@@ -1,7 +1,7 @@
 """Webhook health must not pass a receiver that rejects the probe (M20).
 
 The health check sends a GET because webhooks have no introspection
-endpoint. It used to fail only on 5xx — a receiver answering 405 to every
+endpoint. It used to fail only on 5xx: a receiver answering 405 to every
 GET passed, which proved something was listening and nothing else. Anything
 from 400 up is now a failed check.
 """

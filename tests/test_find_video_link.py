@@ -1,7 +1,7 @@
 """Recognising a recording link wherever the page holds it.
 
 Notion's UI turns a pasted URL into a bookmark, so a recording added by hand
-is a bookmark — and a reader that matched `video` blocks alone made such a
+is a bookmark, and a reader that matched `video` blocks alone made such a
 page look like it had no recording. Under the required send gate that page
 blocks the whole lesson message while looking, to a person reading it, like
 it has its video.
@@ -33,7 +33,7 @@ def test_an_embedded_recording_is_found():
 
 
 def test_a_bookmark_that_is_not_a_recording_is_not_found():
-    """A bookmark can be anything a person saved — the sheet, an article. Only
+    """A bookmark can be anything a person saved: the sheet, an article. Only
     the shapes that mean a recording count, and outside `video` blocks only
     video-host URLs do."""
     page = _page(
@@ -44,7 +44,7 @@ def test_a_bookmark_that_is_not_a_recording_is_not_found():
 
 
 def test_a_video_block_still_accepts_any_host():
-    """A `video` block's URL was chosen as a recording — a Drive-hosted file is
+    """A `video` block's URL was chosen as a recording: a Drive-hosted file is
     as much the lesson's recording as a YouTube one."""
     page = _page(Block(id="v", type="video", url="https://drive.google.com/file/x/view"))
 
@@ -57,7 +57,7 @@ def test_a_video_block_beats_a_bookmark_further_down_the_page():
 
     The studio keeps the song being learnt on the lesson's own page. Notion
     turns a pasted song URL into a bookmark and an embed, and those sit below
-    the `video` block the pipeline wrote — so "newest wins" read the song and
+    the `video` block the pipeline wrote, so "newest wins" read the song and
     a parent was sent the link to a record label's music video instead of
     their child's lesson.
 
@@ -112,7 +112,7 @@ def test_the_song_is_excluded_however_its_url_is_written():
 
 def test_a_page_holding_only_the_song_reads_as_having_no_recording():
     """Fail closed. An empty answer here is what makes the send gate refuse a
-    message whose recording has not landed yet — the alternative, which
+    message whose recording has not landed yet: the alternative, which
     production actually did, is sending the wrong link to a parent."""
     page = _page(
         Block(id="h", type="heading_2", text="🎵 Die With a Smile"),

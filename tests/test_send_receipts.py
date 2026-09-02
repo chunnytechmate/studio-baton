@@ -3,7 +3,7 @@
 The duplicate this prevents is not caused by a bug in Baton. It is caused by a
 harness: the agent's per-call time limit expires in the gap between LINE
 accepting the message and Baton printing that it did, the call is killed, and
-the agent — correctly, on the evidence it has — sends again.
+the agent (correctly, on the evidence it has) sends again.
 """
 
 from __future__ import annotations
@@ -199,7 +199,7 @@ def test_a_dry_run_writes_no_receipt(studio, capsys):  # noqa: F811
 def test_a_corrected_summary_still_needs_a_person_to_say_send_it_again(studio, capsys):  # noqa: F811
     """Republishing does not quietly re-open the send.
 
-    The receipt is keyed on the learner and the session, not on the words —
+    The receipt is keyed on the learner and the session, not on the words:
     it has to be, because the composer picks its opening and closing phrase at
     random and no two sends of one summary are the same string. The cost is
     that a genuine correction is refused too, which is the right cost: "I

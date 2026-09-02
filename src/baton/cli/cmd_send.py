@@ -1,7 +1,7 @@
-"""``baton send`` — deliver a lesson message, or refuse to.
+"""``baton send``: deliver a lesson message, or refuse to.
 
 One learner or several, one invocation either way. The original skill's rule
-holds: when a user names several learners, they all go through one command —
+holds: when a user names several learners, they all go through one command:
 opening a terminal per learner is how sends got lost.
 """
 
@@ -55,12 +55,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "send",
         help="Send a lesson message, refusing when required data is missing.",
         description=(
-            "Sends the message that was published — never a re-derived one. A "
+            "Sends the message that was published, never a re-derived one. A "
             "missing required field blocks the send with exit 5 and there is no "
             "override, with one exception: a session with no recording link "
             "stops on exit 3 and asks. `send video-waiver` texts a confirmation "
             "code to a configured contact, and --without-video <code> is where "
-            "that person's answer sends the lesson with no video section — not "
+            "that person's answer sends the lesson with no video section, not "
             "a flag anything running the CLI can pass on its own. A message "
             "that already went out is refused the same way, and that one a "
             "person can override with --again."
@@ -99,7 +99,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "For a session `send lesson` refused on exit 3 because no "
             "recording is on the document. Texts a one-time code to --to "
-            "through the studio's own messenger and stops — the code is never "
+            "through the studio's own messenger and stops: the code is never "
             "printed or returned here, only sent. A person reads it off their "
             "phone and gives it back as `send lesson ... --without-video "
             "<code>`, which is the only way the confirmation re-enters Baton. "
@@ -116,7 +116,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--dry-run",
         action="store_true",
         help="Show the message and code that would be sent, and send nothing. "
-        "Unlike a real request, the code appears here — this is a person "
+        "Unlike a real request, the code appears here: this is a person "
         "previewing the flow, not the flow itself.",
     )
     waiver.set_defaults(handler=handle_video_waiver)
@@ -166,7 +166,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     batch.add_argument("--dry-run", action="store_true")
     # No --without-video here. A code answers one learner's one session, and
-    # a batch has many of both — there is no single value that could mean
+    # a batch has many of both: there is no single value that could mean
     # "yes" for all of them. A learner with no recording is reported blocked,
     # same as any other refusal in a batch, and sent alone once a person has
     # requested and answered that one's own waiver.
@@ -180,11 +180,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
 
     video = group.add_parser(
         "video",
-        help="Send a lesson's video by itself — not the whole summary again.",
+        help="Send a lesson's video by itself, not the whole summary again.",
         description=(
             "The message for a parent who asked for the video: instrument "
             "header, week and date, the titles, a taste of the summary, the "
-            "link. Refuses (exit 5) when the session has no video on it — "
+            "link. Refuses (exit 5) when the session has no video on it: "
             "that is the whole point of the message."
         ),
     )
@@ -208,7 +208,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "One row per learner with a lesson on DATE, read before the sends "
             "start. The last column is the send gate's own verdict, recomputed "
-            "from the published record — what it names as missing is exactly "
+            "from the published record: what it names as missing is exactly "
             "what `send lesson` would refuse on."
         ),
     )
@@ -224,7 +224,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "Run after the sends. Reports three kinds of leftovers: drafts that "
             "never reached publish, draft files whose learner no longer exists, "
             "and published lessons with no send receipt. A receipt only proves a "
-            "send within its window — beyond that this reports the absence of "
+            "send within its window: beyond that this reports the absence of "
             "evidence, never the certainty that nothing went out."
         ),
     )
@@ -272,7 +272,7 @@ def _date_format(ctx: Context) -> DateFormat:
 
 def _date_and_titles(docs, doc_id: str) -> tuple[str, str]:
     """The document's own date and titles, read fresh rather than from the
-    published record — both can be corrected on the document after the
+    published record: both can be corrected on the document after the
     summary went out, and the message should reflect the current page.
 
     Same degrade-quietly stance as `find_video_link`: these are cosmetic, not
@@ -294,7 +294,7 @@ def _piece_sources(store, learner: Learner | None, published: Mapping[str, Any])
     A studio keeps the song on the same page as the lesson, and Notion turns a
     pasted song URL into a bookmark and an embed. Both are shapes
     `find_video_link` reads, and a song on YouTube is indistinguishable from a
-    recording on YouTube by its URL alone — which is how a lesson message once
+    recording on YouTube by its URL alone, which is how a lesson message once
     went out carrying the link to the song's official music video.
 
     Both the piece the lesson was taught on and the one the learner is on now
@@ -323,8 +323,8 @@ def _messenger(ctx: Context, *, what: str, key: str) -> Messenger:
     """The configured messenger, wrapped so one message cannot go out twice.
 
     Every send path in this module goes through here. That is the point: the
-    duplicate a harness causes — killing the command in the gap between a
-    platform accepting the message and Baton printing that it did — is not
+    duplicate a harness causes (killing the command in the gap between a
+    platform accepting the message and Baton printing that it did) is not
     something any one composer can see coming.
 
     Args:
@@ -348,7 +348,7 @@ def _lesson_receipt_key(learner_id: str, session_number: Any) -> str:
     """The identity of one learner's one-session lesson message.
 
     Shared by `send lesson` and `send aftermath`, because the question
-    aftermath asks of the receipts — did this message go out? — is only
+    aftermath asks of the receipts: did this message go out?: is only
     answerable if it is spelled exactly the way the send spelled it. Two
     spellings here would quietly mean two different messages, and aftermath
     would report sends as missing that went out.
@@ -370,11 +370,11 @@ def _day(ctx: Context, value: str) -> date:
 def _roster_for_day(
     ctx: Context, store, docs, day: date
 ) -> tuple[list[Learner], list[dict[str, Any]], str]:
-    """Who had a lesson on ``day`` — the calendar's roster, or the documents'.
+    """Who had a lesson on ``day``: the calendar's roster, or the documents'.
 
     The calendar is the source when there is one: its events were typed by a
     person and name the day directly. Without a calendar configured, the
-    roster falls back to the sessions whose documents carry the day's date —
+    roster falls back to the sessions whose documents carry the day's date:
     a weaker claim (a document's date can be blank or mistyped) and labelled
     as such in the report, because a fallback nobody knows is a fallback that
     gets trusted past its worth.
@@ -416,7 +416,7 @@ def _send_one(
     """Resolve, gather, gate, and send for one learner. Raises on any refusal.
 
     ``resolved`` lets a batch pass in a learner it resolved up front, so the
-    duplicate check and the send act on the same person — the check cannot
+    duplicate check and the send act on the same person: the check cannot
     compare raw strings and the send compare records.
     """
     store = open_store(ctx.config)
@@ -482,7 +482,7 @@ def _send_one(
             # link composes no video line). Nothing else can be relaxed this
             # way; the other required fields keep the hard, unoverridable
             # block, and `candidates` stays empty here for the same reason it
-            # does on the no-code path below — this is not data to pick from.
+            # does on the no-code path below: this is not data to pick from.
             code = getattr(ctx.args, "without_video", None)
             if code:
                 waivers = VideoWaivers.for_state(
@@ -555,7 +555,7 @@ def handle_lesson(ctx: Context) -> Exit:
 def handle_video_waiver(ctx: Context) -> Exit:
     """Text a one-time code to a person, for one learner's one session.
 
-    The code itself never appears in this command's own result — not in
+    The code itself never appears in this command's own result, not in
     `--json`, not in the human line, not in a log line anywhere in Baton.
     Reaching it means reading the message it was sent in. That is the entire
     mechanism: nothing driving this CLI, agent or person, can answer the
@@ -599,7 +599,7 @@ def handle_video_waiver(ctx: Context) -> Exit:
     if video_link:
         raise UsageError(
             f"{learner.name}'s {label} {session_number} already has a recording on its document.",
-            remedy="Nothing to waive — `send lesson` will send it with the video section as usual.",
+            remedy="Nothing to waive: `send lesson` will send it with the video section as usual.",
         )
 
     messenger = open_chat(ctx.config)
@@ -653,7 +653,7 @@ def handle_recording(ctx: Context) -> Exit:
     """List a learner's recorded works, or deliver the picked one's links.
 
     Two invocations and no prompt, because whatever runs Baton drives it with
-    commands — the studio's agent relays the list to the person choosing, then
+    commands: the studio's agent relays the list to the person choosing, then
     answers with ``--pick``. Each call reads the store fresh: nothing is
     remembered between them, so a pick always lands on the row the list the
     person answered from was built from.
@@ -671,10 +671,10 @@ def handle_recording(ctx: Context) -> Exit:
                     remedy="Record one first with `baton learner add-work "
                     f'"{ctx.args.name}" --title … (--video-link / --drive-link)`.',
                 )
-            # Which recording goes out is a person's call — the date ordering
+            # Which recording goes out is a person's call: the date ordering
             # suggests, but cannot know, what the parent meant.
             raise NeedsHumanError(
-                f"{learner.name} has {len(works)} recorded work(s) — which one goes out?",
+                f"{learner.name} has {len(works)} recorded work(s): which one goes out?",
                 candidates=list_candidates(works),
                 remedy="Re-run with --pick <number> from that list; 1 is the "
                 "most recent. Nothing has been sent.",
@@ -695,7 +695,7 @@ def handle_recording(ctx: Context) -> Exit:
                     "--pick counts the newest-first list: 1 is the latest. "
                     "Re-run without --pick to see it."
                     if works
-                    else f"No recording exists yet — record one first with "
+                    else f"No recording exists yet: record one first with "
                     f'`baton learner add-work "{ctx.args.name}" --title …`.'
                 ),
                 details={"candidates": list_candidates(works)} if works else None,
@@ -706,7 +706,7 @@ def handle_recording(ctx: Context) -> Exit:
 
     # The lesson page the recording belongs to, when one is published: the
     # record already exists, and after a publish it *is* "the latest lesson".
-    # Read fail-open — nothing has been published yet, or the record cannot be
+    # Read fail-open, nothing has been published yet, or the record cannot be
     # read, and the links still go out the way the old sender sent them.
     doc_url = ""
     with contextlib.suppress(BatonError):
@@ -747,14 +747,14 @@ def handle_recording(ctx: Context) -> Exit:
 def handle_batch(ctx: Context) -> Exit:
     """Every learner in one invocation, reported together.
 
-    One refusal must not abandon the rest — the teacher still wants the others
-    sent — but the summary at the end has to say exactly which did not go.
+    One refusal must not abandon the rest (the teacher still wants the others
+    sent), but the summary at the end has to say exactly which did not go.
     """
     requested = list(ctx.args.learners)
 
     # Resolve the whole batch before anything is sent. Two different strings
-    # can name one learner through `db.aliases` — a nickname and the same
-    # nickname with `น้อง` in front of it — and a
+    # can name one learner through `db.aliases`: a nickname and the same
+    # nickname with `น้อง` in front of it, and a
     # comparison of the raw names lets that pair through, after which each
     # entry sends its own message. The duplicate that matters is the person,
     # not the spelling.
@@ -819,7 +819,7 @@ def handle_video(ctx: Context) -> Exit:
     Everything it needs already exists by the time a lesson is published: the
     record names the session, the document holds the recording, and the
     sections reader knows the lesson. Nothing here re-derives the published
-    summary — a taste of it rides along, the whole thing stays one tap away.
+    summary: a taste of it rides along, the whole thing stays one tap away.
     """
     label = ctx.config.label("session")
     # The store stays open past the published record because the piece it
@@ -865,7 +865,7 @@ def handle_video(ctx: Context) -> Exit:
         titles = str(published.get("titles", ""))
 
     # The same sections reader prep uses, so the taste matches what the
-    # teacher reads before the lesson. Unreadable blocks taste of nothing —
+    # teacher reads before the lesson. Unreadable blocks taste of nothing:
     # the video still goes.
     sections: dict[str, str] = {}
     with contextlib.suppress(BatonError):
@@ -952,7 +952,7 @@ def handle_readiness(ctx: Context) -> Exit:
             str(item) for item in ctx.config.get("docs.video_link_blocks", VIDEO_LINK_BLOCKS)
         )
         # The same pool `lesson ingest` warned over, recomputed from the
-        # summary as stored — so the vocabulary column means "as published",
+        # summary as stored, so the vocabulary column means "as published",
         # not "as the model first wrote it".
         vocabulary = [
             str(term)
@@ -987,7 +987,7 @@ def handle_readiness(ctx: Context) -> Exit:
                 if vocabulary and isinstance(summary, dict) and summary:
                     near_misses = contracts.vocabulary_near_misses(summary, vocabulary)
                 # The gate's own verdict, from the same `evaluate` the send
-                # refuses through — never a second opinion that could drift.
+                # refuses through, never a second opinion that could drift.
                 context = gather_context(store, learner.id, record, video_link=video)
                 missing, warnings = evaluate(context, required=required, optional=optional)
 
@@ -997,7 +997,7 @@ def handle_readiness(ctx: Context) -> Exit:
                     "staging": staging_state,
                     "video_block": bool(video),
                     "vocabulary": (
-                        "—"
+                        "-"
                         if not vocabulary or record is None
                         else ("ผ่าน" if not near_misses else "ไม่ผ่าน: " + ", ".join(near_misses))
                     ),
@@ -1017,9 +1017,9 @@ def handle_readiness(ctx: Context) -> Exit:
         }
 
         source_label = "ปฏิทิน" if source == "calendar" else "วันที่บนเอกสาร"
-        lines = [f"คนที่มีคาบวันที่ {day.isoformat()} (อ่านจาก{source_label}) — {len(rows)} คน"]
+        lines = [f"คาบวันที่ {day.isoformat()} (อ่านจาก{source_label}): {len(rows)} คน"]
         for row in rows:
-            gap = ", ".join(row["missing"]) or "—"
+            gap = ", ".join(row["missing"]) or "-"
             if not row["missing"] and row["optional_missing"]:
                 gap = "ไม่บล็อก: " + ", ".join(row["optional_missing"])
             lines.append(
@@ -1030,7 +1030,8 @@ def handle_readiness(ctx: Context) -> Exit:
         lines.append(f"พร้อมส่ง {ready}/{len(rows)} คน")
         for event in unmatched:
             lines.append(
-                f"  คิวที่จับคู่ชื่อไม่ได้ (ไม่เดา): {event.get('title', '')} {event.get('start', '')}"
+                f"  รายการในปฏิทินที่จับคู่ชื่อไม่ได้ (ระบบไม่เดาให้): "
+                f"{event.get('title', '')} {event.get('start', '')}"
             )
         ctx.report.result(payload, human="\n".join(lines))
         return Exit.OK
@@ -1167,7 +1168,7 @@ def handle_aftermath(ctx: Context) -> Exit:
         }
 
         source_label = "ปฏิทิน" if source == "calendar" else "วันที่บนเอกสาร"
-        lines = [f"สรุปหลังวันสอน {day.isoformat()} (คนในคิวอ่านจาก{source_label})"]
+        lines = [f"สรุปหลังวันสอน {day.isoformat()} (รายชื่ออ่านจาก{source_label})"]
 
         lines.append(f"staging ค้าง: {len(stuck)}")
         for item in stuck:
@@ -1197,7 +1198,8 @@ def handle_aftermath(ctx: Context) -> Exit:
             )
         for event in unmatched:
             lines.append(
-                f"  คิวที่จับคู่ชื่อไม่ได้ (ไม่เดา): {event.get('title', '')} {event.get('start', '')}"
+                f"  รายการในปฏิทินที่จับคู่ชื่อไม่ได้ (ระบบไม่เดาให้): "
+                f"{event.get('title', '')} {event.get('start', '')}"
             )
         ctx.report.result(payload, human="\n".join(lines))
         return Exit.OK

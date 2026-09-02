@@ -1,6 +1,6 @@
 """Writing a summary onto a session document without destroying what is there.
 
-The original system's standing warning was "never clear the whole page — the
+The original system's standing warning was "never clear the whole page: the
 recordings and sheet links are on it". That was advice, and advice is only as
 reliable as whoever is following it. Here it is mechanism: the update deletes
 only the blocks the profile's preserve policy does not protect, and it appends
@@ -14,7 +14,7 @@ Ordering matters and is deliberate:
 3. delete the old, replaceable blocks
 
 Appending first costs one duplicated section if step 3 fails. Deleting first
-would cost the lesson summary entirely if step 2 failed — and the recordings
+would cost the lesson summary entirely if step 2 failed, and the recordings
 would be gone with no way to tell what had been there.
 """
 
@@ -62,7 +62,7 @@ class PublishResult:
     """What this publish put on the page: ``[{"id", "type", "text"}, ...]``.
 
     The ids are learned by diffing the page before and after, because the
-    document protocol's ``append_blocks`` returns nothing — and they are what
+    document protocol's ``append_blocks`` returns nothing, and they are what
     a later `lesson unpublish` matches on, so it deletes by evidence rather
     than by re-deriving what the renderer would say today. Empty when the
     after-read failed: the page was still written, and unpublish simply falls
@@ -189,7 +189,7 @@ class SummaryPublisher:
 
         # What this publish created, read back rather than assumed: the ids
         # are the evidence `lesson unpublish` will act on. Degrades to an
-        # empty list rather than failing the publish — the page is already
+        # empty list rather than failing the publish: the page is already
         # written, and the fallback path (matching the stored rendering)
         # still works without the ids.
         created: list[Block] = []
@@ -224,8 +224,8 @@ class SummaryPublisher:
         target of the next summary, so this write is part of publishing rather
         than something to remember afterwards.
 
-        ``date`` and ``titles`` only fill blanks. The studio's own value —
-        typed by hand, or written when the lesson was booked — is the better
+        ``date`` and ``titles`` only fill blanks. The studio's own value (
+        typed by hand, or written when the lesson was booked) is the better
         record of when the lesson happened and what was played, so it is never
         overwritten by what can be inferred at publish time.
 

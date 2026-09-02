@@ -70,8 +70,8 @@ def test_two_publishes_in_one_second_are_ordered_by_session(tmp_path: Path, monk
 
     `published_at` is written to the second, so a studio that publishes two
     sessions in the same second leaves two records that compare equal. `max`
-    then returned whichever the filesystem's glob yielded first — Linux and
-    macOS disagreed, which is how this surfaced — and `send lesson` with no
+    then returned whichever the filesystem's glob yielded first (Linux and
+    macOS disagreed, which is how this surfaced), and `send lesson` with no
     `--session` could pick the earlier one and send last week's message.
     """
     monkeypatch.setattr(staging, "_now", lambda: "2026-08-17T00:00:01+00:00")

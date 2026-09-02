@@ -1,7 +1,7 @@
 """The boundary where model output is accepted or refused.
 
 Every test here is a way a model gets it wrong. The schema catches shape; the
-code catches the rules a schema cannot express — and those are the ones a small
+code catches the rules a schema cannot express, and those are the ones a small
 local model breaks, because they are the ones usually written as prose.
 """
 
@@ -189,7 +189,7 @@ def test_emoji_detection_covers_the_common_ranges(text):
     assert has_emoji(text) is True
 
 
-@pytest.mark.parametrize("text", ["plain words", "ตีกลองได้ดีขึ้น", "80bpm — steady", "C→G"])
+@pytest.mark.parametrize("text", ["plain words", "ตีกลองได้ดีขึ้น", "80bpm: steady", "C→G"])
 def test_emoji_detection_does_not_fire_on_ordinary_text(text):
     """Thai text and typographic arrows are not emoji; treating them as such
     would make the check unusable for the studio it was written for."""
@@ -251,7 +251,7 @@ def test_a_progress_entry_is_accepted():
 def test_progress_is_required_once_there_is_a_session_to_compare_with():
     """The prompt already told the model to judge what is new against the
     previous session, and until this section existed there was nowhere to put
-    the answer — so it leaked into the overview and the covered list, which is
+    the answer, so it leaked into the overview and the covered list, which is
     how one fact came to be stated three times."""
     with pytest.raises(ContractError) as excinfo:
         validate_lesson_summary(valid(), expect_progress=True)
@@ -280,7 +280,7 @@ def test_progress_needs_both_sides_of_the_change():
 
 
 def test_a_fact_stated_three_times_is_rejected():
-    """Two places is a restatement — the overview naming what the covered list
+    """Two places is a restatement: the overview naming what the covered list
     details. Three is padding, and it is how a summary grows longer while
     telling a family less."""
     line = "She counts the whole bar herself now without any help from me"
@@ -413,7 +413,7 @@ def test_an_actionable_goal_passes():
 
 
 def test_the_rule_only_reads_goals():
-    """The same words are legitimate elsewhere — what the teacher will do in
+    """The same words are legitimate elsewhere: what the teacher will do in
     the next lesson belongs in `focus`."""
     payload = valid(
         focus=[{"issue": "Reading tires her quickly", "fix": "Use a larger chart next lesson"}]
@@ -429,7 +429,7 @@ TRAIT = ["weakness", "lazy", "short attention span"]
 
 def test_a_word_about_the_child_is_rejected():
     """These pages are kept. A word that sounds diagnostic is the one a family
-    remembers, and nobody in the room assessed the child — the lesson observed
+    remembers, and nobody in the room assessed the child: the lesson observed
     the playing."""
     payload = valid(focus=[{"issue": "Reading is a weakness", "fix": "Larger charts"}])
 
@@ -502,7 +502,7 @@ def test_unrelated_text_is_not_a_near_miss():
 
 def test_the_exact_spelling_anywhere_satisfies_the_term():
     """The check is about consistency, not about naming every place a term
-    appears — so one right spelling settles the term."""
+    appears, so one right spelling settles the term."""
     summary = {
         "overview": ["Covered Encore, bars 1-8."],
         "covered": [{"topic": "Encor intro", "detail": "Bar 1"}],

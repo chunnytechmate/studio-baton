@@ -2,7 +2,7 @@
 second hardcoded literal.
 
 Regression (M25): the prompt default was the literal string `"telegram"`
-while `defaults.yaml` sets `chat.driver: line` — a user who pressed enter
+while `defaults.yaml` sets `chat.driver: line`: a user who pressed enter
 through the prompt got a chat driver different from what an empty
 `baton.yaml` (which inherits the packaged defaults) would have given them.
 """
@@ -36,7 +36,7 @@ def test_the_chat_default_matches_defaults_yaml(tmp_path, capsys):
 def test_the_chat_default_is_read_from_packaged_defaults_not_hardcoded(
     tmp_path, capsys, monkeypatch
 ):
-    """Changing the packaged default must change the prompt default with it —
+    """Changing the packaged default must change the prompt default with it:
     the single-source proof, not just today's values happening to agree."""
     from baton.cli import cmd_init
 

@@ -52,7 +52,7 @@ def test_format_description_includes_every_section():
     assert "Ada Whitfield" in description
     assert "23/08/2026" in description
     assert "Held the tempo through the whole B section." in description
-    assert "Blackbird bars 9-16 — Thumb-and-finger pattern" in description
+    assert "Blackbird bars 9-16: Thumb-and-finger pattern" in description
     assert "Bars 9-16 at 80bpm with the backing track" in description
     assert "Late change to C → Four beats each, alone" in description
     assert "หางยาว" in description  # the studio's own signature footer
@@ -70,7 +70,7 @@ def test_format_description_omits_empty_sections():
 
 
 def test_format_description_is_deterministic():
-    """Same input, same output — no model runs here."""
+    """Same input, same output, no model runs here."""
     first = format_description(SUMMARY, instrument="กีตาร์", week=9, student_name="Ada")
     second = format_description(SUMMARY, instrument="กีตาร์", week=9, student_name="Ada")
 

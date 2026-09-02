@@ -2,7 +2,7 @@
 """Compare a legacy script's answer with Baton's, on the same input.
 
 A rewrite is trustworthy when it gives the same answers as the thing it
-replaces, on that studio's own data — not when its tests pass. Tests were
+replaces, on that studio's own data, not when its tests pass. Tests were
 written from the same understanding as the code, so they share its blind spots;
 the old script does not.
 
@@ -135,8 +135,8 @@ class Runner:
     outcomes: list[Outcome] = field(default_factory=list)
     _answers: dict[str, tuple[Any, str]] = field(default_factory=dict, repr=False)
     """What each command answered this run. Several cases usually compare
-    different fields of the same two commands — seven fields of one prep report,
-    say — and asking the same question seven times means seven rounds of API
+    different fields of the same two commands (seven fields of one prep report,
+    say) and asking the same question seven times means seven rounds of API
     reads per side, on a spec that already takes half an hour. Worse, the
     answers can then disagree with each other mid-run: the studio's data is
     live, and a page edited between two calls turns into a difference that is
@@ -166,7 +166,7 @@ class Runner:
         if completed.returncode != 0:
             # A non-zero exit is information, not a failure of the harness:
             # "the old one errors here and the new one answers" is exactly the
-            # kind of difference worth seeing — but a refusal is an answer, and
+            # kind of difference worth seeing, but a refusal is an answer, and
             # both systems print theirs before exiting. Half of Baton's surface
             # is fail-closed and the legacy prep report exits 1 whenever nobody
             # passes its gate, so discarding the payload here reported two
@@ -182,7 +182,7 @@ class Runner:
         return payload, ""
 
     def _learners(self) -> list[str]:
-        """Every learner name, from Baton — the only side that must be right."""
+        """Every learner name, from Baton: the only side that must be right."""
         payload, error = self._run(self.spec.get("learners_command", "baton learner list --json"))
         if payload is None:
             print(f"error: could not list learners ({error})", file=sys.stderr)
@@ -277,7 +277,7 @@ def main() -> int:
     else:
         print(f"{len(runner.outcomes)} compared, {len(disagreed)} disagreed\n")
         for outcome in disagreed:
-            print(f"  ✗ {outcome.case} — {outcome.subject}")
+            print(f"  ✗ {outcome.case}: {outcome.subject}")
             print(f"      legacy: {outcome.legacy!r}")
             print(f"      baton : {outcome.baton!r}")
             if outcome.note:

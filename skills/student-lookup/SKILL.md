@@ -35,11 +35,11 @@ Every command takes `--json` and prints one document. Read the exit code first.
 ## Rules
 
 **"Latest" is `learner latest`, never the highest session number.** Sessions get
-skipped — illness, cancellations, pages made in advance — so a high number
+skipped (illness, cancellations, pages made in advance), so a high number
 proves nothing about what happened. The command already applies this.
 
-**`learner latest` also returns the page as `sections`** — overview, content,
-focus, practice goals, next goal, homework — so "what did we do last time" needs
+**`learner latest` also returns the page as `sections`** (overview, content,
+focus, practice goals, next goal, homework), so "what did we do last time" needs
 no second command. `sections_unreadable` means the page could not be read, not
 that it was empty. For a whole day of lessons at once, use `baton prep`.
 
@@ -58,7 +58,7 @@ lesson summary, recording, or other preserved callouts.
 
 **`learner add` refuses an exact-name duplicate; a near-miss is only ever
 reported alongside a success.** Nothing is written until every page URL given
-resolves to a Notion page id — an unparseable URL stops the whole enrolment
+resolves to a Notion page id: an unparseable URL stops the whole enrolment
 before the learner is created, not after.
 
 ## Exit codes

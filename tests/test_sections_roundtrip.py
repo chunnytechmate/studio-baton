@@ -5,7 +5,7 @@ the renderer wrote "What we covered", the reader looked for เนื้อห�
 สิ่งที่เรียน / core lesson, and the largest section of every published summary
 read back empty. `prep.required` lists `content` and prep is fail-closed, so
 the teacher got no briefing at all for any learner whose last summary came
-from Baton — with nothing anywhere saying why.
+from Baton: with nothing anywhere saying why.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def test_every_section_baton_writes_reads_back_with_content():
 
 def test_the_progress_section_reads_back_too():
     """Added after this module existed, so it is the one section whose written
-    and read names match — and the trap this file guards is a section that is
+    and read names match, and the trap this file guards is a section that is
     written and then cannot be found."""
     page = _as_page(render.to_blocks(SUMMARY))
     sections = SectionRules.from_config(_config()).read(page)
@@ -74,7 +74,7 @@ def test_the_progress_section_reads_back_too():
 def test_progress_is_not_required_for_prep():
     """Deliberate: every page published before this section existed has no
     such heading, and `prep.required` is fail-closed. Adding it there would
-    refuse the teacher a briefing for every learner with an older summary —
+    refuse the teacher a briefing for every learner with an older summary:
     exactly the failure this module was written to fix."""
     from baton.core.config import packaged_defaults
 
@@ -99,7 +99,7 @@ def test_a_renamed_heading_is_still_found():
 
 
 def test_a_page_the_old_pipeline_wrote_still_reads():
-    """The studio template's own Thai headings keep working — Baton's headings
+    """The studio template's own Thai headings keep working: Baton's headings
     are added to the list, not swapped in for it."""
     page = [
         Block(id="h", type="heading_2", text="เนื้อหาและเทคนิคที่เรียน"),
@@ -128,7 +128,7 @@ def test_a_written_heading_joins_the_keywords_it_feeds():
 
 def test_a_heading_the_keywords_already_cover_is_left_alone():
     """ "Overview" and the keyword "overview" are the same word, as are
-    "Practice goals" and "practice goals" — only the two headings the keywords
+    "Practice goals" and "practice goals", only the two headings the keywords
     genuinely missed get added."""
     merged = with_written_headings(READ_KEYWORDS, WRITTEN_HEADINGS)
 

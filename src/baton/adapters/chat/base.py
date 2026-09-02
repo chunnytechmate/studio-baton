@@ -2,7 +2,7 @@
 
 The gate is the point of this subsystem, so the protocol reflects it:
 :meth:`Messenger.resolve` answers "does this recipient exist" *before* anything
-is sent, and :meth:`SendOutcome.sent` is a fact the caller records — never an
+is sent, and :meth:`SendOutcome.sent` is a fact the caller records, never an
 assumption the caller makes from the absence of an error.
 """
 
@@ -70,7 +70,7 @@ def resolve_contact(config: Config, query: str) -> tuple[str, str]:
     the wrong person.
 
     Returns:
-        ``(contact_key, recipient_id)`` — the key names the contact in
+        ``(contact_key, recipient_id)``: the key names the contact in
         configuration; the id is the *value* of the environment variable named
         by that contact's ``id_env``, ready for a driver to deliver to. The
         name of the variable is never what gets sent.
@@ -78,7 +78,7 @@ def resolve_contact(config: Config, query: str) -> tuple[str, str]:
     Raises:
         NeedsHumanError: No match, or several. Carries the candidates.
         ConfigError: The matched contact's ``id_env`` names a variable that is
-            not set — the same failure every other credential reports.
+            not set: the same failure every other credential reports.
     """
     contacts = config.section("chat.contacts")
     if not contacts:
@@ -90,7 +90,7 @@ def resolve_contact(config: Config, query: str) -> tuple[str, str]:
 
     wanted = query.strip().casefold()
     # Keyed by contact key, not a list: the same alias written twice under one
-    # contact is one match, not two — a duplicate would report an ambiguity
+    # contact is one match, not two: a duplicate would report an ambiguity
     # that does not exist. A contact whose *key* matches wins outright.
     exact: dict[str, dict[str, Any]] = {}
     for key, entry in contacts.items():

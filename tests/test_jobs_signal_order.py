@@ -3,7 +3,7 @@ the child process.
 
 Regression (M28): the handlers were installed *after* ``subprocess.Popen``
 returned. A SIGTERM landing in that window found no handler to catch it and
-no ``child`` reference yet to terminate — meta stayed stuck at "running"
+no ``child`` reference yet to terminate: meta stayed stuck at "running"
 until orphan detection found it on a later pass.
 """
 

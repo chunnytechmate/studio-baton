@@ -2,7 +2,7 @@
 
 One shell owns argument parsing, configuration loading, error rendering, and
 the exit code. Command modules contribute a parser and a handler and do nothing
-else — they never print failures and never call ``sys.exit``. That is what
+else: they never print failures and never call ``sys.exit``. That is what
 keeps the exit contract in :mod:`baton.exits` true for every command rather
 than true for the commands someone remembered to wire up correctly.
 """
@@ -41,7 +41,7 @@ class _Terminated(Exception):
 def _terminate_as_exception() -> Any:
     """Turn SIGTERM into an exception for the duration of a command.
 
-    An agent harness caps how long one call may run and kills what overruns —
+    An agent harness caps how long one call may run and kills what overruns:
     that is the ordinary end of a long Baton command, not an exotic one. The
     default disposition kills the process outright, so stdout stays empty and
     the caller cannot tell "cut short" from "crashed before printing". Raising
@@ -76,13 +76,13 @@ def _force_utf8_streams() -> None:
     """Make stdout and stderr carry Thai whatever the environment claims.
 
     Baton's output is Thai as often as English, and ``json.dumps`` is called
-    with ``ensure_ascii=False`` on purpose — a parent reads the message, not an
+    with ``ensure_ascii=False`` on purpose: a parent reads the message, not an
     escape sequence. A stream that cannot encode Thai therefore does not
     degrade, it raises, and the whole document is lost after the work already
     happened.
 
     Python already coerces a bare C/POSIX locale to UTF-8, so this only matters
-    when something set the encoding explicitly — ``PYTHONIOENCODING=ascii`` in a
+    when something set the encoding explicitly: ``PYTHONIOENCODING=ascii`` in a
     container image, or a genuinely non-UTF-8 locale. ``backslashreplace``
     rather than plain UTF-8 for stderr: diagnostics must never be the thing
     that kills a run.
@@ -155,7 +155,7 @@ def global_flags() -> argparse.ArgumentParser:
     silently stops working.
 
     And this is a *function*, not a shared instance. ``parents=`` copies actions
-    by reference, and ``set_defaults`` mutates ``action.default`` in place — so
+    by reference, and ``set_defaults`` mutates ``action.default`` in place, so
     one ``set_defaults`` call on the top-level parser would erase the SUPPRESS
     on every subparser at once, which is exactly the bug this comment exists to
     prevent a repeat of.
@@ -218,7 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Not argparse's `action="version"`: that prints prose and raises
     # SystemExit before the JSON machinery is reached, so `--json --version`
     # answered in a format no caller could parse. Version is the one question
-    # an agent must ask *before* it trusts anything else — a skill written for
+    # an agent must ask *before* it trusts anything else: a skill written for
     # a newer Baton meets an older one as an "unknown command" it cannot tell
     # from its own typo.
     parser.add_argument("--version", action="store_true", help="Print the version and exit.")
@@ -334,7 +334,7 @@ def _usage_failure(argv: Sequence[str], parse_message: str = "") -> tuple[Report
     failure already emits.
 
     argparse prints its own line to stderr and raises ``SystemExit(2)``;
-    left alone, that escapes as a bare exit 2 — the code the contract
+    left alone, that escapes as a bare exit 2: the code the contract
     reserves for *configuration* problems, which is exactly the
     misdiagnosis an agent branching on exit codes would make.
     """
@@ -415,7 +415,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             "error": SLUG[Exit.TERMINATED],
             "exit_code": int(Exit.TERMINATED),
             "message": "Terminated before the command finished (SIGTERM).",
-            "remedy": "The run was cut short, not refused — whether its work "
+            "remedy": "The run was cut short, not refused: whether its work "
             "completed is unknown. Check with `baton video status` or the "
             "relevant `show` command before re-running, and prefer `--detach` "
             "for work that outlives one call.",
@@ -423,8 +423,8 @@ def run(argv: Sequence[str] | None = None) -> int:
         report.failure(terminated, human=format_error(terminated))
         return int(Exit.TERMINATED)
     except Exception as err:
-        # Without this, an unexpected exception left stdout empty and exited 1
-        # — the code reserved for *bad invocation*. An agent branching on the
+        # Without this, an unexpected exception left stdout empty and exited 1:
+        # the code reserved for *bad invocation*. An agent branching on the
         # number then reads a bug in Baton as a mistake of its own and loops
         # rewriting arguments that were never wrong.
         crash: dict[str, Any] = {
@@ -433,7 +433,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             "exit_code": int(Exit.INTERNAL),
             "message": f"Baton failed unexpectedly: {type(err).__name__}: {err}",
             "remedy": "This is a bug in Baton, not in how the command was "
-            "called — re-running with different arguments will not help. "
+            "called: re-running with different arguments will not help. "
             "Report it with the traceback in `details`.",
             "details": {
                 "exception": type(err).__name__,
@@ -441,8 +441,8 @@ def run(argv: Sequence[str] | None = None) -> int:
             },
         }
         # Suppressed: the envelope is a courtesy at this point, and a stdout
-        # that is closed or unencodable — one plausible cause of the crash
-        # itself — must not turn the report of a failure into a second one.
+        # that is closed or unencodable (one plausible cause of the crash
+        # itself) must not turn the report of a failure into a second one.
         with suppress(Exception):
             report.failure(crash, human=f"{format_error(crash)}\n\n{crash['details']['traceback']}")
         return int(Exit.INTERNAL)

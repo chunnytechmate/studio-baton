@@ -1,8 +1,8 @@
 """The two reports that bracket a teaching day's sends.
 
 `send readiness` is read before the sends start; `send aftermath` is read
-after. Both answer questions an operator actually asks at those moments —
-who is booked, what would block their message, what never went out — and
+after. Both answer questions an operator actually asks at those moments (
+who is booked, what would block their message, what never went out) and
 both are reports, not gates: exit 0 whatever they find, because a report
 that refuses only teaches the operator to stop running it.
 
@@ -109,7 +109,7 @@ def studio(profile, monkeypatch):
         encoding="utf-8",
     )
 
-    # No calendar section, so the roster falls back to the documents —
+    # No calendar section, so the roster falls back to the documents,
     # which needs a document carrying the day's date.
     docs = FakeDocStore(
         statuses={"doc-ada-03": DocStatus(doc_id="doc-ada-03", status="Complete", date=DAY)},
@@ -253,7 +253,7 @@ def test_the_calendar_is_the_roster_when_there_is_one(studio, capsys, monkeypatc
     assert payload["ready"] == 1
     # An event naming no learner is listed, never guessed at.
     assert [event["title"] for event in payload["unmatched"]] == ["น้องมานี (lesson 1)"]
-    assert "คิวที่จับคู่ชื่อไม่ได้" in printed
+    assert "รายการในปฏิทินที่จับคู่ชื่อไม่ได้" in printed
 
 
 # -- aftermath --------------------------------------------------------------

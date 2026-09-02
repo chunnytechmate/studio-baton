@@ -1,11 +1,11 @@
-# Example profile — a guitar teacher running everything locally.
+# Example profile: a guitar teacher running everything locally.
 #
 # Copy this directory, edit the values, and point BATON_PROFILE at it. Only the
 # settings that differ from src/baton/defaults.yaml need to appear here; run
 # `baton config show` to see the merged result.
 #
 # No credential values belong in this file. Settings ending in `_env` name the
-# environment variable that holds the secret — see .env.example.
+# environment variable that holds the secret: see .env.example.
 
 version: 1
 

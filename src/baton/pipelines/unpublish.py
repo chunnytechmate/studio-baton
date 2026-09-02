@@ -8,18 +8,18 @@ never silently deleted.
 
 Three ways to attribute blocks, in order of trust:
 
-* **recorded** — publishes since 0.7.0 store the ids of the blocks they
+* **recorded**: publishes since 0.7.0 store the ids of the blocks they
   appended in the published record. An id that is gone from the page already
   counts as removed; an id whose type or text no longer matches what was
   recorded was edited by a person, and that stops the whole unpublish.
-* **legacy** — records written before the block list exists are matched
+* **legacy**: records written before the block list exists are matched
   against a fresh rendering of the summary the record still holds, using the
   same renderer configuration the publish used. The footer cannot be
   re-rendered (it says when the clock ran), so footer lines are matched by
   the clock-independent pattern instead. A replaceable block that matches
-  nothing is ambiguous — edited, or added by hand — and ambiguity stops the
+  nothing is ambiguous (edited, or added by hand), and ambiguity stops the
   unpublish rather than being resolved by a guess.
-* **whole page** — an explicit ``--whole-page --force`` removes everything.
+* **whole page**: an explicit ``--whole-page --force`` removes everything.
   It exists because the other two modes deliberately fail safe, and
   "everything goes" is sometimes exactly the recovery a person has in mind
   for a page that went to the wrong recipient. That is why it demands the
@@ -49,7 +49,7 @@ class UnpublishPlan:
 
     doc_id: str
     mode: str
-    """``recorded``, ``legacy``, or ``whole_page`` — how blocks were attributed."""
+    """``recorded``, ``legacy``, or ``whole_page``: how blocks were attributed."""
 
     delete_blocks: list[dict[str, Any]] = field(default_factory=list)
     """Blocks with evidence they are Baton's; these are removed."""
@@ -58,7 +58,7 @@ class UnpublishPlan:
     """Blocks that stay: preserve-policy protected, or simply not ours."""
 
     missing: list[dict[str, Any]] = field(default_factory=list)
-    """Recorded blocks already absent from the page. Not an error — someone
+    """Recorded blocks already absent from the page. Not an error: someone
     removed them first, which is the outcome this command was going to reach."""
 
     edited: list[dict[str, Any]] = field(default_factory=list)
@@ -118,7 +118,7 @@ def plan_recorded(
             continue
         # A ticked to-do still matches: the checkbox lives in the block's raw
         # state, not its text, and ticking a goal is the reader's half of the
-        # block Baton wrote — not an edit that rewrites its words.
+        # block Baton wrote, not an edit that rewrites its words.
         if current.type != str(item.get("type", "")) or current.text != str(item.get("text", "")):
             plan.edited.append(_entry(current))
             continue
@@ -158,8 +158,8 @@ def plan_legacy(
     """Attribute blocks by re-rendering the summary the record still holds.
 
     Rendering is deterministic, so every non-footer block the publish wrote
-    reproduces byte-for-byte and matches exactly. The footer cannot — it
-    carries the moment of publishing — so its lines match by pattern instead.
+    reproduces byte-for-byte and matches exactly. The footer cannot (it
+    carries the moment of publishing), so its lines match by pattern instead.
     Anything else replaceable is reported as ambiguous for a person to rule
     on; deleting it on the theory that it "must be ours" is the one guess
     this module refuses to make.

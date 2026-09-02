@@ -88,15 +88,15 @@ as the CLI operates it. It changes no command, schema, exit code, or adapter.
 
 ## 1.0.0
 
-The version the project was working towards: the whole cycle — booking,
-video, summaries, delivery — has now run end to end on real teaching days, so
+The version the project was working towards: the whole cycle (booking,
+video, summaries, delivery) has now run end to end on real teaching days, so
 the package declares itself production/stable instead of alpha.
 
 ### Upgrading
 
 - `baton send lesson` no longer refuses outright when a session has no
   recording link: it stops with exit 3 and asks a person, and
-  `--without-video` — that person's confirmed answer — sends the message with
+  `--without-video`: that person's confirmed answer: sends the message with
   no video section. An agent or script that treated exit 5 as the only
   outcome for a missing `video_link` should now expect exit 3 carrying
   `candidates`. Every other required field keeps the hard, unoverridable
@@ -110,7 +110,7 @@ the package declares itself production/stable instead of alpha.
 
 - A session with one clip no longer fails its encode when a video filter
   chain is in play: the lone clip's audio is mapped as a stream specifier
-  (`0:a`), not as a filter-complex label — which is what `media.encode.fps`
+  (`0:a`), not as a filter-complex label, which is what `media.encode.fps`
   used to trip over.
 
 ### Sends
@@ -136,7 +136,7 @@ database had been carrying with nothing reading them.
 ### Upgrading
 
 - A learner with `has_instrument` false now gets the `goals` section renamed
-  on the page and in the parent's message — `summary.no_instrument.section`
+  on the page and in the parent's message: `summary.no_instrument.section`
   and `.message_label`. **A profile that publishes in a language other than
   the package default must set both**, or the section keeps its usual
   wording; nothing substitutes English into a translated page. The older
@@ -176,7 +176,7 @@ database had been carrying with nothing reading them.
 - Per-learner voice, completed: a studio's own prompt level reaches the model
   through `summary.prompt_levels` (mapped by `db.fields.learner.prompt_level`),
   and a level the profile does not describe adds nothing rather than being
-  guessed at — the same stance `tone` and `instrument` already took.
+  guessed at: the same stance `tone` and `instrument` already took.
 
 ### Sending
 
@@ -185,7 +185,7 @@ database had been carrying with nothing reading them.
   send refuses through, so the report and the refusal cannot drift. It keeps
   the layers apart: not yet published, no summary, and no video block are
   three different fixes in a fixed order.
-- `baton send aftermath --date DATE` reports what the day left behind —
+- `baton send aftermath --date DATE` reports what the day left behind:
   drafts that never reached publish, draft files whose learner no longer
   exists, and published lessons with no send receipt. The receipt check
   shares one key with `send lesson`, so a receipt written by one is found by
@@ -201,7 +201,7 @@ database had been carrying with nothing reading them.
   both raising `StateError`. `learner assign` printed "is now working on"
   straight after a write that had done nothing.
 - The fake document store now tolerates deleting a block that is already
-  gone, as the real one always did — a resume path that production handles
+  gone, as the real one always did: a resume path that production handles
   was failing only in tests.
 - A read served by `db.fallback` says so on stderr. The flag recording it had
   been set on every failover and read by nothing.
@@ -223,8 +223,8 @@ and both narrowings are named below.
   with nothing owed on them clear as before.
 - `calendar book` and `calendar schedule` accept a unique partial name, where
   they used to refuse everything but an exact match. If a studio relied on
-  the strict refusal, nothing regresses — an ambiguous partial still exits 3
-  with candidates — but a match the operator did not intend is now possible;
+  the strict refusal, nothing regresses (an ambiguous partial still exits 3
+  with candidates), but a match the operator did not intend is now possible;
   the report names it in `matched` every time the relaxation fires, and
   `cancel` and the `lesson` commands keep the strict gate.
 
@@ -238,8 +238,8 @@ and both narrowings are named below.
 
 ### Lessons
 
-- `lesson list` now carries each draft's full publish state per target —
-  status, last error, attempts, and time — falling back to the published
+- `lesson list` now carries each draft's full publish state per target (
+  status, last error, attempts, and time) falling back to the published
   record where a re-staged draft is blind. A heartbeat asking "is this
   stuck?" no longer has to open the draft by hand.
 - Vocabulary, in three layers that all warn rather than rewrite: a pool under
@@ -248,7 +248,7 @@ and both narrowings are named below.
   keeps corrected notes beside the raw ones (the contract serves the
   corrected text; the raw notes are never overwritten); and `lesson ingest`
   reports near-miss spellings in `warnings` and on stderr without refusing
-  the summary — a summary rejected over a spelling is a summary that stops
+  the summary: a summary rejected over a spelling is a summary that stops
   being produced.
 
 ## 0.5.0
@@ -261,21 +261,21 @@ subcommand or config-gated off by default.
 ### Calendar
 
 - Weekday names, time words (`โมง`/`นาฬิกา`/`ทุ่ม`/`ตี`/`เที่ยง`/`เที่ยงคืน`),
-  and day-first dates join the grammar in `whenever.py` — vocabulary is
+  and day-first dates join the grammar in `whenever.py`: vocabulary is
   configuration (`calendar.weekdays`, `calendar.time_words`), matching
   `date_shorthand`'s existing pattern. Day-first parsing is
   `calendar.accept_dmy`, off by default: day-first is a convention, not a
   universal, and `YYYY-MM-DD` is never ambiguous. Bare `N โมง` reads
-  literally — `9 โมง` is 09:00, not the traditional Thai count — and a time
+  literally: `9 โมง` is 09:00, not the traditional Thai count, and a time
   past 23 hours is refused rather than wrapped.
 - `calendar list --from/--to` shows a whole range, one entry per day, empty
-  days included — a gap is information. The bare `calendar list <date>`
+  days included: a gap is information. The bare `calendar list <date>`
   form is unchanged.
 
 ### Learners
 
 - `learner add` enrols a learner and, optionally, their session pages from
-  Notion URLs (`--page-urls`/`--pages`) — the write path `learner
+  Notion URLs (`--page-urls`/`--pages`): the write path `learner
   list`/`show` never had. Refuses an exact-name duplicate outright (exit
   5); a near-miss is only ever reported alongside a success, never
   blocking one. `learner.instruments`/`learner.tones` restrict
@@ -289,11 +289,11 @@ subcommand or config-gated off by default.
 
 ### Songs
 
-- New command group `baton song list|search|show|add|update|remove` — the
+- New command group `baton song list|search|show|add|update|remove`: the
   write path the piece catalogue never had. `remove` is refused while any
   learner is still assigned (exit 5, naming who), the same guard the
   legacy song manager used. `update` takes plain strings per field: a flag
-  left out leaves it alone, an explicit empty value clears it — the same
+  left out leaves it alone, an explicit empty value clears it: the same
   convention `Piece` already uses everywhere for "no link". Unknown ids on
   `update`/`remove` are refused rather than treated as a silent success.
 - New skill `studio-songs`; `student-lookup` gains the `learner add` row.
@@ -302,7 +302,7 @@ subcommand or config-gated off by default.
 
 - `LearnerStore` gains `add_learner`, `add_session`, `add_piece`,
   `update_piece`, `delete_piece`, implemented for SQLite, PostgREST/
-  Supabase, and the fallback store — writes still never fail over, the
+  Supabase, and the fallback store: writes still never fail over, the
   fallback store's one rule. `FieldMap.extra_columns()` resolves
   studio-specific columns the model has no field for, and refuses an
   unmapped one before any write happens.
@@ -315,7 +315,7 @@ Everything here came out of running 0.4.1 through a real teaching day
 ### Upgrading
 
 **A summary now needs a `progress` section once the learner has a previous
-session.** `lesson ingest` refuses without one — exit 4, pointing at
+session.** `lesson ingest` refuses without one: exit 4, pointing at
 `/progress`. Each entry is the state `before` and the state `after`. Nothing
 changes for a first lesson, which has nothing to compare against.
 
@@ -328,7 +328,7 @@ pointer and a hint, so the fix is one round trip. The lists live under
 `summary.body` and emptying one turns its rule off.
 
 Both are steered by `lesson contract`, which hands the model the schema and the
-rules fresh on every call — an agent that reads the contract adapts on its own.
+rules fresh on every call: an agent that reads the contract adapts on its own.
 An agent working from a cached prompt will hit exit 4 once and then adapt.
 
 **`summary.sections` gains `progress`.** A studio that renamed its headings
@@ -339,8 +339,8 @@ page published before this release lacks the heading, and prep is fail-closed.
 
 - `progress` as a first-class section, rendered `before → after`.
 - `summary.tones`, `summary.instruments`, and `summary.no_instrument_at_home`
-  turn the `tone`, `instrument`, and `has_instrument` columns — all three
-  present since the first migration, none of them read — into guidance for the
+  turn the `tone`, `instrument`, and `has_instrument` columns (all three
+  present since the first migration, none of them read) into guidance for the
   learner being written about.
 - A published record keeps the validated summary, not only the message sent to
   the family, so the next lesson is staged against what happened.
@@ -354,7 +354,7 @@ page published before this release lacks the heading, and prep is fail-closed.
   block now wins over a bookmark or an embed wherever it sits, and callers pass
   the piece's `source_link` so the song is never mistaken for the lesson. A
   page holding only the song reads as having no recording, and the send gate
-  refuses — which is the correct answer.
+  refuses, which is the correct answer.
 - `lesson publish` links a recording the pipeline uploaded but never put on the
   page, including on a re-run of an already-published lesson.
 
@@ -382,14 +382,14 @@ page published before this release lacks the heading, and prep is fail-closed.
 
 Carries the 308 fix: a resumable YouTube upload's HTTP 308 is a success
 shape, not a redirect to follow. The release itself taught two things the
-repo kept — `pyproject.toml`'s version is static, so it must be bumped before
+repo kept: `pyproject.toml`'s version is static, so it must be bumped before
 the tag is minted or PyPI refuses the wheel as the previous version; and the
 documented pytest command must collect the whole suite.
 
 ## 0.4.0 (2026-08-27)
 
 - Two publishes inside one second now order by session number, not by
-  whichever the filesystem's glob yielded first — `send lesson` with no
+  whichever the filesystem's glob yielded first: `send lesson` with no
   `--session` asks for the latest record, and the arbitrary winner could
   send last week's message to this week's family.
 - Harness-compatibility gaps HR1–HR8 closed.
@@ -412,7 +412,7 @@ documented pytest command must collect the whole suite.
 ## 0.3.0 (2026-08-27)
 
 The migration-audit release: the audit of what the move from the studio's
-previous scripts left behind lived in `docs/migration-audit.md` until 0.4.2 —
+previous scripts left behind lived in `docs/migration-audit.md` until 0.4.2:
 its fourteen fixed findings are explained in the code they changed, and its
 six open ones are issues #74-#79. This release landed the audit lanes for
 prep, notes, LINE send, video, calendar, lesson, and retired skills.
@@ -420,7 +420,7 @@ prep, notes, LINE send, video, calendar, lesson, and retired skills.
 ## 0.2.7 (2026-08-23)
 
 A GPU encoder option: `media.encode.codec: h264_nvenc` moves the final
-encode to NVIDIA NVENC. Decode and the concat filter stay on CPU — clips
+encode to NVIDIA NVENC. Decode and the concat filter stay on CPU: clips
 come from phones and rarely share a codec or resolution.
 
 ## 0.2.6 (2026-08-23)
@@ -442,7 +442,7 @@ side-by-side comparison showed parents would notice the difference.
 ## 0.2.4 (2026-08-23)
 
 Google credentials no longer rewrite the scopes of an authorized-user
-refresh token — replacing them can make Google reject a valid token with
+refresh token: replacing them can make Google reject a valid token with
 `invalid_scope` before any API call is attempted.
 
 ## 0.2.3 (2026-08-22)
@@ -466,7 +466,7 @@ refresh token — replacing them can make Google reject a valid token with
 ## 0.2.1 (2026-08-22)
 
 `baton prep` (the day's lesson briefing, behind a hard gate) and `baton
-course` (archive a finished course before emptying it — clear refuses an
+course` (archive a finished course before emptying it: clear refuses an
 unarchived course). Docs explain Baton's lineage and working cycle; the
 call-graph extractor the published diagram is drawn from ships.
 
@@ -475,5 +475,5 @@ call-graph extractor the published diagram is drawn from ships.
 First public release: learners, lesson summaries, messaging, video, and
 calendar behind one fail-closed CLI. The release run caught that a
 mis-scoped `include` in `pyproject.toml` produced a wheel of data files with
-no Python in it — nothing was published, and the wheel check that caught it
+no Python in it, nothing was published, and the wheel check that caught it
 now runs on every release.

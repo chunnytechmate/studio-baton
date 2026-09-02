@@ -3,7 +3,7 @@
 A lesson's date lives on the session document, and the document's property is
 deliberately flexible: a studio may keep a real date there, or type
 "สัปดาห์ที่แล้ว" by hand. So this formats what it can parse and returns
-everything else untouched — a message with an odd date in it is a small
+everything else untouched: a message with an odd date in it is a small
 problem, and a message that failed to send because a date could not be parsed
 is a large one.
 
@@ -73,7 +73,7 @@ class DateFormat:
 
         Raises:
             DateFormatError: The format asks for ``{month}`` and no month names
-                are configured — silently emitting an empty month would be
+                are configured: silently emitting an empty month would be
                 worse than saying so.
         """
         pattern = self.format
@@ -96,7 +96,7 @@ class DateFormat:
         """``value`` reformatted when it is a date, and returned as-is when not.
 
         Handles the ISO date a document property holds, with or without a time
-        part. Anything else — a hand-typed phrase, an empty property — passes
+        part. Anything else (a hand-typed phrase, an empty property) passes
         straight through.
         """
         raw = (value or "").strip()

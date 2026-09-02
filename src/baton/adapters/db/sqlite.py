@@ -1,8 +1,8 @@
 """Learner records in a local SQLite file.
 
 The default driver, and the reason Baton is usable within a couple of minutes:
-no account, no project, no network. It is not a toy — a one-person studio with
-a few dozen learners will never outgrow it — but it is also the store used by
+no account, no project, no network. It is not a toy (a one-person studio with
+a few dozen learners will never outgrow it), but it is also the store used by
 every offline test, so it stays honest.
 
 Identifiers are interpolated into SQL because SQLite cannot parameterise table
@@ -25,8 +25,8 @@ from .base import FieldMap
 from .mapping import Schema
 
 #: How long a statement waits for a competing writer before giving up. SQLite
-#: allows one writer at a time, so two Baton commands overlapping — a nightly
-#: video job and a morning lookup — is ordinary, not exceptional. Without this
+#: allows one writer at a time, so two Baton commands overlapping (a nightly
+#: video job and a morning lookup) is ordinary, not exceptional. Without this
 #: the loser fails instantly.
 DEFAULT_BUSY_TIMEOUT_MS = 5000
 
@@ -46,7 +46,7 @@ def _contention_error(exc: sqlite3.OperationalError) -> UpstreamError:
 
     Raised as `UpstreamError` deliberately. It is what `FallbackStore` fails
     over on, and a database that is merely busy is exactly the case a fallback
-    exists for — where a misreported schema error would never divert.
+    exists for: where a misreported schema error would never divert.
     """
     return UpstreamError(
         f"The database is in use by another process: {exc}",
@@ -239,7 +239,7 @@ class SqliteStore:
             f"WHERE {fields.column('id')} = ?"
         )
         cursor = self._write(sql, (piece_id, learner_id))
-        # An UPDATE that matched nothing is a silent success — the same shape
+        # An UPDATE that matched nothing is a silent success: the same shape
         # of bug `update_piece` already guards against on the PostgREST side.
         # `learner assign` reports "is now working on" straight after this
         # returns, so a no-op here reads to the teacher as a completed change.

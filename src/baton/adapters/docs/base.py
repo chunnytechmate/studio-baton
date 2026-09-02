@@ -1,12 +1,12 @@
 """What a session-document store must do.
 
 A "document" is the page a learner and their family actually read: what was
-covered, what to practise, the recording. Baton needs four things from it —
+covered, what to practise, the recording. Baton needs four things from it:
 read the status and date, list the blocks, replace the summary without
 destroying anything else, and append.
 
 The fourth is the one that matters. :class:`PreservePolicy` encodes the rule
-that used to live in prose ("never clear the whole page — the videos and sheet
+that used to live in prose ("never clear the whole page: the videos and sheet
 links are on it"), so a rewrite physically cannot delete an uploaded recording.
 """
 
@@ -26,7 +26,7 @@ class DocStatus:
     date: str = ""
     titles: str = ""
     block_count: int | None = 0
-    """How many blocks are on the page — ``None`` when nobody counted.
+    """How many blocks are on the page: ``None`` when nobody counted.
 
     Counting means listing the page, which is a request the caller pays for,
     so `get_status(with_blocks=False)` skips it and says so here rather than
@@ -64,7 +64,7 @@ class Block:
 
 #: Block shapes that may hold a session's recording link. Notion's UI turns a
 #: pasted URL into a bookmark, so a recording added by hand rather than by the
-#: pipeline is a bookmark — reading `video` blocks alone made such a page look
+#: pipeline is a bookmark: reading `video` blocks alone made such a page look
 #: to Baton like it had no recording at all.
 VIDEO_LINK_BLOCKS: tuple[str, ...] = ("video", "bookmark", "embed")
 
@@ -79,7 +79,7 @@ def video_identity(url: str) -> str:
     """A comparable identity for a video URL.
 
     ``youtu.be/ID``, ``watch?v=ID`` and ``/embed/ID`` are one video written
-    three ways, and Notion rewrites freely between them — so comparing the
+    three ways, and Notion rewrites freely between them, so comparing the
     strings lets the same video pass twice as two different ones. Anything
     that is not a YouTube URL has no id to compare and falls back to the URL
     itself, folded only where a difference never means a different page.
@@ -98,14 +98,14 @@ def find_video_link(
 ) -> str:
     """This session's recording link on its document, or "" when there is none.
 
-    Shared by every caller that needs "the recording, if any" — `baton send`
+    Shared by every caller that needs "the recording, if any": `baton send`
     and the YouTube description step both read the same document the same
     way, rather than each growing its own copy that quietly drifts from the
     other (the original system had this duplicated across skills).
 
     Two rules keep the *song being learnt* from being read as the recording of
     the lesson. A studio keeps both on the same page, and once the song is a
-    YouTube link — for a pop song it always is — nothing in the shape of the
+    YouTube link (for a pop song it always is), nothing in the shape of the
     URL tells the two apart:
 
     * a `video` block wins over a bookmark or an embed however far up the page
@@ -118,7 +118,7 @@ def find_video_link(
         blocks: Block types that may hold the link. The default matches the
             shapes the previous system accepted; ``docs.video_link_blocks``
             overrides it per studio.
-        exclude: URLs that are something other than this lesson's recording —
+        exclude: URLs that are something other than this lesson's recording:
             in practice the piece's own ``source_link``. Compared by video
             identity, not as strings, so the song still matches after Notion
             has rewritten it into another of YouTube's URL shapes.
@@ -221,7 +221,7 @@ class PreservePolicy:
         """Split blocks into ``(preserved, replaceable)``.
 
         Returns:
-            Two lists. Everything not explicitly preserved is replaceable —
+            Two lists. Everything not explicitly preserved is replaceable:
             the policy is an allowlist, so a block type nobody thought about
             is treated as summary text rather than silently protected.
         """
@@ -234,7 +234,7 @@ class PreservePolicy:
 class DocPage:
     """Where a page sits, so a course's filing can be read rather than assumed.
 
-    ``parent_id`` is whatever holds the page — in Notion that can be another
+    ``parent_id`` is whatever holds the page: in Notion that can be another
     page or a block, because a studio may keep its course pages inside a
     callout rather than directly under a page. Callers only ever compare it or
     list its children, so the distinction is carried in ``parent_kind`` for
@@ -281,7 +281,7 @@ class DocStore(Protocol):
     def get_status(self, doc_id: str, *, with_blocks: bool = True) -> DocStatus:
         """Status, date, titles, and (unless declined) block count.
 
-        Counting the blocks means listing the page — a second request, and one
+        Counting the blocks means listing the page: a second request, and one
         more again per hundred blocks. Callers that only want the status word
         or the date pass ``with_blocks=False`` and get ``block_count=None``.
         """
@@ -298,7 +298,7 @@ class DocStore(Protocol):
     def get_table(self, table_id: str) -> DocPage:
         """Identity and parentage of an embedded table.
 
-        ``parent_id`` is the page the table sits on — read that page to learn
+        ``parent_id`` is the page the table sits on: read that page to learn
         what the table is part of.
         """
         ...

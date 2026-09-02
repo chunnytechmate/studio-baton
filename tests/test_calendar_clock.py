@@ -27,5 +27,5 @@ def test_date_only_passes_through_whole():
 
 def test_long_string_without_a_datetime_separator_is_not_sliced():
     """Long enough to trip a naive length check, but position 10 is a digit,
-    not a separator — there is no clock to take."""
+    not a separator: there is no clock to take."""
     assert _clock_of("20260826093000+0700") == "20260826093000+0700"

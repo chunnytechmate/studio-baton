@@ -5,7 +5,7 @@ part of the contract. Anyone writing a driver can run their implementation
 against the same expectations, and anyone extending Baton can test a pipeline
 end to end without a Notion token or a network.
 
-They are deliberately strict — a fake that is more forgiving than the real
+They are deliberately strict: a fake that is more forgiving than the real
 thing produces tests that pass while production fails.
 """
 
@@ -47,7 +47,7 @@ class FakeLearnerStore:
         self.pieces = list(pieces or [])
         self.works = list(works or [])
         self.closed = False
-        #: Set to an exception to make every call raise — for testing the
+        #: Set to an exception to make every call raise: for testing the
         #: failover and error paths without an actual outage.
         self.fail_with: Exception | None = None
         self._ids = itertools.count(start=1000)
@@ -343,7 +343,7 @@ class FakeDocStore:
         """Add blocks, splitting into request-sized batches like the real store.
 
         The per-request ceiling is a transport detail the adapter hides, so the
-        fake hides it too — a fake that refuses what production accepts sends
+        fake hides it too: a fake that refuses what production accepts sends
         tests chasing a limit that is not really there. Each batch is recorded
         in `appended`, so a test can still assert that the split happened.
 
@@ -393,7 +393,7 @@ class FakeDocStore:
         return status
 
     def delete_blocks(self, block_ids: list[str]) -> int:
-        """Delete, tolerating ids that are already gone — as Notion does.
+        """Delete, tolerating ids that are already gone: as Notion does.
 
         The real store treats a 404 on a block delete as the outcome the
         delete wanted: a publish that died mid-delete, or a person who removed
@@ -522,7 +522,7 @@ class FakePublisher:
         self.uploads: list[dict[str, Any]] = []
         self.fail_with: Exception | None = None
         self._ids = itertools.count(start=1)
-        #: video ids the fake pretends belong to some other channel — for
+        #: video ids the fake pretends belong to some other channel: for
         #: exercising the ownership refusal without a real API call.
         self.foreign_video_ids: set[str] = set()
         self.descriptions: dict[str, str] = {}

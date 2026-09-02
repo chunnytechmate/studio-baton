@@ -1,6 +1,6 @@
 # Adopting a database you already have
 
-Do not run the migration. Point Baton at your own names instead — that is what
+Do not run the migration. Point Baton at your own names instead: that is what
 `db.tables` and `db.fields` are for, and it is the difference between adopting
 Baton and migrating to it.
 

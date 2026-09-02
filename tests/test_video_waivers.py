@@ -1,6 +1,6 @@
 """The confirmation code `send lesson --without-video <code>` checks.
 
-The store, in isolation from the CLI plumbing around it — the tests in
+The store, in isolation from the CLI plumbing around it: the tests in
 `test_send.py` cover the flow end to end; these cover the rules the flow
 depends on: one code per session, single-use, expiring, and never guessable
 from another session's code.
@@ -78,7 +78,7 @@ def test_a_code_only_answers_the_session_it_was_requested_for(tmp_path):
 
 
 def test_a_code_only_answers_the_learner_it_was_requested_for(tmp_path):
-    """Same session number, two different learners — a real shape once a
+    """Same session number, two different learners: a real shape once a
     studio has more than a handful of people."""
     waivers = VideoWaivers(tmp_path / "w.json")
     ada_code = waivers.request("1", 3, sent_to="teacher")
@@ -92,7 +92,7 @@ def test_a_code_only_answers_the_learner_it_was_requested_for(tmp_path):
 def test_an_expired_code_is_refused(tmp_path):
     """Unlike `Receipts`, the expiry is baked into the entry at request time
     rather than recomputed from whatever TTL happens to be configured when
-    someone later answers — a studio changing that setting must not shorten
+    someone later answers: a studio changing that setting must not shorten
     or extend a code already on its way to someone's phone. So staleness here
     is simulated by backdating the stored `expires_at` directly, not by
     reading it back through a store built with a shorter TTL."""

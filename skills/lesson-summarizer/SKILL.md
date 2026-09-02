@@ -26,8 +26,8 @@ baton lesson publish  "<name>" --json                              # 5. once the
 
 `baton lesson list`, `show`, `remove` inspect and discard drafts. Each command
 takes the learner positionally or as `--learner "<name>"`, never two names.
-`publish --session N` does not choose a lesson — a learner has one draft at a
-time — it refuses if the draft is for another one.
+`publish --session N` does not choose a lesson (a learner has one draft at a
+time) it refuses if the draft is for another one.
 
 ```bash
 baton lesson stage-set "<name>" --field context --value "<fixed notes>" --json
@@ -40,7 +40,7 @@ itself is only ever accepted through `ingest`.
 ## Writing the summary
 
 `contract` gives you the schema, the notes, the teaching profile, and the
-callout ids that exist. Return **one JSON object and nothing else** — no prose
+callout ids that exist. Return **one JSON object and nothing else**, no prose
 around it, no fence.
 
 - Base every statement on `lesson_notes`; invent no progress it does not
@@ -58,9 +58,9 @@ fact stated in more than two of them is rejected with a pointer to the third.
 | `progress` | What is different from last time? |
 | `covered` | What was worked on? |
 | `focus` | What is still hard, and what will be done about it? |
-| `goals` | What to practise at home — or, for a learner with no instrument there, what the next lesson works towards |
+| `goals` | What to practise at home, or, for a learner with no instrument there, what the next lesson works towards |
 
-`progress` is a change, not a rating: `before` and `after` — "needed the count
+`progress` is a change, not a rating: `before` and `after`: "needed the count
 called out" → "counts through unaided". Required once a lesson has a previous
 session, never on a first one. If nothing changed, say so as the one entry.
 
@@ -73,7 +73,7 @@ Things the validator rejects by name:
 - **A goal nobody can practise at home.** What only the next lesson can do
   belongs in `focus`. Say what to practise, and how long or how many times.
 
-The last instructions in `contract` are written for *this* learner — tone,
+The last instructions in `contract` are written for *this* learner: tone,
 instrument, prompt level, and whether they own one at home (which also renames
 the goals section). Follow them over your instincts about register: they come
 from that learner's record, not from the notes.
@@ -81,23 +81,23 @@ from that learner's record, not from the notes.
 ## Rules
 
 **Never publish without showing the render first**, unless asked to run it
-unattended. **Publishing twice is refused** — two summaries would end up on the
+unattended. **Publishing twice is refused**: two summaries would end up on the
 page; `--force` replaces, and only if the user asks for it.
 
-**Publishing ends the session** — the page is marked done and the date and
+**Publishing ends the session**: the page is marked done and the date and
 repertoire columns filled if empty, so the next summary goes to the next
 session. **Exit 6 there means the summary landed but the session did not
 close.** Re-run publish: it appends nothing the second time and only closes the
 session. Say that, rather than reporting the summary as lost.
 
-**Unpublish removes only what Baton can prove it wrote** — the blocks the
-publish recorded — then sets the session back to in progress, rewinds the draft
+**Unpublish removes only what Baton can prove it wrote** (the blocks the
+publish recorded), then sets the session back to in progress, rewinds the draft
 to `summarised`, and drops the record. Show `--dry-run` first.
 
 **Exit 3 from unpublish means someone edited the page: nothing was removed.**
 `details.candidates` names each block, `edited` or `ambiguous`. Show them and
 ask. `--whole-page --force` takes down *everything* on the page, recordings
-included — only when the user asks for it, never to get past that exit 3.
+included, only when the user asks for it, never to get past that exit 3.
 
 **Unpublishing does not un-send.** If the message went out, say so: the family
 has read it, and re-publishing does not change that.
@@ -112,8 +112,8 @@ visible YouTube link means that link is the song, not the lesson.
 | Code | Do this |
 | --- | --- |
 | `0` | Continue to the next step |
-| `1` | A draft is missing — `baton lesson stage` first |
+| `1` | A draft is missing: `baton lesson stage` first |
 | `3` | Show `details.candidates`, ask, re-run with the exact name. From `unpublish` they are edited or ambiguous blocks and **nothing was removed** |
-| `4` | Your JSON, not a Baton fault. Fix every `details.violations` entry — each carries a pointer — and resubmit changed content |
+| `4` | Your JSON, not a Baton fault. Fix every `details.violations` entry (each carries a pointer) and resubmit changed content |
 | `6` | Report; the draft and summary are kept, so a retry resumes |
 | `7` | Nothing published to take back (`unpublish`). Report and stop |

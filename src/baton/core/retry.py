@@ -110,7 +110,7 @@ def http_request(
         url: Target URL.
         service: Name used in the raised :class:`UpstreamError` so operators can
             tell Notion from YouTube at a glance.
-        timeout: Per-attempt timeout. Always applied — an un-timed request is
+        timeout: Per-attempt timeout. Always applied: an un-timed request is
             how a nightly job hangs until someone notices the next morning.
         attempts: Total tries, including the first.
         retry_on_status: Statuses that trigger another attempt.
@@ -152,6 +152,6 @@ def http_request(
         redact(f"{service} did not respond after {attempts} attempts: {last_exc}"),
         service=service,
         attempts=attempts,
-        remedy="Check network access and the service status page, then re-run — "
+        remedy="Check network access and the service status page, then re-run: "
         "resumable pipelines skip the steps that already succeeded.",
     )

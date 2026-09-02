@@ -171,7 +171,7 @@ def test_real_environment_wins_over_the_env_file(profile, monkeypatch):
 
 
 def test_a_blank_variable_counts_as_unset(profile, monkeypatch):
-    """`export TOKEN=` is a hole, not a decision — the file fills it."""
+    """`export TOKEN=` is a hole, not a decision: the file fills it."""
     monkeypatch.setenv("NOTION_API_TOKEN", "")
     (profile / ".env").write_text("NOTION_API_TOKEN=from-the-file\n", encoding="utf-8")
 

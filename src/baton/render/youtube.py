@@ -1,6 +1,6 @@
 """Turning a validated summary into a YouTube video description.
 
-Deterministic, like `render.summary` — built from the schema's own fields
+Deterministic, like `render.summary`: built from the schema's own fields
 rather than guessed back out of rendered prose. The original system's
 `push_youtube.py` extracted its four sections (topics / progress / homework /
 tips) with regexes run against already-formatted Markdown; a summary whose
@@ -13,13 +13,14 @@ from __future__ import annotations
 
 from typing import Any
 
-#: The studio's own voice, carried over from `push_youtube.py` verbatim —
-#: viewers and parents already know this signature.
+#: The studio's signature, kept because viewers and parents already know it.
+#: The apology line that used to follow it was dropped on 2026-09-02, the same
+#: call the Notion footer made on 2026-08-28: the teacher reads every summary
+#: before it goes out, so apologising in advance only spends trust.
 _FOOTER = (
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     "✨ สรุปการสอนโดยผู้ช่วยตัวน้อย หางยาว (Created by Chunny)\n"
-    "ข้อมูลอาจมีตกหล่นหรือคลาดเคลื่อนบ้าง แต่น้องหางยาวกำลังพยายามพัฒนาตัวเองให้เก่งขึ้นอยู่ทุกวัน!\n"
-    "หากมีส่วนไหนผิดพลาดไป ต้องขออภัยด้วยนะเมี๊ยว~ 🐈🎀"
+    "เขียนจากบันทึกการสอนคาบนี้ 🐈🎀"
 )
 
 
@@ -34,7 +35,7 @@ def format_description(
     """Render one lesson's YouTube description.
 
     Args:
-        summary: A validated ``lesson_summary`` structure — the same one
+        summary: A validated ``lesson_summary`` structure: the same one
             `render.summary.to_markdown` renders to the document.
         instrument, week, student_name, date: Header fields Baton supplies
             from its own records, not from the model-written summary.
@@ -59,7 +60,7 @@ def format_description(
         for entry in covered:
             topic = entry.get("topic", "")
             detail = entry.get("detail", "")
-            lines.append(f"- {topic} — {detail}" if detail else f"- {topic}")
+            lines.append(f"- {topic}: {detail}" if detail else f"- {topic}")
 
     goals = summary.get("goals") or []
     if goals:

@@ -2,7 +2,7 @@
 
 The original skill had no code at all: it handed a model the Notion API shape
 and a `curl` invocation and asked it to build the JSON. That is the single most
-model-dependent thing the whole system did, and it is entirely mechanical — so
+model-dependent thing the whole system did, and it is entirely mechanical, so
 it is a parser.
 
 Deliberately a small subset, and total: every line produces exactly one block,
@@ -34,7 +34,7 @@ _PLAIN = "plain text"
 
 #: The code languages Notion accepts. It validates this field against a fixed
 #: list and rejects the whole request otherwise, so a note whose fence said
-#: ```js used to fail to publish as a whole — the original skill carried this
+#: ```js used to fail to publish as a whole: the original skill carried this
 #: knowledge as a table a model was asked to apply by hand.
 _CODE_LANGUAGES = frozenset(
     {
@@ -175,7 +175,7 @@ def _language(tag: str) -> str:
 
     Unknown tags become plain text rather than being passed through. A fence
     tag is whatever the writer typed, and the request carrying it is the whole
-    note — one unrecognised word must not cost the page.
+    note: one unrecognised word must not cost the page.
     """
     folded = tag.strip().lower()
     if not folded:
@@ -187,7 +187,7 @@ def _language(tag: str) -> str:
 def _rich_text(text: str) -> list[dict[str, Any]]:
     """Split text into runs Notion will accept.
 
-    A long paragraph is not an error to report back to the user — it is a
+    A long paragraph is not an error to report back to the user: it is a
     paragraph. Splitting is the only correct handling.
     """
     if not text:
@@ -214,8 +214,8 @@ def to_blocks(markdown: str) -> list[dict[str, Any]]:
         markdown: The note's text.
 
     Returns:
-        Blocks in document order. Blank lines outside a code fence are dropped
-        — a document store lays out its own spacing, and empty paragraphs just
+        Blocks in document order. Blank lines outside a code fence are dropped:
+        a document store lays out its own spacing, and empty paragraphs just
         make the page taller.
     """
     blocks: list[dict[str, Any]] = []

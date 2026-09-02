@@ -3,7 +3,7 @@
 The sequence is a chain, and each link is a gate on the next:
 
 1. resolve the learner exactly, or stop and ask
-2. mark the session document in progress — and *only if that succeeds*
+2. mark the session document in progress, and *only if that succeeds*
 3. create the calendar event
 
 The order is the point. Creating the event first and then failing to update the
@@ -137,7 +137,7 @@ class Scheduler:
         """Mark the session in progress, then put it on the calendar.
 
         Raises:
-            UsageError: The times are not a real lesson — an explicit end at or
+            UsageError: The times are not a real lesson: an explicit end at or
                 before the start.
             StateError: The document update failed, so no event was created.
         """
@@ -211,7 +211,7 @@ class Scheduler:
         if session.doc_id and self.require_doc_update:
             try:
                 # The date goes on with the status. Booking is the moment the
-                # lesson's date is actually known — inferring it later from
+                # lesson's date is actually known: inferring it later from
                 # whenever the summary happened to be written would put the
                 # wrong day on a lesson summarised the following morning.
                 self.docs.set_properties(
@@ -225,7 +225,7 @@ class Scheduler:
                 raise StateError(
                     f"Could not mark {learner.name}'s {self.session_label} "
                     f"{session.number} as in progress: {exc}",
-                    remedy="Nothing was booked. Fix the document store and re-run — "
+                    remedy="Nothing was booked. Fix the document store and re-run: "
                     "the calendar is left untouched so the two cannot disagree.",
                     details={"doc_id": session.doc_id},
                 ) from exc
@@ -236,7 +236,7 @@ class Scheduler:
                 title=title,
                 start=start_dt.isoformat(),
                 end=end_dt.isoformat(),
-                description=f"{learner.name} — {self.session_label} {session.number}",
+                description=f"{learner.name} - {self.session_label} {session.number}",
             )
         )
 
@@ -292,7 +292,7 @@ class Scheduler:
 
         # A session with no document has no status to consult; cancelling it
         # is just removing the event. Reading `get_status("")` instead would
-        # ask the document store for a page id that is empty — a 404 dressed
+        # ask the document store for a page id that is empty: a 404 dressed
         # up as a sharing problem.
         current = ""
         if session.doc_id:
@@ -350,7 +350,7 @@ class Scheduler:
 
         The calendar is the index and the page is the truth. Only learners
         with a lesson event inside the window are candidates, so this costs
-        one calendar call and one document read per candidate — not a read of
+        one calendar call and one document read per candidate, not a read of
         every session page of every learner. A candidate counts as in
         progress only when its page still says so: a cancelled lesson (event
         removed, page rolled back) and a summarized one (page done) drop out
@@ -427,7 +427,7 @@ class Scheduler:
 
         The same anchored title match ``in_progress`` uses, asked of one day
         instead of a window. A learner booked twice that day appears once. An
-        event naming no learner is listed, never guessed at — a person typed
+        event naming no learner is listed, never guessed at: a person typed
         it, and only they know what it meant.
         """
         start = combine(day, parse_time("00:00"), self.timezone).isoformat()
@@ -459,8 +459,8 @@ class Scheduler:
     def _match_event(self, title: str, by_name: dict[str, Learner]) -> tuple[Learner, int] | None:
         """The learner and session a calendar event's title names, if any.
 
-        The same anchored shape the cancel path matches on — an optional
-        configured icon, then the name, then the session part — read in the
+        The same anchored shape the cancel path matches on (an optional
+        configured icon, then the name, then the session part) read in the
         opposite direction. Longer names are tried first so a learner whose
         name extends another's cannot be swallowed by the shorter one.
         """
@@ -479,8 +479,8 @@ class Scheduler:
     def _events_for(self, learner: Learner, day: date) -> list[CalendarEvent]:
         """This learner's events on one day, matched against the title's shape.
 
-        A plain substring cannot tell "Ann (lesson 1)" from "Anna (lesson 3)"
-        — the shorter name is inside the longer one, and a cancel for Ann
+        A plain substring cannot tell "Ann (lesson 1)" from "Anna (lesson 3)":
+        the shorter name is inside the longer one, and a cancel for Ann
         would delete Anna's lesson too. Baton writes every title itself as
         ``[icon ]Name (label N)``, so the match anchors on that exact shape:
         an optional configured icon, then the name, then the opening

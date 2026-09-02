@@ -32,7 +32,7 @@ def test_match_ignores_case_and_surrounding_space():
 
 
 def test_partial_match_never_resolves_even_when_unique():
-    """ "Bruno" matches exactly one person today. It still must not resolve —
+    """ "Bruno" matches exactly one person today. It still must not resolve:
     the second Bruno is what makes this rule worth its friction."""
     with pytest.raises(NeedsHumanError) as excinfo:
         resolve_learner("Bruno", PEOPLE)
@@ -107,7 +107,7 @@ def test_thai_combining_marks_normalise_before_comparison():
 
     Thai stacks a vowel below and a tone mark above the same base letter, and
     the two can be typed in either order. They look identical on screen and
-    compare unequal as strings — which is a name resolving on one keyboard and
+    compare unequal as strings, which is a name resolving on one keyboard and
     raising an ambiguity prompt on another.
     """
     stored = "ปุ่ม"  # vowel below, then tone mark: canonical order

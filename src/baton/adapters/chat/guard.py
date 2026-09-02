@@ -29,7 +29,7 @@ class GuardedMessenger:
         again: The caller passed ``--again``; deliver even if a receipt exists.
         what: How the refusal should name this message to a person, e.g.
             ``"Ada Whitfield's lesson 12 summary"``.
-        key: What identifies this message regardless of how it was worded —
+        key: What identifies this message regardless of how it was worded:
             ``"lesson|17|3"``. Required in practice for anything a composer
             varies: `send lesson` chooses its opening and closing phrase at
             random, so the same summary is never the same string twice. Omit it
@@ -39,7 +39,7 @@ class GuardedMessenger:
     The receipt is written *after* the platform accepts the message, so a send
     that fails leaves nothing behind to block the retry it deserves. The window
     between acceptance and the write is the one place a duplicate can still
-    slip through — it is microseconds of local file I/O against a network round
+    slip through: it is microseconds of local file I/O against a network round
     trip, and closing it fully would mean writing a receipt for a send that may
     never happen, which is the worse failure: a summary silently never sent.
     """
@@ -81,8 +81,8 @@ class GuardedMessenger:
     def __getattr__(self, item: str) -> Any:
         """Anything else belongs to the driver underneath.
 
-        Drivers carry extras the protocol does not name — `service`, the
-        webhook's health endpoint — and code that reaches for one should not
+        Drivers carry extras the protocol does not name: `service`, the
+        webhook's health endpoint, and code that reaches for one should not
         have to know a guard is in the way.
         """
         return getattr(self._inner, item)

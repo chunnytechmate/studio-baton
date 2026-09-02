@@ -118,7 +118,7 @@ def test_stage_accepts_an_explicit_session(studio, capsys):
 def test_staging_an_explicit_session_needs_no_document_reads(studio, capsys):
     """The teacher writes the notes straight after the lesson, often on a
     phone. When the session is named, both the number and the document id come
-    from the database — so a document-store outage must not block staging."""
+    from the database, so a document-store outage must not block staging."""
     from baton.errors import UpstreamError
 
     _, docs = studio
@@ -222,7 +222,7 @@ def test_ingest_rejects_an_unknown_callout_id(studio, capsys):
 
 
 def test_malformed_json_is_a_contract_failure_not_a_usage_error(studio, capsys):
-    """The model produced it, so the model is what has to fix it — which means
+    """The model produced it, so the model is what has to fix it, which means
     exit 4, the code that tells an agent to try again."""
     stage_ada(studio, capsys)
 
@@ -290,7 +290,7 @@ def test_publish_updates_the_youtube_description_when_a_video_is_linked(
     studio, capsys, monkeypatch
 ):
     """The just-published summary lands on the video's description too, the
-    way the studio's previous pipeline did — but gated through Baton's own
+    way the studio's previous pipeline did, but gated through Baton's own
     ownership check rather than trusting whatever link sits on the page."""
     from baton.adapters.fakes import FakePublisher
 
@@ -312,7 +312,7 @@ def test_publish_updates_the_youtube_description_when_a_video_is_linked(
 
 
 def test_publish_skips_the_youtube_step_when_youtube_is_not_configured(studio, capsys):
-    """The fixture's `baton.yaml` has no `media:` section — the ordinary shape
+    """The fixture's `baton.yaml` has no `media:` section: the ordinary shape
     of a studio that only uses Baton for lesson summaries. This must not be
     an error; `open_publisher` raising `ConfigError` is the expected signal
     that there is nothing to update."""
@@ -327,7 +327,7 @@ def test_publish_skips_the_youtube_step_when_youtube_is_not_configured(studio, c
 
 
 def test_publish_skips_the_youtube_step_when_there_is_no_video_yet(studio, capsys, monkeypatch):
-    """`doc-ada-03`'s only block in the base fixture is a non-YouTube link —
+    """`doc-ada-03`'s only block in the base fixture is a non-YouTube link:
     the ordinary state before a recording has been attached."""
     from baton.adapters.fakes import FakePublisher
 
@@ -339,8 +339,8 @@ def test_publish_skips_the_youtube_step_when_there_is_no_video_yet(studio, capsy
 
 
 def test_publish_reports_but_does_not_fail_on_a_foreign_video(studio, capsys, monkeypatch):
-    """A reference link on the document — a tutorial on someone else's
-    channel — must not be overwritten, but the summary itself already landed
+    """A reference link on the document: a tutorial on someone else's
+    channel: must not be overwritten, but the summary itself already landed
     on the page, so the command still succeeds overall."""
     from baton.adapters.fakes import FakePublisher
 
@@ -491,7 +491,7 @@ def test_a_summary_that_lands_but_cannot_be_marked_done_says_so(studio, capsys):
 
 def test_re_running_after_that_finishes_the_session_without_appending_again(studio, capsys):
     """The blocks are already where they belong, so the retry is the property
-    write alone — appending a second copy is what the publish gate prevents."""
+    write alone: appending a second copy is what the publish gate prevents."""
     prepared(studio, capsys)
     _, docs = studio
     docs.fail_on_properties = True
@@ -559,7 +559,7 @@ def test_re_staging_does_not_reopen_the_publish_gate(studio, capsys):
 
     The "already published" gate used to key on a mark inside that file, so
     staging again between two publishes wiped the evidence and the second
-    publish appended a duplicate summary to the same page — the exact outcome
+    publish appended a duplicate summary to the same page: the exact outcome
     the gate exists to prevent. The published record, which is per session and
     survives re-staging, is the durable answer.
     """
@@ -569,7 +569,7 @@ def test_re_staging_does_not_reopen_the_publish_gate(studio, capsys):
     _, docs = studio
     after_first = len(docs.list_blocks("doc-ada-03"))
 
-    # Staging the same session again — a studio correcting a title, say.
+    # Staging the same session again: a studio correcting a title, say.
     stage_ada(studio, capsys)
     call(studio, "ingest", "Ada Whitfield", "--json-text", json.dumps(SUMMARY))
     capsys.readouterr()
@@ -593,7 +593,7 @@ def _video_on(docs):
 
 def test_a_failed_description_update_is_retried_by_a_re_run(studio, capsys, monkeypatch):
     """The summary is on the page for good; the description update is the part
-    that can fail (here: a foreign-owned video) and be finished later — without
+    that can fail (here: a foreign-owned video) and be finished later: without
     appending a second copy of the summary to get there."""
     from baton.adapters.fakes import FakePublisher
 
@@ -722,7 +722,7 @@ def _instructions(studio, capsys, name: str, session: str) -> list[str]:
 
 def test_the_contract_carries_the_wording_for_this_learners_tone(studio, capsys):
     """The learners table has carried a `tone` since the first migration and
-    it reached the model as a bare word — so a six-year-old and an exam
+    it reached the model as a bare word, so a six-year-old and an exam
     candidate were written about in one voice."""
     lines = _instructions(studio, capsys, "Clara Nguyen", "1")  # exam
 
@@ -791,7 +791,7 @@ def test_a_guitarist_gets_the_chord_convention_instead(studio, capsys):
 
 def test_the_previous_lesson_arrives_in_full_not_as_the_parents_message(studio, capsys):
     """Only the three-line message used to be kept, and it is a thin thing to
-    judge a week's progress from — `progress` asks what changed since last
+    judge a week's progress from: `progress` asks what changed since last
     time, and the answer has to be measured against what actually happened."""
     _publish_session_two(studio, capsys)
 
@@ -847,7 +847,7 @@ def _publish_session_two(studio, capsys) -> None:
 
 def test_a_later_summary_is_refused_without_one(studio, capsys):
     """Once a previous session's message exists, `stage` carries it into the
-    draft — and the contract instruction to judge what is new finally has a
+    draft, and the contract instruction to judge what is new finally has a
     field to put the answer in."""
     _publish_session_two(studio, capsys)
     stage_ada(studio, capsys)
@@ -975,7 +975,7 @@ def test_publish_describes_the_recording_that_sits_beside_the_song(studio, capsy
 
 
 def _uploaded(profile, url: str = RECORDING, **overrides) -> None:
-    """Record a video job that reached `uploaded` and stopped there — the
+    """Record a video job that reached `uploaded` and stopped there: the
     state a run leaves behind when it dies after YouTube accepted the file."""
     from baton.pipelines.video import VideoJob, VideoJobStore
 
@@ -1011,7 +1011,7 @@ def test_publish_links_an_upload_the_pipeline_left_off_the_page(studio, capsys):
 
 
 def test_a_linked_upload_then_gets_its_youtube_description(studio, capsys, monkeypatch):
-    """Linking it is what makes the description step have something to do —
+    """Linking it is what makes the description step have something to do:
     the two run in that order for that reason."""
     from baton.adapters.fakes import FakePublisher
 
@@ -1029,7 +1029,7 @@ def test_a_linked_upload_then_gets_its_youtube_description(studio, capsys, monke
 
 def test_a_forced_republish_links_the_upload_too(studio, capsys):
     """`publish --force` is what the studio actually reached for, and it
-    reported `preserved: 0, youtube: null` — nothing kept, nothing linked."""
+    reported `preserved: 0, youtube: null`, nothing kept, nothing linked."""
     profile, docs = studio
     docs.blocks["doc-ada-03"] = []
     prepared(studio, capsys)
@@ -1046,7 +1046,7 @@ def test_a_forced_republish_links_the_upload_too(studio, capsys):
 
 
 def test_a_re_run_of_an_already_published_lesson_links_the_upload(studio, capsys):
-    """Without --force, the summary is left alone — but the recording is one
+    """Without --force, the summary is left alone, but the recording is one
     of the writes a re-run legitimately still owes."""
     profile, docs = studio
     docs.blocks["doc-ada-03"] = []
@@ -1082,7 +1082,7 @@ def test_publish_does_not_link_a_second_copy_of_a_recording_already_shown(studio
 
 def test_publish_leaves_a_hand_pasted_recording_alone(studio, capsys):
     """A recording someone put on the page by hand is a recording as far as
-    the gate is concerned, so there is nothing missing to repair — and adding
+    the gate is concerned, so there is nothing missing to repair, and adding
     the pipeline's copy beside it would give the page two.
 
     The fixture's `docs.preserve` keeps `embed`, so this one survives the
@@ -1103,7 +1103,7 @@ def test_publish_leaves_a_hand_pasted_recording_alone(studio, capsys):
 def test_publish_links_an_upload_whose_job_has_been_archived(studio, capsys):
     """A folder holds one live job, so the week the next lesson is collected
     the finished one is moved aside. The page it never linked is still worth
-    repairing — and the days between the upload and someone noticing are
+    repairing, and the days between the upload and someone noticing are
     exactly when the next lesson gets filmed.
     """
     from baton.pipelines.video import VideoJobStore
@@ -1169,7 +1169,7 @@ def test_publish_does_not_link_another_learners_upload(studio, capsys):
 
 def test_publish_ignores_a_job_that_never_uploaded(studio, capsys):
     """A job that only downloaded has nothing to link, and its `video_url` is
-    empty — reading it as one would put a blank video block on the page."""
+    empty: reading it as one would put a blank video block on the page."""
     from baton.pipelines.video import VideoJob, VideoJobStore
 
     profile, docs = studio
@@ -1303,7 +1303,7 @@ def test_naming_nobody_at_all_says_which_command_wanted_a_name(studio, capsys):
 
 def test_publish_refuses_a_session_the_draft_is_not_for(studio, capsys):
     """A learner has one draft at a time, so `--session` cannot pick between
-    them — but it can stop a publish that thought it was finishing a different
+    them, but it can stop a publish that thought it was finishing a different
     lesson."""
     prepared(studio, capsys)  # staged for session 3
 
@@ -1453,7 +1453,7 @@ def _record_target(studio, learner_id, name, status, **extra):
 
 def test_list_carries_the_full_target_state(studio, capsys):
     """A heartbeat asking "is this stuck?" needs the error, the time, and how
-    many tries were spent — not the one-word status stage returns."""
+    many tries were spent, not the one-word status stage returns."""
     learner_id = stage_ada(studio, capsys)["learner_id"]
     _record_target(studio, learner_id, "youtube", "error", error="quota exceeded")
 

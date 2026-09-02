@@ -1,4 +1,4 @@
-"""``baton calendar`` — book lessons, keeping documents and calendar in step.
+"""``baton calendar``: book lessons, keeping documents and calendar in step.
 
 Replaces the original's two scripts and the prose rule for choosing between
 them. There is one command; passing a learner is what selects the lesson path,
@@ -70,7 +70,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     cancel = group.add_parser(
         "cancel",
         help="Remove a booking and roll its session back.",
-        description="Deletes the event, then marks the session not started — in that order.",
+        description="Deletes the event, then marks the session not started: in that order.",
     )
     cancel.add_argument("name", metavar="NAME")
     cancel.add_argument("date", metavar="DATE")
@@ -83,7 +83,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Show a day's events, or a whole range with --from/--to.",
         description=(
             "One day by default. `--from` and `--to` together show every day "
-            "in the range, empty days included — a gap is information."
+            "in the range, empty days included: a gap is information."
         ),
     )
     listing.add_argument("date", metavar="DATE", nargs="?", default=None)
@@ -127,7 +127,7 @@ def _resolve_for_booking(ctx: Context, store, name: str) -> tuple[Learner, str]:
 
     Names on a day's schedule are typed by hand, often shortened to what the
     family's contact card says. A partial match landing on exactly one person
-    resolves — and is announced, so nobody discovers the guess after the fact.
+    resolves, and is announced, so nobody discovers the guess after the fact.
     Everything else still stops and asks; see `resolve_learner_loose`.
     """
     return resolve_learner_loose(
@@ -228,7 +228,7 @@ def handle_book(ctx: Context) -> Exit:
         payload["matched"] = matched
     ctx.report.result(
         payload,
-        human=f"{verb} {result.learner_name} — {label} {result.session_number} "
+        human=f"{verb} {result.learner_name} {label} {result.session_number} "
         f"on {day.isoformat()} at {ctx.args.start}\n"
         f"  {result.title}"
         + ("" if ctx.args.dry_run else f"\n  document marked in progress: {result.doc_updated}")
@@ -276,7 +276,7 @@ def handle_schedule(ctx: Context) -> Exit:
     if not slots:
         ctx.report.result(
             {"date": day.isoformat(), "booked": [], "blocked": []},
-            human="Nothing to book — every slot is free.",
+            human="Nothing to book: every slot is free.",
         )
         return Exit.OK
 
@@ -316,7 +316,7 @@ def handle_schedule(ctx: Context) -> Exit:
                         "slot": start.strftime("%H:%M"),
                         "name": name,
                         "error": UsageError(
-                            f"This books {learner.name} a second time — the slot "
+                            f"This books {learner.name} a second time: the slot "
                             f'for "{earlier}" already did.',
                             remedy="A learner gets one slot per day; remove the "
                             "duplicate line or fix the name.",
@@ -394,7 +394,7 @@ def handle_cancel(ctx: Context) -> Exit:
     verb = "Would cancel" if ctx.args.dry_run else "Cancelled"
     ctx.report.result(
         {**result, "date": day.isoformat()},
-        human=f"{verb} {learner.name} — {ctx.config.label('session')} "
+        human=f"{verb} {learner.name} {ctx.config.label('session')} "
         f"{result['session_number']} on {day.isoformat()}\n"
         f"  events removed: {len(removed)}",
     )
@@ -402,12 +402,12 @@ def handle_cancel(ctx: Context) -> Exit:
 
 
 def _clock_of(start: str) -> str:
-    """The HH:MM a calendar start renders as — or the raw string if it has none.
+    """The HH:MM a calendar start renders as, or the raw string if it has none.
 
     All-day events arrive date-only (``YYYY-MM-DD``), and slicing at a fixed
     offset mangled those (M15). The clock is taken only when the character at
-    the date/time boundary is the separator a datetime actually has — ``T``
-    for RFC 3339, a space for the lenient form — so a date-only start passes
+    the date/time boundary is the separator a datetime actually has: ``T``
+    for RFC 3339, a space for the lenient form, so a date-only start passes
     through whole instead of being cut at a position that means nothing.
     """
     if len(start) >= 16 and start[10] in "T ":

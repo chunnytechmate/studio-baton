@@ -22,8 +22,8 @@ class Reporter:
     """Renders results and progress for one command invocation.
 
     Streams are resolved at write time rather than captured at construction, so
-    a caller that redirects ``sys.stdout`` — a test harness, or a wrapper
-    piping output — sees what it expects.
+    a caller that redirects ``sys.stdout`` (a test harness, or a wrapper
+    piping output) sees what it expects.
     """
 
     json_mode: bool = False
@@ -65,8 +65,8 @@ class Reporter:
             human: Text shown instead of the payload when not in JSON mode.
                 Falls back to pretty-printed JSON when omitted.
             ok: Whether the command succeeded. Set ``False`` for commands whose
-                whole output *is* the report of what failed, such as ``doctor``
-                — the caller still needs the body, not an error envelope.
+                whole output *is* the report of what failed, such as ``doctor``:
+                the caller still needs the body, not an error envelope.
         """
         if self.json_mode:
             document = {"ok": ok, **payload}
@@ -86,7 +86,7 @@ class Reporter:
         pipelines are not polluted by error prose.
 
         ``ok`` is guaranteed here rather than assumed of the caller. Commands
-        whose refusal *is* their report — `prep`, `course` — pass the report
+        whose refusal *is* their report: `prep`, `course`: pass the report
         itself, which is a body and not an envelope, and the field went missing
         on exactly the paths a caller most needs to branch on.
         """
@@ -100,7 +100,7 @@ class Reporter:
 def format_error(payload: dict[str, Any]) -> str:
     """Render an error envelope as text for a person.
 
-    Structured detail is shown as indented lines rather than raw JSON — a
+    Structured detail is shown as indented lines rather than raw JSON: a
     blocked send should read like a checklist, because that is how it gets
     fixed.
     """

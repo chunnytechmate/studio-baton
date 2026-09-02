@@ -1,4 +1,4 @@
-"""``baton video`` — collect recordings, combine, publish, link back.
+"""``baton video``: collect recordings, combine, publish, link back.
 
 The long one. It takes the whole-run lock so two runs cannot collide over the
 same clips, and ``--detach`` hands it to the supervisor from ``baton job`` so
@@ -63,7 +63,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Continues unfinished jobs and re-trashes source clips a completed "
             "job's record claims were already moved. Never starts a new "
-            "session's job — new clips are `video run`'s to collect."
+            "session's job: new clips are `video run`'s to collect."
         ),
     )
     resume.add_argument("--detach", action="store_true")

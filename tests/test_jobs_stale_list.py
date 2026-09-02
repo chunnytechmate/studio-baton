@@ -2,7 +2,7 @@
 
 Regression, from the 2026-08-27 production night: a video job that failed on
 Aug 22 (exit 6, heartbeat four and a half days stale) was still sitting in
-`job list` five days later — indistinguishable from tonight's failure until
+`job list` five days later: indistinguishable from tonight's failure until
 the ids were read. A terminal record older than the threshold is history:
 hidden from the default listing, still readable by id, still prunable.
 """

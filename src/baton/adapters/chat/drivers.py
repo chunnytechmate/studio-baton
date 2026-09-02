@@ -1,7 +1,7 @@
 """Message drivers: LINE, Telegram, and a generic webhook.
 
 All three are plain HTTP with a token, so they share one shape and differ only
-in envelope. That sameness is deliberate — the original system had LINE logic
+in envelope. That sameness is deliberate: the original system had LINE logic
 duplicated across three skills, and every copy had drifted by the time anyone
 looked.
 """
@@ -73,7 +73,7 @@ class _HttpMessenger:
         encoded = self._encode(body)
         if encoded is not None:
             # The driver owns the exact bytes on the wire, so what is signed
-            # is what is sent — a receiver verifying the raw body agrees.
+            # is what is sent: a receiver verifying the raw body agrees.
             self._sign(encoded, headers)
             request_kwargs: dict[str, Any] = {"data": encoded}
         else:
@@ -164,7 +164,7 @@ class LineMessenger(_HttpMessenger):
 
         `core.retry.http_request` retries a transient failure up to 3 times.
         Without this, a retry that fires *after* LINE already accepted the
-        first attempt — the response was merely lost, not the delivery — puts
+        first attempt (the response was merely lost, not the delivery) puts
         the same lesson message in a parent's chat twice. Folding the token,
         recipient, and exact text into the key means only a genuine retry of
         the identical send reuses it; a different message gets a new one.
@@ -195,7 +195,7 @@ class TelegramMessenger(_HttpMessenger):
         return self._config
 
     def _endpoint(self, recipient_id: str) -> str:
-        # The recipient travels in the path, so it must be quoted — a chat id
+        # The recipient travels in the path, so it must be quoted: a chat id
         # is numeric today but nothing guarantees that tomorrow.
         return f"{self.api_root}/bot{quote(self.token, safe='')}/sendMessage"
 
@@ -215,7 +215,7 @@ class TelegramMessenger(_HttpMessenger):
 
 
 class WebhookMessenger(_HttpMessenger):
-    """POST to a URL of your choosing — for Slack, n8n, or anything else.
+    """POST to a URL of your choosing: for Slack, n8n, or anything else.
 
     The recipient id is passed through in the payload, so the receiving end
     decides what to do with it. An optional shared secret is signed rather
@@ -267,7 +267,7 @@ class WebhookMessenger(_HttpMessenger):
 
         The receiver verifies HMAC-SHA256 over the raw request body, so the
         signature is computed over the same ``bytes`` object handed to the
-        HTTP layer — never over a second serialisation of the same payload,
+        HTTP layer, never over a second serialisation of the same payload,
         which is guaranteed to differ in separators or escaping and verify
         nowhere.
         """
@@ -284,8 +284,8 @@ class WebhookMessenger(_HttpMessenger):
 
         A webhook receiver's real contract is ``POST`` + 2xx, and there is no
         introspection endpoint to ask, so the probe is a GET. A GET answered
-        with 4xx proves only that something is listening — nothing about
-        whether it accepts deliveries — and a receiver that answers 405 to
+        with 4xx proves only that something is listening (nothing about
+        whether it accepts deliveries) and a receiver that answers 405 to
         every GET used to pass here, making the check worthless (M20).
         Anything from 400 up now fails, and the message states exactly what
         was and was not verified.
@@ -294,7 +294,7 @@ class WebhookMessenger(_HttpMessenger):
         if response.status_code >= 400:
             raise UpstreamError(
                 f"The webhook endpoint answered {response.status_code} to the health "
-                f"GET — whether it accepts POST deliveries is unverified.",
+                f"GET: whether it accepts POST deliveries is unverified.",
                 service="webhook",
                 status=response.status_code,
             )

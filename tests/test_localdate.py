@@ -1,7 +1,7 @@
 """The date on a lesson message, written the way the studio's families read it.
 
-The rewrite carried the document's raw date into the LINE header — "2026-08-23"
-where the old sender wrote "23 ส.ค. 2569" — while a docstring nearby claimed
+The rewrite carried the document's raw date into the LINE header: "2026-08-23"
+where the old sender wrote "23 ส.ค. 2569", while a docstring nearby claimed
 the message matched the old format byte for byte. The rest of the message
 really did, which is how one field regressed unnoticed.
 """

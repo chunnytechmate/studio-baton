@@ -1,6 +1,6 @@
 ---
 name: prep-report
-description: "Brief the teacher before a day's lessons: every booked learner's last session — content, homework, next goal — or nothing. Use when asked to prepare teaching, brief today's lessons, or summarise where each learner stands."
+description: "Brief the teacher before a day's lessons: every booked learner's last session (content, homework, next goal) or nothing. Use when asked to prepare teaching, brief today's lessons, or summarise where each learner stands."
 ---
 
 # Prep report
@@ -12,7 +12,7 @@ whole job is to hand that briefing over **unchanged**.
 ## Triggers
 
 - "เตรียมการสอนวันนี้", "brief คาบวันนี้", "prep report"
-- "น้องX เรียนถึงไหนแล้ว สรุปหน่อย" (single learner — pass `--learner`)
+- "น้องX เรียนถึงไหนแล้ว สรุปหน่อย" (single learner: pass `--learner`)
 - "what should I cover today", "prepare today's lessons"
 
 ## The command
@@ -25,27 +25,27 @@ baton prep --json          # machine output; the verbatim report is under "repor
 ```
 
 Who appears: every learner booked on the day (calendar titles Baton itself
-writes — `Name (Week N)`), or exactly the `--learner` names given.
+writes: `Name (Week N)`), or exactly the `--learner` names given.
 
 ## Rules
 
 **Relay verbatim.** The report Baton prints *is* the briefing. Copy it through
-as-is — every line, every link. Do not re-compose, shorten, or "clean up" the
+as-is: every line, every link. Do not re-compose, shorten, or "clean up" the
 text: an agent rewriting the report is exactly how the Notion links went
 missing before this command existed. In `--json` mode the same text sits
-under `report` — relay that string, not your own summary of the fields.
+under `report`: relay that string, not your own summary of the fields.
 Adding a greeting around it is fine; editing inside it is not.
 
 **Blocked means blocked.** A learner missing any required field (week, date,
 titles, notion_link, overview, content, homework) is listed under `BLOCKED`
 with what they lack. Report the block, do not reconstruct their section from
-memory or guess — the page is incomplete and the teacher must know that.
+memory or guess: the page is incomplete and the teacher must know that.
 
 **Exit `5` means nobody passed.** There is no report. Show the blocked list
 from `details` (or re-run without `--json`) and stop.
 
 **One learner, one command.** `--learner` is repeatable; do not run the
-command once per learner when asked about several — one report keeps the
+command once per learner when asked about several: one report keeps the
 briefing in teaching order.
 
 **Next goal is a warning, not a blocker.** `(none stated)` in the report

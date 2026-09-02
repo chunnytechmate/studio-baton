@@ -2,7 +2,7 @@
 
 Every summary the studio's previous pipeline wrote said, in a dated line, that
 an assistant had written it. The rewrite dropped that line while keeping the
-regex that strips it out of old pages — so Baton removed a disclosure it no
+regex that strips it out of old pages, so Baton removed a disclosure it no
 longer wrote. These pin it back on.
 """
 
@@ -72,7 +72,7 @@ def test_the_year_is_written_in_the_studios_era():
 
 def test_the_month_name_comes_from_configuration_not_strftime():
     """%B renders English wherever the studio's locale is not installed, which
-    in a container is nearly always — and nobody notices until a parent does."""
+    in a container is nearly always, and nobody notices until a parent does."""
     assert "สิงหาคม" in STUDIO.render(MOMENT)[0]
 
 
@@ -84,7 +84,7 @@ def test_a_month_placeholder_without_month_names_is_refused_not_guessed():
 
 
 def test_the_clock_reading_is_the_studios_own():
-    """Published at 02:30 in Bangkok, stamped 02:30 — not 19:30 the day before,
+    """Published at 02:30 in Bangkok, stamped 02:30, not 19:30 the day before,
     which is what the server's clock would have said."""
     lines = STUDIO.render(MOMENT)
 

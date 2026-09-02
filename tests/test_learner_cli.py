@@ -112,7 +112,7 @@ def test_latest_is_not_the_highest_number(studio, capsys):
 
 def test_next_skips_a_page_that_already_has_content(studio, capsys):
     """Devon's only session is unstarted but has a draft on it, so there is
-    no free session — reporting one would invite overwriting the draft."""
+    no free session: reporting one would invite overwriting the draft."""
     assert call(studio, "next", "Devon Marsh") == Exit.OK
 
     payload = json.loads(capsys.readouterr().out)
@@ -129,7 +129,7 @@ def test_next_finds_a_genuinely_empty_session(studio, capsys):
 def test_in_progress_spans_learners(studio, capsys, monkeypatch):
     """The morning check reads the calendar window, then only those learners'
     pages. Bruno's second lesson is on the calendar too, but its page is Not
-    started — the page is the truth, so he owes one summary, not two."""
+    started: the page is the truth, so he owes one summary, not two."""
     from datetime import datetime, timedelta
 
     from baton.adapters.cal.base import CalendarEvent

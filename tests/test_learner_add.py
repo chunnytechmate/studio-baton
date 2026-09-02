@@ -1,4 +1,4 @@
-"""`baton learner add` — enrolment and its session pages, end to end.
+"""`baton learner add`: enrolment and its session pages, end to end.
 
 Two harnesses: real SQLite (via the shipped migration) for the write path
 itself, and a monkeypatched `FakeLearnerStore` for the config-driven refusals
@@ -30,7 +30,7 @@ DB_URL = "https://myworkspace.notion.site/38ff59f9f99c941f9278920bd46b7540"
 
 @pytest.fixture
 def studio(profile):
-    """A real, empty (unseeded) SQLite database — enrolment is the point."""
+    """A real, empty (unseeded) SQLite database: enrolment is the point."""
     db_path = profile / "data" / "studio.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(db_path)
@@ -270,5 +270,5 @@ def test_a_session_write_failure_reports_what_already_landed(fake_studio, capsys
     payload = json.loads(capsys.readouterr().out)
     assert len(payload["details"]["sessions_written"]) == 1
     assert payload["details"]["learner"]["name"] == "New Person"
-    # The learner itself was enrolled — no rollback across stores.
+    # The learner itself was enrolled, no rollback across stores.
     assert fake.learners[0].name == "New Person"

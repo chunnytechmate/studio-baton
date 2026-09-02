@@ -9,8 +9,8 @@ nothing holding them together:
 - the section reader finds a section by matching heading *keywords*,
   configured under ``docs.sections``
 
-They did not even share names — the renderer's ``covered`` is the reader's
-``content``, its ``goals`` is the reader's ``practice_goals`` — and the
+They did not even share names: the renderer's ``covered`` is the reader's
+``content``, its ``goals`` is the reader's ``practice_goals``, and the
 packaged defaults disagreed outright. The renderer wrote "What we covered";
 the reader looked for ``เนื้อหา``, ``สิ่งที่เรียน``, ``core lesson``; so the
 largest section of every summary Baton published read back empty. Since
@@ -40,7 +40,7 @@ WRITTEN_HEADINGS: dict[str, str] = {
 #: first one listed, which is how "เป้าหมายการซ้อม" stays practice goals while
 #: "เป้าหมายครั้งถัดไป" becomes the next goal.
 #:
-#: These are the *studio template's* headings — pages the previous pipeline
+#: These are the *studio template's* headings: pages the previous pipeline
 #: wrote, and pages a teacher types by hand. Baton's own headings are added on
 #: top of them by :func:`with_written_headings`, so both kinds of page read
 #: back the same way.
@@ -61,7 +61,7 @@ READ_KEYWORDS: dict[str, tuple[str, ...]] = {
 #: ``progress`` is the one section whose two names match, because it was added
 #: after this module existed to hold both.
 #:
-#: Sections read back but never written — ``next_goal``, ``homework`` — are
+#: Sections read back but never written: ``next_goal``, ``homework``: are
 #: absent on purpose. Nothing Baton writes carries those headings; homework
 #: arrives through ``docs.homework_types`` instead, which claims checklist
 #: blocks wherever they sit.

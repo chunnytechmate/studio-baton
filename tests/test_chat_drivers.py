@@ -1,9 +1,9 @@
-"""The HTTP messenger drivers — mainly the property that keeps a retried send
+"""The HTTP messenger drivers: mainly the property that keeps a retried send
 from reaching a parent twice.
 
 ``core.retry.http_request`` retries a transient failure automatically. For
 LINE, a retry that fires after the platform already accepted the first
-attempt — the response was merely lost, not the delivery — must not read as
+attempt (the response was merely lost, not the delivery) must not read as
 a second, different message. LINE's own answer to this is an idempotency
 header (``X-Line-Retry-Key``); this file pins that Baton actually sends it,
 and sends the *same* one for a genuine retry of the same content.
@@ -86,7 +86,7 @@ def test_line_retry_key_changes_with_the_recipient(monkeypatch):
 
 
 def test_telegram_send_has_no_retry_key(monkeypatch):
-    """Telegram's sendMessage has no idempotency header to set — confirms the
+    """Telegram's sendMessage has no idempotency header to set: confirms the
     hook is opt-in per driver rather than something LINE-specific leaking in."""
     import baton.adapters.chat.drivers as drivers
 

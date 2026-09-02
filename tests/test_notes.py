@@ -1,6 +1,6 @@
 """Markdown conversion and note creation.
 
-This replaces the one skill that had no code — a model was handed the API
+This replaces the one skill that had no code: a model was handed the API
 shape and asked to build the JSON. Every test here is a line that would have
 been dropped, mangled, or split wrongly by hand.
 """

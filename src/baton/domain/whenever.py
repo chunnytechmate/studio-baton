@@ -2,7 +2,7 @@
 
 The original told the agent to "parse the shorthand into YYYY-MM-DD before
 calling the script". That is arithmetic, and arithmetic is the last thing to
-leave to a language model — an off-by-one here books a lesson on the wrong day
+leave to a language model: an off-by-one here books a lesson on the wrong day
 and nobody notices until a family arrives to an empty room.
 
 So it is a function, and a command. Shorthand tokens are configuration, because
@@ -72,7 +72,7 @@ def parse_date(
     configured weekday name, a day-first numeric date (when the profile allows
     it), or a signed day offset like ``+3``.
 
-    A weekday always means its *next* occurrence — today never counts, which
+    A weekday always means its *next* occurrence: today never counts, which
     is the rule the studio's original scripts lived by: asked on a Friday,
     "วันศุกร์" means next Friday, not the Friday already half over.
 
@@ -181,17 +181,17 @@ def _word_time(raw: str, words: Mapping[str, object]) -> tuple[int, int] | None:
 
     The vocabulary comes from ``calendar.time_words``:
 
-    * ``hour_units`` — ``N โมง`` / ``N นาฬิกา``: the number is the hour,
+    * ``hour_units``: ``N โมง`` / ``N นาฬิกา``: the number is the hour,
       read literally. ``9 โมง`` is 09:00, not the traditional Thai count
       where it would be mid-morning; a studio that wants that convention
       says so with a period word.
-    * ``morning`` / ``evening`` — period words. Morning keeps the hour;
+    * ``morning`` / ``evening``: period words. Morning keeps the hour;
       an evening word adds twelve when the hour is below it. Both apply to
       every hour unit alike: the original scripts silently ignored เย็น on
       นาฬิกา, and a lesson booked for 06:00 because of it stayed wrong all
       week. Naming both a morning and an evening word is refused.
-    * ``special`` — words that *are* a time: เที่ยง → 12:00, เที่ยงคืน → 00:00.
-    * ``evening_count`` — counted-from-evening words, mapped to the hour the
+    * ``special``: words that *are* a time: เที่ยง → 12:00, เที่ยงคืน → 00:00.
+    * ``evening_count``: counted-from-evening words, mapped to the hour the
       count starts at: with ``ทุ่ม: 18``, ``3 ทุ่ม`` is 21:00; with ``ตี: 0``,
       ``ตี 3`` is 03:00. The word may sit before or after the number.
 
@@ -249,7 +249,7 @@ def parse_time(value: str, *, words: Mapping[str, object] | None = None) -> time
     """Resolve a time of day written as ``17:00``, ``17.00``, or ``17``.
 
     With ``words`` from ``calendar.time_words`` the profile's own phrasing is
-    understood too — ``6 โมงเย็น``, ``3 ทุ่ม``, ``ตี 3``, ``เที่ยง``. A time
+    understood too: ``6 โมงเย็น``, ``3 ทุ่ม``, ``ตี 3``, ``เที่ยง``. A time
     past 23 hours is refused rather than wrapped: "11 ทุ่ม" is a typo, not a
     plan for 05:00.
 
@@ -284,7 +284,7 @@ def combine(day: date, moment: time, timezone: str) -> datetime:
 def _time_head_width(tokens: list[str], words: Mapping[str, object] | None) -> int:
     """How many leading tokens of a schedule line form the time.
 
-    A written time can itself contain spaces — ``6 โมงเช้า น้องจี`` is a time
+    A written time can itself contain spaces: ``6 โมงเช้า น้องจี`` is a time
     then a name, not a time named "โมงเช้า น้องจี". Beyond the first token,
     a token joins the time only while it *begins with* one of the profile's
     time words, so น้องจี never gets swallowed however the number is spaced.
@@ -309,6 +309,8 @@ def parse_schedule(
     text: str,
     *,
     default_minutes: int = 60,
+    # An em dash here is input a teacher types into an empty slot, not prose:
+    # the writing style's ban on the character does not reach typed data.
     free_markers: tuple[str, ...] = ("-", "—", "free", "ว่าง"),
     words: Mapping[str, object] | None = None,
 ) -> list[tuple[time, time, str]]:

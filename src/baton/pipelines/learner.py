@@ -7,15 +7,15 @@ original system's worst bugs came from guessing rather than joining them.
 Two rules are enforced here, and they are the reason this module exists rather
 than each command doing its own lookup:
 
-**The latest session is the newest *done* one — never the highest number.**
+**The latest session is the newest *done* one, never the highest number.**
 Sessions get skipped: a learner is ill, a week is cancelled, a page is created
 in advance. Session 12 existing says nothing about whether session 12 happened,
 so "latest" means status *done*, ordered by the date on the document.
 
 **The next free session is where a new lesson may land.** A not-started page
 with no content is free. A page in progress is the lesson that is happening
-now — the studio's own flow books a lesson, the page turns "In progress", and
-the summary is written onto *that* page — so a fresh one is the target, exactly
+now: the studio's own flow books a lesson, the page turns "In progress", and
+the summary is written onto *that* page, so a fresh one is the target, exactly
 as the system this replaces always answered. Only a page still in progress
 after its day has passed by more than ``next_stale_days`` is treated as
 abandoned: one missed lesson must not hold every later week hostage. A
@@ -267,7 +267,7 @@ class LearnerHistory:
         self.docs = docs
         self.vocabulary = vocabulary
         self.max_parallel_reads = max(1, int(max_parallel_reads))
-        # None means a page in progress is never abandoned — the legacy
+        # None means a page in progress is never abandoned: the legacy
         # system's behaviour.
         self.next_stale_days = None if next_stale_days is None else max(0, int(next_stale_days))
 
@@ -281,8 +281,8 @@ class LearnerHistory:
             doc = self.docs.get_status(session.doc_id)
         except BatonError as exc:
             # One unreadable document must not make a learner's whole history
-            # unusable. A single malformed page id — a truncated one, a page
-            # deleted in the app — would otherwise take eleven good sessions
+            # unusable. A single malformed page id (a truncated one, a page
+            # deleted in the app) would otherwise take eleven good sessions
             # down with it. The state stays unknown, which `latest_done` and
             # `next_empty` already refuse to act on, and the reason is carried
             # so it is reported rather than silently swallowed.
@@ -330,8 +330,8 @@ class LearnerHistory:
     def latest_done(self, views: list[SessionView]) -> SessionView | None:
         """The most recent session that actually happened.
 
-        Ordered by the document's date, with the session number breaking ties
-        — a studio that leaves the date blank still gets a sensible answer, and
+        Ordered by the document's date, with the session number breaking ties:
+        a studio that leaves the date blank still gets a sensible answer, and
         one that backfills dates gets the right one even when the numbers are
         out of order.
         """
@@ -347,12 +347,12 @@ class LearnerHistory:
 
         A not-started page with no content is free. A page in progress is the
         target while it is fresh: the studio's flow books a lesson, the page
-        turns "In progress", and the summary is written onto that page —
+        turns "In progress", and the summary is written onto that page:
         skipping it would file the lesson against the wrong week. Only a page
         still in progress more than ``next_stale_days`` past its date is
         treated as abandoned and passed over, so one missed lesson cannot
         hold every later week hostage. ``next_stale_days: null`` never
-        abandons a page — the legacy system's behaviour.
+        abandons a page: the legacy system's behaviour.
 
         A "not started" page carrying blocks is work someone has already
         begun; handing it back as free would overwrite it. Unreadable pages
@@ -381,7 +381,7 @@ class LearnerHistory:
         return [view for view in views if view.state == IN_PROGRESS]
 
     # -- across everyone ---------------------------------------------------
-    # The morning question — "who still owes a summary?" — is answered from
+    # The morning question: "who still owes a summary?": is answered from
     # the calendar window by Scheduler.in_progress, which reads one document
     # per candidate instead of every session page of every learner. Scanning
     # every page here was the most expensive call Baton made.

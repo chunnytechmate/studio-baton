@@ -1,9 +1,9 @@
-"""``baton notes`` — push a note to the documents store.
+"""``baton notes``: push a note to the documents store.
 
 The skill this replaces had no code at all. It gave a model the Notion API
 shape and a `curl` invocation and asked it to assemble the JSON, chunk it at
 100 blocks, and retry on failure. All three are mechanical, and all three are
-things a model gets wrong quietly — a dropped line looks like a note that was
+things a model gets wrong quietly: a dropped line looks like a note that was
 simply shorter than you remembered.
 """
 
@@ -121,7 +121,7 @@ def _title_for(note: str, given: str | None, timezone: str) -> str:
 
 
 def _today(timezone: str) -> str:
-    return f"Note — {datetime.now(ZoneInfo(timezone)).date().isoformat()}"
+    return f"Note {datetime.now(ZoneInfo(timezone)).date().isoformat()}"
 
 
 def handle_push(ctx: Context) -> Exit:
@@ -159,7 +159,7 @@ def handle_push(ctx: Context) -> Exit:
 
     ctx.report.result(
         {**status.to_dict(), "blocks": len(blocks)},
-        human=f"Created “{title}” — {len(blocks)} block(s)\n  {status.url or status.doc_id}",
+        human=f"Created “{title}”, {len(blocks)} block(s)\n  {status.url or status.doc_id}",
     )
     return Exit.OK
 

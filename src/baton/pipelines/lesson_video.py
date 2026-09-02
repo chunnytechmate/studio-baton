@@ -1,6 +1,6 @@
 """Sending the latest lesson's video by itself.
 
-A parent asking for the video means the video — not the whole published
+A parent asking for the video means the video, not the whole published
 summary re-sent with the link at the bottom. The old skill registry kept this
 request deliberately separate from both "สรุปการเรียน" (the summary) and
 "ผลงาน/record" (a recorded work); the rewrite carried over neither the
@@ -25,7 +25,7 @@ from .send import _instrument_icon
 #: video belongs to.
 _SNIPPET_CHARS = 150
 
-#: Sections that make a useful taste of a lesson, in preference order —
+#: Sections that make a useful taste of a lesson, in preference order:
 #: overview first, because it is written to be read first.
 _SNIPPET_SECTIONS = ("overview", "content", "focus")
 
@@ -33,7 +33,7 @@ _SNIPPET_SECTIONS = ("overview", "content", "focus")
 def snippet(sections: dict[str, str], *, limit: int = _SNIPPET_CHARS) -> str:
     """A compact taste of one lesson, from its read-back sections.
 
-    Lines are taken whole until the limit and then cut with an ellipsis —
+    Lines are taken whole until the limit and then cut with an ellipsis:
     truncating mid-line would say something the page never said. The first
     section with content wins, in a fixed order, so the same page always
     tastes the same.
@@ -68,7 +68,7 @@ def compose_video_message(
 
     Raises:
         GateError: There is no video link. This command *is* the video, so an
-            empty one is refused rather than sent around — the same fail-closed
+            empty one is refused rather than sent around: the same fail-closed
             stance as every other send gate, and a different refusal from
             `send recording`'s, which is about a work with no links.
     """
@@ -91,7 +91,7 @@ def compose_video_message(
         header += f" ({instrument})"
 
     when = (
-        f"{session_label} {session_number} — {date}"
+        f"{session_label} {session_number} ({date})"
         if session_number and date
         else (f"{session_label} {session_number}" if session_number else date)
     )

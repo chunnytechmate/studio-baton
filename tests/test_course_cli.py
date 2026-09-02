@@ -311,7 +311,7 @@ def test_clear_refuses_when_the_filed_copy_is_incomplete(studio, capsys):
 
 
 def test_clear_refuses_when_the_copy_was_trashed_after_filing(studio, capsys):
-    """A verify that passed yesterday protects nothing today — the gate re-reads."""
+    """A verify that passed yesterday protects nothing today: the gate re-reads."""
 
     _, use = studio
     fake = use(_docs(with_folder=True))

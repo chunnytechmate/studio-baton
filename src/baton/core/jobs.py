@@ -2,24 +2,24 @@
 
 Video work runs for tens of minutes. An agent's session may not. ``--detach``
 hands the work to a supervisor process that outlives the CLI call, the agent
-session, and the terminal that started it — while recording enough state that
+session, and the terminal that started it, while recording enough state that
 ``baton job status`` can always say what happened, even after a crash or a
 reboot.
 
 Shape of a job on disk, under ``<state>/jobs/<id>/``::
 
-    meta.json     lifecycle record — status, pid, exit code, timestamps
+    meta.json     lifecycle record: status, pid, exit code, timestamps
     log.txt       everything the job printed, stdout and stderr
     heartbeat     mtime touched every few seconds while the supervisor lives
 
 The supervisor is ``baton job supervise`` (hidden from help): it re-executes any
 command, captures its output, and writes the lifecycle record. Wrapping rather
 than embedding is what lets *any* long command get job semantics, baton or not,
-and keeps pipeline code free of supervisor concerns — a pipeline records its own
+and keeps pipeline code free of supervisor concerns: a pipeline records its own
 steps in its own state file and never talks to this module directly.
 
 Liveness is derived, never trusted blindly: a job whose recorded status is
-``running`` but whose supervisor pid is dead — or whose heartbeat went stale —
+``running`` but whose supervisor pid is dead (or whose heartbeat went stale)
 reads as ``orphaned``. Because pipelines are resumable, the answer to an
 orphaned job is to re-run the same command, not to investigate.
 """
@@ -49,14 +49,14 @@ TERMINAL_STATUSES = frozenset({"done", "failed", "stopped", "orphaned"})
 
 #: A supervisor touches the heartbeat every HEARTBEAT_SECONDS; a file older than
 #: HEARTBEAT_STALE_SECONDS means the supervisor is alive but wedged (a hung
-#: encode, a full disk) — reported so a human decides rather than the job
+#: encode, a full disk): reported so a human decides rather than the job
 #: pretending to be fine.
 HEARTBEAT_SECONDS = 5.0
 HEARTBEAT_STALE_SECONDS = 300.0
 
 #: Finished jobs older than this stop appearing in `job list`. A record that
 #: ended days ago is history, not a live problem, but it used to sit in the
-#: listing until the 14-day prune deleted it — a failed job from half a week
+#: listing until the 14-day prune deleted it: a failed job from half a week
 #: back read as tonight's failure. `--all` shows everything; `job status <id>`
 #: always works.
 DEFAULT_LIST_STALE_DAYS = 3.0
@@ -397,7 +397,7 @@ class JobRunner:
 
         Args:
             include_stale: Also list finished jobs older than
-                :attr:`list_stale_days`. Running jobs are always listed —
+                :attr:`list_stale_days`. Running jobs are always listed:
                 hiding one, however stale its heartbeat, would hide a live
                 process and the lock it may hold.
         """
@@ -555,7 +555,7 @@ class RunLock:
     Unlike the per-write locks in :mod:`baton.core.jsonio`, this one is held for
     the life of the process: the OS releases it when the process dies, whatever
     the manner of death. That is the property that makes it safe against
-    collision — a crashed run cannot leave a stale lock behind, so there is no
+    collision: a crashed run cannot leave a stale lock behind, so there is no
     "delete the lockfile by hand" recovery procedure to document.
 
     The holder's pid is written inside for the collision message.
@@ -573,7 +573,7 @@ class RunLock:
                 holder so the operator can wait on or stop that run instead.
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Held open for the life of the lock — closing it *is* releasing it.
+        # Held open for the life of the lock: closing it *is* releasing it.
         handle = open(self.path, "a+b")  # noqa: SIM115
         try:
             if sys.platform == "win32":  # pragma: no cover - platform specific

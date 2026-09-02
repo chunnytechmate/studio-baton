@@ -31,7 +31,7 @@ baton video resume --detach --json      # continue whatever did not finish
 **Baton will not tell you when it finishes.** It is pull-based by design and has
 no way to push into a conversation, so a run that outlives your turn has to be
 checked on, never waited for. Report the job id, then either wait in short turns
-(`baton job wait <id> --timeout 90`) or schedule the wait outside the turn — an
+(`baton job wait <id> --timeout 90`) or schedule the wait outside the turn: an
 on-exit cron entry wrapping `baton job wait <id>` wakes the agent with the exit
 code when the job ends. Never leave a `job wait` running in the background of a
 turn: the turn's process group goes away with the turn and nothing wakes up.
@@ -40,12 +40,12 @@ turn: the turn's process group goes away with the turn and nothing wakes up.
 and the two follow-up commands to the user.
 
 **`job wait` exits with the job's own exit code.** Exit `8` means it is still
-running — that is not a failure, report it and offer to keep waiting.
+running: that is not a failure, report it and offer to keep waiting.
 
 **Keep `--timeout` under your own harness's limit.** Claude Code kills a shell
 command at two minutes by default; a `--timeout 600` never returns its exit 8,
 it gets killed, and a killed wait tells you nothing about the job. Wait in short
-turns instead — 90 seconds, report, wait again — or just report the job id and
+turns instead (90 seconds, report, wait again) or just report the job id and
 check `baton job status` later. The job outlives every one of these calls.
 
 **Re-running is safe and is the correct response to most failures.** A finished
@@ -54,22 +54,22 @@ else succeeded. Use `baton video resume`.
 
 **A new week's clips start a new job by themselves.** When a folder whose job
 is already done receives clips the job has never seen, `video run` archives
-the done job and starts the next session's job — `video forget` is no longer
+the done job and starts the next session's job: `video forget` is no longer
 part of the weekly loop. If no next session exists yet, that learner fails
 with a remedy naming it; create the session, then re-run.
 
 **`video resume` never collects, but never stays quiet either.** It continues
 unfinished jobs and re-trashes source clips a done job's record claims were
 already moved. When clips are waiting that only `video run` may collect, the
-result says so (`waiting_clips`) — report that and suggest `video run`.
+result says so (`waiting_clips`): report that and suggest `video run`.
 
 **A finished job survives a document-store outage.** The link step is
 re-checked against the live page on every pass, but when the step is already
-recorded and the page cannot be reached, the record stands — so a `done` job
+recorded and the page cannot be reached, the record stands, so a `done` job
 does not read as `failed` because Notion was briefly down.
 
 **A job is finished when two things agree.** `baton job status <id>` saying
-`done` means the process exited 0 — not that the recording landed. Check the
+`done` means the process exited 0, not that the recording landed. Check the
 work itself in `baton video status --json`: that learner's entry `status:
 "done"`, `error: null`, and a `video_id` and `video_url` present. A `done` job
 whose entry is missing a step is *incomplete*, and reporting it as finished is
@@ -86,7 +86,7 @@ is not done, which is the question worth asking when a job stops.
 and the `combined` step is recorded only once it finishes, so a job that is
 `running` with a live heartbeat and ffmpeg using CPU is working, not stuck.
 Do not delete `.baton-encode-*`, a source clip, or the job state while a job
-is `running` — see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for the rest.
+is `running`: see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for the rest.
 
 **Terminal job statuses are `done`, `failed`, `stopped`, `orphaned`.** Only
 `done` says the process finished cleanly; the other three all end with
@@ -97,7 +97,7 @@ understands it: if the upload already happened, starting over publishes a
 second copy.
 
 **A skipped learner is not a failure.** It means no learner is named exactly
-like that source folder. Report the folder name and ask which learner it is —
+like that source folder. Report the folder name and ask which learner it is:
 do not guess, and do not rename anything yourself.
 
 ## Exit codes
@@ -110,4 +110,4 @@ do not guess, and do not rename anything yourself.
 | `7` | A job died without recording an outcome. Report; re-running is safe |
 | `8` | Still running, or another video run holds the lock. Report the job id |
 | `9` | Baton crashed. Report the traceback; do not retry |
-| `143` | Your wait was killed by the harness, not the job. The job is unaffected — check `baton job status` |
+| `143` | Your wait was killed by the harness, not the job. The job is unaffected: check `baton job status` |

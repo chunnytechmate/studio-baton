@@ -92,7 +92,7 @@ def test_impossible_times_are_rejected(value):
 
 # -- weekdays -----------------------------------------------------------------
 # TODAY, 2026-08-16, is a Sunday. A weekday always means its next occurrence,
-# and today itself never counts — the rule the studio's original scripts
+# and today itself never counts: the rule the studio's original scripts
 # lived by.
 
 WEEKDAYS = {"จันทร์": 0, "อังคาร": 1, "พุธ": 2, "พฤหัส": 3, "ศุกร์": 4, "เสาร์": 5, "อาทิตย์": 6}
@@ -155,7 +155,7 @@ def test_day_first_dates_resolve_when_the_profile_allows_them(expression, expect
 @pytest.mark.parametrize("expression", ["31/2/2026", "12-8/2026", "12/8/26"])
 def test_day_first_dates_refuse_instead_of_guessing(expression):
     """An impossible date, a mixed separator, and a two-digit year are all
-    rejections — the original scripts silently kept a wrong earlier resolution
+    rejections: the original scripts silently kept a wrong earlier resolution
     instead, and nobody noticed until a lesson landed on the wrong day."""
     with pytest.raises(UsageError):
         parse_date(expression, accept_dmy=True, reference=TODAY)
@@ -169,7 +169,7 @@ def test_day_first_dates_are_off_until_the_profile_turns_them_on():
 # -- the studio's own time words -----------------------------------------------
 # The number is read literally: "9 โมง" is 09:00, not the traditional Thai
 # count. A period word says which half of the day, and it binds to every hour
-# unit alike — the original scripts ignored เย็น on นาฬิกา, booking 18:00 as
+# unit alike: the original scripts ignored เย็น on นาฬิกา, booking 18:00 as
 # 06:00.
 
 WORDS = {
@@ -242,6 +242,7 @@ def test_a_free_period_is_skipped_but_still_bounds_the_slot_before_it():
     assert [row[2] for row in rows] == ["Ada", "Bruno"]
 
 
+# The em dash is a marker a teacher types, so it is pinned here as data.
 @pytest.mark.parametrize("marker", ["-", "—", "free", "ว่าง"])
 def test_every_free_marker_is_recognised(marker):
     rows = parse_schedule(f"17:00 Ada\n18:00 {marker}")
@@ -316,7 +317,7 @@ def test_booking_marks_the_document_then_creates_the_event():
 
 def test_booking_the_same_session_twice_in_one_day_is_refused():
     """A re-submitted booking used to leave two identical events, and a later
-    cancel removed only one of them — the calendar said the lesson existed
+    cancel removed only one of them: the calendar said the lesson existed
     after it had been cancelled."""
     scheduler, calendar, _docs = build()
 
@@ -560,7 +561,7 @@ def test_a_reversed_range_is_refused_rather_than_booked():
 
 def test_a_late_start_crossing_midnight_ends_the_next_day():
     """23:30 + 60 minutes is 00:30 tomorrow. Comparing bare `time` values
-    rolled it back to 00:30 the same day — an event that ended before it
+    rolled it back to 00:30 the same day: an event that ended before it
     began."""
     scheduler, _calendar, _docs = build()
 
@@ -656,7 +657,7 @@ def test_in_progress_reads_the_window_not_the_world():
 
 
 def test_a_summarized_lesson_drops_out_on_its_own():
-    """The event is still on the calendar, but the page says done — the page
+    """The event is still on the calendar, but the page says done: the page
     is the truth, and the learner owes nothing."""
     docs = FakeDocStore(
         statuses={

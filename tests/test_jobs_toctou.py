@@ -1,7 +1,7 @@
 """``get()`` must survive the heartbeat file vanishing mid-read.
 
 Regression (M3): ``JobRunner.get`` checked ``hb_path.exists()`` and then called
-``hb_path.stat()`` — two separate filesystem calls. A prune pass running
+``hb_path.stat()``: two separate filesystem calls. A prune pass running
 concurrently can remove the job dir between them, so ``stat()`` raised a raw
 ``FileNotFoundError`` that escaped the error envelope callers are promised.
 """

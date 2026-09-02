@@ -6,11 +6,11 @@ what is yours. Forking drifts within a month; a config-only overlay does not.
 ```
 my-studio/                 # private
 ├── baton.yaml             # your tables, properties, contacts, labels
-├── .env                   # secrets — never committed in the clear
+├── .env                   # secrets; never committed in the clear
 ├── theory.json            # your teaching notes, referenced by callout id
 ├── state/                 # drafts, published records, job state
 ├── data/                  # SQLite, if that is your driver
-└── requirements.txt       # how you pin Baton itself — see below
+└── requirements.txt       # how you pin Baton itself; see below
 ```
 
 Pin an exact version, never a branch. An overlay that tracks a moving branch
@@ -18,14 +18,14 @@ will one day pick up a change to the config schema between two runs of the same
 nightly job, and the run that breaks will be the unattended one:
 
 ```
-studio-baton[google]==0.4.1
+studio-baton[google]==1.0.3
 ```
 
-Every release since 0.1.0 is on PyPI, so an exact version is the pin to use —
-no git at build time. The git form still works where PyPI is unreachable:
+Every release since 0.1.0 is on PyPI, so an exact version is the pin to use.
+No git is needed at build time. The git form still works where PyPI is unreachable:
 
 ```
-studio-baton[google] @ git+https://github.com/chunnytechmate/studio-baton@v0.4.1
+studio-baton[google] @ git+https://github.com/chunnytechmate/studio-baton@v1.0.3
 ```
 
 Every tag is a commit CI has already passed on Linux and macOS across Python
@@ -64,7 +64,7 @@ BATON_DENYLIST=~/my-studio/.denylist python tools/check_leaks.py
 ```
 
 Without `BATON_DENYLIST` the check says it was skipped rather than reporting a
-pass — it never claims to have verified something it did not.
+pass. It never claims to have verified something it did not.
 
 ## Upgrading
 

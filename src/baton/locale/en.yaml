@@ -1,4 +1,4 @@
-# English message catalogue — the reference for message ids.
+# English message catalogue: the reference for message ids.
 # Keys are stable; wording may change between releases.
 
 doctor.title: "Configuration check"

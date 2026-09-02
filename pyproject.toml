@@ -80,7 +80,7 @@ src = ["src", "tests"]
 # unremarked.
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "S"]
 ignore = [
-  "RUF001",  # ambiguous unicode in strings — Thai and box-drawing are intentional
+  "RUF001",  # ambiguous unicode in strings: Thai and box-drawing are intentional
   "RUF003",
   "S603",    # subprocess calls are all built from validated argv lists, never a shell string
 ]

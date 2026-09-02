@@ -174,7 +174,7 @@ def test_next_empty_takes_a_fresh_in_progress_page():
 
 def test_next_empty_passes_over_an_in_progress_page_left_stale():
     """A page still In progress well past its day is abandoned, not the
-    lesson happening now — one missed week must not hold every later week
+    lesson happening now: one missed week must not hold every later week
     hostage."""
     _, history = build(
         sessions=[
@@ -242,7 +242,7 @@ def test_next_empty_still_ignores_done_sessions():
 
 def test_an_unrecognised_status_is_never_treated_as_free():
     """A studio adds "Cancelled". It is not in docs.statuses, so it maps to
-    unknown — and unknown must not be quietly offered as the next free slot."""
+    unknown, and unknown must not be quietly offered as the next free slot."""
     _, history = build(
         sessions=[Session(id="a", learner_id="1", number=1, doc_id="d1")],
         docs={"d1": DocStatus(doc_id="d1", status="Cancelled")},
@@ -293,7 +293,7 @@ def test_sessions_come_back_ordered_by_number_despite_parallel_reads():
 
 
 # The "who still owes a summary" question now lives in Scheduler, answered
-# from a calendar window — its tests are in test_calendar.py. Scanning every
+# from a calendar window: its tests are in test_calendar.py. Scanning every
 # page of every learner was the most expensive call Baton made.
 
 
@@ -319,7 +319,7 @@ def test_summarise_gathers_the_whole_picture():
     assert summary["sessions"]["done"] == 1
     assert summary["sessions"]["latest_done"]["number"] == 1
     # Session 2 is In progress with no date: it cannot be proven stale, so it
-    # is the target — not the untouched session 3 after it.
+    # is the target, not the untouched session 3 after it.
     assert summary["sessions"]["next_empty"]["number"] == 2
     assert [v["number"] for v in summary["sessions"]["in_progress"]] == [2]
 
@@ -422,7 +422,7 @@ def test_an_unreadable_session_is_never_treated_as_done_or_free():
 
 
 def _history_with_one_bad_row() -> LearnerHistory:
-    """A learner with one good session and one whose page id is malformed —
+    """A learner with one good session and one whose page id is malformed:
     the exact shape found in the real data."""
     from baton.errors import UpstreamError
 
@@ -446,7 +446,7 @@ def _history_with_one_bad_row() -> LearnerHistory:
 
 def test_every_document_failing_is_an_outage_not_an_empty_answer():
     """The distinction that matters: one bad row degrades, but a total outage
-    must not come back as "no free session" — a confident wrong answer at
+    must not come back as "no free session": a confident wrong answer at
     exactly the moment nothing can be trusted."""
     from baton.errors import UpstreamError
 

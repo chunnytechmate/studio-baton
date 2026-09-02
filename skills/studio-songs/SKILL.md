@@ -33,16 +33,16 @@ baton song remove <id> --dry-run --json                # preview first
 ## Rules
 
 **`song update` only touches the fields given.** A flag left out leaves that
-field alone. Passing an empty value (`--sheet-link ""`) clears it — that is
+field alone. Passing an empty value (`--sheet-link ""`) clears it: that is
 different from not passing the flag at all, so never pass an empty value
 unless the user actually asked to remove a link.
 
 **Unknown ids are refused, never silently accepted.** Updating or removing a
-piece that does not exist is exit `1`, not a quiet success — check `song show`
+piece that does not exist is exit `1`, not a quiet success: check `song show`
 first if unsure an id is right.
 
 **`song remove` is exit `5` while any learner is assigned.** The message
-names them. Reassign or unassign with `baton learner assign` first — there is
+names them. Reassign or unassign with `baton learner assign` first: there is
 no override.
 
 **Use `--dry-run` before a remove the user has not explicitly confirmed.**
@@ -50,14 +50,14 @@ Show what would be removed, and who (if anyone) is holding it, before running
 it for real.
 
 **`song add` has no duplicate check.** Run `song search "<title>"` first if a
-duplicate would matter — Baton will not catch it for you here.
+duplicate would matter: Baton will not catch it for you here.
 
 ## Exit codes
 
 | Code | Do this |
 | --- | --- |
 | `0` | Report the result |
-| `1` | Unknown id, a blank title, or an update with nothing to change — the message says which |
+| `1` | Unknown id, a blank title, or an update with nothing to change: the message says which |
 | `2` | Run `baton doctor`, report what it says, stop |
-| `5` | A learner is still assigned. Report who, and stop — no override |
+| `5` | A learner is still assigned. Report who, and stop, no override |
 | `6` | Report; the service is down, re-running later is safe |

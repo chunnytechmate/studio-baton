@@ -1,4 +1,4 @@
-"""Two learners, two prompts — and two differently-named goal sections.
+"""Two learners, two prompts, and two differently-named goal sections.
 
 The learners table has always carried what separates one learner's summary
 from another's: a tone, an instrument, whether there is an instrument at
@@ -10,7 +10,7 @@ The no-instrument case is the sharp one. A learner with nothing at home was
 still getting a section headed "Practice goals" and a message line labelled
 "Practice", because the only thing their record changed was one sentence of
 prompt. The heading contradicted the lesson underneath it, and the phrase
-list refused the one honest thing left to write — what the next lesson will
+list refused the one honest thing left to write: what the next lesson will
 work towards.
 """
 
@@ -240,7 +240,7 @@ def test_a_learner_with_an_instrument_keeps_the_usual_wording(studio, capsys):
 
 def test_the_published_page_and_the_stored_message_carry_the_new_wording(studio, capsys):
     """The message is composed at publish time and stored, so the substitution
-    has to happen there too — `send` reads the record, not the learner."""
+    has to happen there too: `send` reads the record, not the learner."""
     contract(studio, capsys, WITHOUT_INSTRUMENT)
     assert ingest(studio, capsys, WITHOUT_INSTRUMENT, SUMMARY)[0] == Exit.OK
     assert call(studio, "publish", WITHOUT_INSTRUMENT) == Exit.OK

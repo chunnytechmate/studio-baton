@@ -11,8 +11,8 @@ an internal integration, and copy its secret. That is `NOTION_API_TOKEN`.
 ## 2. Share the pages with it
 
 **This is the step people miss.** An integration can only see pages that have
-been explicitly shared with it. Until you do this, every request returns 404 —
-not 403 — so it looks like the page does not exist.
+been explicitly shared with it. Until you do this, every request returns 404 (
+not 403), so it looks like the page does not exist.
 
 On your session database (and on the parent page quick notes live under):
 open the `⋯` menu → *Connections* → add your integration. Sharing a parent page
@@ -36,7 +36,7 @@ docs:
     not_started: Not started
 ```
 
-A property may be a `status`, a `select`, or `rich_text` — Baton reads whichever
+A property may be a `status`, a `select`, or `rich_text`: Baton reads whichever
 you built. Run `baton doctor` to confirm the mapping before relying on it.
 
 ## 4. Protect what a rewrite must not touch

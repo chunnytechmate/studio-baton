@@ -2,7 +2,7 @@
 
 Claude Code and OpenClaw both drive Baton the same way: run a command, read the
 exit code, parse one JSON document. Both also do two things a terminal never
-does — they kill a call that overruns their own time limit, and they branch on
+does: they kill a call that overruns their own time limit, and they branch on
 the number rather than reading the message. Every test here is about a way that
 combination used to produce a wrong conclusion.
 """
@@ -48,7 +48,7 @@ def _install(monkeypatch, handler):
 def test_an_unexpected_exception_exits_internal_not_usage(profile, monkeypatch, capsys):
     """Exit 1 meant "you called this wrongly", and a crash used to claim it.
 
-    An agent reading 1 rewrites its arguments and tries again — forever, since
+    An agent reading 1 rewrites its arguments and tries again: forever, since
     the arguments were never the problem.
     """
 
@@ -147,8 +147,8 @@ def test_the_previous_sigterm_disposition_is_restored(profile, monkeypatch):
 def test_streams_are_forced_to_utf8(monkeypatch):
     """`PYTHONIOENCODING=ascii` used to lose the whole document.
 
-    Baton dumps JSON with `ensure_ascii=False` on purpose — a parent reads the
-    message — so an ascii stdout raised UnicodeEncodeError *after* the send or
+    Baton dumps JSON with `ensure_ascii=False` on purpose (a parent reads the
+    message), so an ascii stdout raised UnicodeEncodeError *after* the send or
     publish had already happened, and the report of what happened was lost.
     """
     stdout = io.TextIOWrapper(io.BytesIO(), encoding="ascii")

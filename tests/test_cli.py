@@ -1,6 +1,6 @@
 """The CLI's promises: stable exit codes, and a JSON mode that stays parseable.
 
-An agent driving Baton reads two things — the exit code and the JSON document
+An agent driving Baton reads two things: the exit code and the JSON document
 on stdout. Both are asserted here for success and for every failure class the
 shell can produce.
 """
@@ -102,7 +102,7 @@ def test_doctor_json_lists_every_check(profile, monkeypatch, capsys):
 
 def test_doctor_refuses_a_profile_that_expects_baton_to_call_a_model(profile, monkeypatch, capsys):
     """`llm.provider` is a claim about the design, not a setting that selects
-    anything — there is no client to select. A profile that names a provider
+    anything: there is no client to select. A profile that names a provider
     is waiting for a call that never comes, and finding that out at the first
     missing summary is worse than being told at setup."""
     monkeypatch.setenv("NOTION_API_TOKEN", "t")
@@ -119,7 +119,7 @@ def test_doctor_refuses_a_profile_that_expects_baton_to_call_a_model(profile, mo
 
 
 def test_doctor_checks_the_schema_mapping_without_a_network(profile, monkeypatch, capsys):
-    """The most common misconfiguration — a column that does not exist — is
+    """The most common misconfiguration (a column that does not exist) is
     caught offline, so it can be checked on a laptop before a deploy."""
     monkeypatch.setenv("NOTION_API_TOKEN", "t")
     monkeypatch.setenv("BATON_WEBHOOK_URL", "https://example.invalid/hook")
@@ -171,7 +171,7 @@ def test_progress_output_never_pollutes_json_stdout(profile, monkeypatch, capsys
 
     run(["--profile", str(profile), "--json", "doctor", "--offline"])
 
-    # Parsing the whole of stdout must succeed — nothing else may be written there.
+    # Parsing the whole of stdout must succeed, nothing else may be written there.
     json.loads(capsys.readouterr().out)
 
 
@@ -220,7 +220,7 @@ def test_flags_work_at_the_third_level_too(profile, capsys):
 
 
 def test_an_unknown_command_exits_usage_not_config(profile, capsys):
-    """argparse raises SystemExit(2) — the code the contract reserves for
+    """argparse raises SystemExit(2): the code the contract reserves for
     configuration problems. An agent branching on exit codes would diagnose a
     typo as a broken baton.yaml."""
     from baton.exits import Exit
@@ -269,7 +269,7 @@ def test_version_is_a_result_not_an_argparse_exit(profile, capsys):
 
     argparse's own `action="version"` printed prose and raised SystemExit
     before the JSON machinery existed, so `--json --version` answered in a
-    format no caller could parse — and version is precisely the question an
+    format no caller could parse, and version is precisely the question an
     agent has to ask before it trusts the rest.
     """
     assert run(["--version"]) == int(Exit.OK)
@@ -303,7 +303,7 @@ def test_internal_job_supervisor_is_hidden_from_help(profile, capsys):
 # -- what doctor was not checking ------------------------------------------
 #
 # `learner in-progress` reads the calendar every morning, and until now doctor
-# said "all checks passed" with no calendar credential in sight — so an expired
+# said "all checks passed" with no calendar credential in sight, so an expired
 # refresh token surfaced as a failed lesson lookup instead of a failed check.
 
 

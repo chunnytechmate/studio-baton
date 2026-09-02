@@ -8,7 +8,7 @@ harness that starts them offers no mutual exclusion of its own.
 
 Nothing in the state layer saved us there. `core.jsonio` locks each individual
 write, which makes a file's bytes consistent but does nothing about a
-read-modify-write straddling two of them — the shape of every publish, booking,
+read-modify-write straddling two of them: the shape of every publish, booking,
 and send. The failure that produces is not a corrupt file; it is a lesson
 published twice, or a booking whose document was marked by one run and whose
 event was created by another.
@@ -41,7 +41,7 @@ def guarded(
 
     Args:
         name: Lock name, shared by every command that writes the same records.
-            Coarse on purpose — ``send`` rather than ``send-to-this-learner`` —
+            Coarse on purpose: ``send`` rather than ``send-to-this-learner``:
             because the collisions worth preventing are between whole workflows,
             and a lock fine enough to never inconvenience anyone would also be
             fine enough to miss the case it exists for.

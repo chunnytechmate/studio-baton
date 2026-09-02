@@ -1,6 +1,6 @@
 """Reading a session page as named sections, for lesson preparation.
 
-A summarised page answers one question well — "what happened" — while the
+A summarised page answers one question well: "what happened", while the
 person walking into the next lesson needs three: what was covered, what was
 set as homework, and where the teaching was meant to go next. The page knows
 all of it; the knowledge just lives under headings, not in properties. So the
@@ -8,7 +8,7 @@ reading is by headings: a block belongs to the section whose heading it sits
 under.
 
 The headings are the studio's own template, so they are configuration, not
-code — a studio that renames "การบ้าน" to something else changes one line of
+code: a studio that renames "การบ้าน" to something else changes one line of
 ``baton.yaml``, not this module. Two rules survive any template: a checklist
 block is homework wherever it sits (a to-do under "ภาพรวม" is still a thing to
 practise), and the summariser's credit line is never part of any section.
@@ -54,7 +54,7 @@ class SectionRules:
             trailing "(Practice Goals)" on a heading changes nothing.
         homework_types: Block types that are homework regardless of the
             heading above them.
-        footer: Patterns stripped from every section — the summariser's
+        footer: Patterns stripped from every section: the summariser's
             credit line, which is about the tool, not the lesson. Two of them:
             the configured `docs.summary_footer`, which matches pages the
             previous pipeline wrote, and one derived from `summary.footer`,
@@ -92,7 +92,7 @@ class SectionRules:
         # Every heading the renderer writes is, by construction, a heading this
         # reader has to recognise. Deriving them rather than asking a studio to
         # list the same words in two places is what stops the two halves of
-        # Baton drifting apart again — they did, and it cost every published
+        # Baton drifting apart again: they did, and it cost every published
         # page its `content` section.
         written = dict(WRITTEN_HEADINGS)
         written.update(
@@ -126,7 +126,7 @@ class SectionRules:
     def read(self, blocks: list[Block]) -> dict[str, str]:
         """Every section these blocks hold, capped and footer-stripped.
 
-        Blocks before the first recognised heading belong to nothing — the
+        Blocks before the first recognised heading belong to nothing: the
         page's title area, not a section. Every key of ``keywords`` appears in
         the result, empty when the page lacks it, so callers can index without
         asking first.

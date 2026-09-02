@@ -3,12 +3,12 @@
 The fail-closed gate is the most valuable thing the original system had, and it
 is preserved exactly: **a missing required field blocks the send, and there is
 no override flag.** The fix is to supply the data. An override would mean a
-message reaching a parent with no link to the lesson — which is worse than no
+message reaching a parent with no link to the lesson, which is worse than no
 message, because the parent believes they were sent something.
 
 One field has a way past the block, and it goes through a person rather than a
 flag on the gate: when a session has no recording link, `send lesson` stops on
-exit 3 and asks, and only a person's confirmed `--without-video` sends it —
+exit 3 and asks, and only a person's confirmed `--without-video` sends it:
 with no video section in the message. The pipeline here plays no part in that
 decision; the CLI applies the confirmation as a required list with `video_link`
 moved to optional, which is the same shape as a studio configuring its own
@@ -19,7 +19,7 @@ standard of completeness. The block is not negotiable.
 
 Every field the gate checks is gathered here, from Baton's own records, so the
 caller cannot assemble a plausible-looking context by hand. What is sent is
-what was published — the message is the one stored at publish time, and the
+what was published: the message is the one stored at publish time, and the
 link is the document's real URL.
 """
 
@@ -37,7 +37,7 @@ from ..errors import GateError
 from .staging import PieceSnapshot
 
 #: The studio's own phrasing, carried over verbatim from the message the
-#: original `push.py` sent — parents already know this voice.
+#: original `push.py` sent: parents already know this voice.
 OPENING_PHRASES = (
     "สรุปการเรียนของ",
     "สรุปเนื้อหาการเรียนของ",
@@ -50,7 +50,7 @@ CLOSING_PHRASES = (
     "แล้วพบกันใหม่ครั้งหน้านะครับ 🥳",
     "ยอดเยี่ยม! ไว้พบกันใหม่ครั้งหน้านะครับ🥳",
 )
-#: Substring match against the learner's instrument, first hit wins — same
+#: Substring match against the learner's instrument, first hit wins: same
 #: rule the original used, so "กลองและกีตาร์" still gets both icons.
 INSTRUMENT_ICONS = (
     ("กลอง", "กีตาร์", "🥁🎸"),
@@ -97,7 +97,7 @@ class SendContext:
     video_link: str = ""
     practice_track: str = ""
     instrument: str = ""
-    #: The document's own date and titles — these live on the document, not
+    #: The document's own date and titles: these live on the document, not
     #: the database (see `Session`), so the caller reads them from there.
     date: str = ""
     titles: str = ""
@@ -126,7 +126,7 @@ def _practice_track(
     already knows which one was taught.
 
     Only a record written before snapshots existed (`unavailable`) falls back
-    to the live lookup, because for those there is nothing better to consult —
+    to the live lookup, because for those there is nothing better to consult,
     and a stale track is still closer to the truth than no track at all. A
     snapshot of `none` is not missing information: it says the learner had no
     piece assigned when the lesson was staged, so nothing is sent.
@@ -154,9 +154,9 @@ def gather_context(
 ) -> SendContext:
     """Build the context from a published record.
 
-    The video link, date, and titles are not stored at publish time — they
+    The video link, date, and titles are not stored at publish time: they
     live on the document itself and can change afterwards (a recording lands
-    later; a date gets corrected) — so all three are supplied by the caller,
+    later; a date gets corrected), so all three are supplied by the caller,
     which reads them from the document.
 
     The practice track goes the other way: it belongs to the lesson that was
@@ -186,7 +186,7 @@ def evaluate(
 
     This is the one place the gate's logic lives. ``gate_check`` turns the
     verdict into a refusal; `baton send readiness` turns the same verdict
-    into a report — so what the report names as missing is exactly what the
+    into a report, so what the report names as missing is exactly what the
     send would refuse on, never a second opinion that could drift.
     """
     fields = context.fields()
@@ -248,8 +248,8 @@ def gate_check(
 def compose_message(context: SendContext) -> str:
     """Build the final message the studio's families already know the voice of.
 
-    The summary was composed at publish time; everything around it — the
-    opening line, the instrument icon, the document and recording links — is
+    The summary was composed at publish time; everything around it (the
+    opening line, the instrument icon, the document and recording links) is
     added here from Baton's own records. A model never writes these; that is
     why links are forbidden inside the summary itself, where they would
     either duplicate these or be dead.
@@ -272,7 +272,7 @@ def compose_message(context: SendContext) -> str:
         lines.append(f"\n📝 {context.short_message}")
 
     week = context.session_number if context.session_number else "ล่าสุด"
-    lines.append(f"\n📌 ลิ้งค์ Link Week {week} รายละเอียดการเรียนและวีดีโอ:\n{context.doc_url}")
+    lines.append(f"\n📌 Week {week} รายละเอียดการเรียนและวีดีโอ:\n{context.doc_url}")
 
     if context.practice_track:
         lines.append(f"\n🎧 Track สำหรับซ้อม:\n{context.practice_track}")

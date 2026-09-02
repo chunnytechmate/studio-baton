@@ -31,7 +31,7 @@ baton calendar schedule <date> --text "17:00 Ada Whitfield
 ## Rules
 
 **Never compute a date or a time yourself.** Pass what the user said straight
-through — `today`, `tomorrow`, `+2`, an ISO date, a weekday name, or a
+through: `today`, `tomorrow`, `+2`, an ISO date, a weekday name, or a
 shorthand the profile configures. `baton calendar date` resolves it. Times
 understand the profile's own words too (`6 โมงเย็น`, `3 ทุ่ม`, `เที่ยง`).
 An off-by-one books a lesson on the wrong day and nobody finds out until a
@@ -42,7 +42,7 @@ slot, time first. `-` marks a free period: it is skipped, but it still ends the
 slot before it.
 
 **Exit 5 on a cancel means it is outside the window, or already done.** Do not
-widen the window and retry. Report it — rewriting a past week's records is
+widen the window and retry. Report it: rewriting a past week's records is
 usually a mistake.
 
 **If booking fails, nothing was booked.** The document is updated first, so a

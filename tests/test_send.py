@@ -1,6 +1,6 @@
 """The send gate, and everything around it.
 
-The matrix at the heart of this file — pull one required field out at a time —
+The matrix at the heart of this file (pull one required field out at a time)
 is the whole point of the phase. A send that quietly goes out incomplete is
 the failure mode the original system's gate existed to prevent, and "no
 override flag" only means something if it survives contact with tests.
@@ -651,7 +651,7 @@ def test_an_unknown_contact_exits_needs_human(studio, capsys):
 
 def test_a_document_outage_stops_the_send_and_asks_while_the_recording_is_required(studio, capsys):
     """The packaged gate requires the recording link, and an unreadable
-    document means the link is *unknown* — which Baton does not resolve on its
+    document means the link is *unknown*, which Baton does not resolve on its
     own, in either direction. The send stops on exit 3 and asks a person, the
     same place a genuinely unfilmed lesson stops."""
     from baton.errors import UpstreamError
@@ -716,7 +716,7 @@ def test_the_stop_does_not_hand_a_working_bypass_to_whatever_is_reading(studio, 
     in the contract; an agent following it faithfully would take it, which is
     the opposite of what stopping to ask a person is for.
 
-    Nothing in this response is a secret to withhold — the remedy is allowed
+    Nothing in this response is a secret to withhold: the remedy is allowed
     to name `send video-waiver` and `--without-video`, because neither one
     alone completes anything. What matters is checked below: no code has been
     requested, so no value passed to --without-video succeeds."""
@@ -739,7 +739,7 @@ def test_the_stop_does_not_hand_a_working_bypass_to_whatever_is_reading(studio, 
 
 
 def _request_waiver(studio, capsys, name="Ada Whitfield", **extra):
-    """Ask for a code and hand back the exact string it sent — standing in for
+    """Ask for a code and hand back the exact string it sent: standing in for
     the person reading their own phone, since nothing else in the test can."""
     _profile, messenger, _docs = studio
     args = ["video-waiver", name, "--to", "teacher"]
@@ -768,7 +768,7 @@ def test_video_waiver_texts_a_code_and_the_command_never_returns_it(studio, caps
     match = re.search(r"[A-Z2-9]{6}", text)
     assert match
     # The command's own stdout must not carry the value it just had a
-    # messenger deliver — that is the entire mechanism.
+    # messenger deliver: that is the entire mechanism.
     assert match.group(0) not in out
 
 
@@ -790,7 +790,7 @@ def test_video_waiver_dry_run_previews_without_sending_or_writing_state(studio, 
     assert re.search(r"[A-Z2-9]{6}", payload["message"])
     assert messenger.sent == []
 
-    # A dry run must not answer for the real request that comes later — the
+    # A dry run must not answer for the real request that comes later: the
     # previewed code is never live.
     from baton.core.video_waivers import VideoWaivers
 
@@ -833,7 +833,7 @@ def test_a_wrong_code_is_refused_and_leaves_the_real_one_live(studio, capsys):
     )
     assert len(messenger.sent) == 1  # only the original waiver text; the wrong guess sent nothing
 
-    # The real code still works — a wrong guess did not burn it.
+    # The real code still works: a wrong guess did not burn it.
     assert (
         call(studio, "lesson", "Ada Whitfield", "--to", "teacher", "--without-video", code)
         == Exit.OK
@@ -888,7 +888,7 @@ def test_without_video_leaves_a_session_that_has_a_recording_alone(studio, capsy
 
 
 def test_a_batch_reports_the_no_video_learner_as_waiting_on_a_person(studio, capsys):
-    """One refusal must not abandon the rest of the batch — and the blocked
+    """One refusal must not abandon the rest of the batch, and the blocked
     entry must say which *kind* of stop it was, so whoever reads the report
     relays a question rather than hunting for a video block that was never
     filmed."""
@@ -919,7 +919,7 @@ def test_batch_has_no_blanket_bypass(studio, capsys):
     """A waiver code answers one learner's one session; a batch has many of
     both, so there is no single value `--without-video` could take that would
     mean "yes" for all of them. The flag is not offered on this subcommand at
-    all — a person confirms Bruno's session on its own, the same as any exit-3
+    all: a person confirms Bruno's session on its own, the same as any exit-3
     stop, and re-sends him alone once they have."""
     code = call(
         studio,
@@ -1117,7 +1117,7 @@ def test_a_record_written_before_snapshots_still_falls_back_to_the_live_piece():
 
 
 def test_a_snapshot_whose_piece_lost_its_track_is_not_backfilled_from_today():
-    """A captured piece with an empty track means the piece had none then —
+    """A captured piece with an empty track means the piece had none then:
     reaching for the current one would reintroduce the drift by the back door."""
     trackless = Piece(id="2", title="Blackbird", practice_track="")
 
@@ -1145,7 +1145,7 @@ def test_the_song_on_the_page_is_not_sent_as_the_recording(studio, capsys):
     recording yet, and the message went out carrying the link to the song's
     official music video. The gate did not stop it because a link *was* found.
 
-    The send must be refused instead — the recording is genuinely missing, and
+    The send must be refused instead: the recording is genuinely missing, and
     whether the lesson goes out without one is a person's call to make.
     """
     profile, messenger, docs = studio
@@ -1182,7 +1182,7 @@ def test_the_recording_goes_out_when_it_sits_beside_the_song(studio, capsys):
 
 
 def test_the_song_taught_that_lesson_is_excluded_after_the_learner_moves_on(studio, capsys):
-    """The song can be changed after the lesson was published — that is what
+    """The song can be changed after the lesson was published: that is what
     happened the night this was found. The page then holds the new source,
     while the record holds the old one, and both are the piece rather than the
     recording."""

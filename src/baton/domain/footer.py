@@ -1,7 +1,7 @@
 """The line that says a summary was written by a machine.
 
 Every summary the studio's previous pipeline published carried a dated
-disclosure at the bottom — who wrote it, when, and that it came from an
+disclosure at the bottom: who wrote it, when, and that it came from an
 assistant rather than the teacher's own hand. Parents read these pages, and a
 summary that quietly stops saying where it came from is a different document
 than the one they have been reading all year.
@@ -116,7 +116,7 @@ class Footer:
         """A regex matching what :meth:`render` writes, whatever the clock said.
 
         Prep reads a previous session's page to gather context, and the
-        disclosure is about the tool rather than the lesson — it has to come
+        disclosure is about the tool rather than the lesson: it has to come
         back out. A hand-written regex in configuration drifts away from the
         lines it is supposed to match the first time either is edited; deriving
         it from the lines themselves cannot.

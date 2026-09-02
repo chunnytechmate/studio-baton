@@ -1,4 +1,4 @@
-"""``baton init`` — create a working profile.
+"""``baton init``: create a working profile.
 
 The first two minutes decide whether anyone tries this at all, so ``init``
 produces something that already runs: a config, an ``.env`` naming every
@@ -122,7 +122,7 @@ def handle_schema(ctx: Context) -> Exit:
 def _ask(ctx: Context, prompt: str, default: str, choices: tuple[str, ...] | None = None) -> str:
     """One question, with the default in brackets.
 
-    Non-interactive when ``--yes`` is passed or stdin is not a terminal — a
+    Non-interactive when ``--yes`` is passed or stdin is not a terminal: a
     scaffolder that blocks on a prompt inside a Dockerfile is a scaffolder
     nobody can automate.
     """
@@ -145,7 +145,7 @@ def _ask(ctx: Context, prompt: str, default: str, choices: tuple[str, ...] | Non
 def pluralise(label: str) -> str:
     """A plural for a label, guessed only where guessing is safe.
 
-    Appending "s" is right for most English nouns and wrong everywhere else —
+    Appending "s" is right for most English nouns and wrong everywhere else:
     Thai has no plural marker at all, so "นักเรียนs" is simply broken text on
     every page it reaches. The guess is therefore limited to plain ASCII words,
     and anything else is left as it is. `--learner-plural` overrides either way.
@@ -221,7 +221,7 @@ def _upgrade_database(connection: sqlite3.Connection) -> None:
     """Bring a database the schema predates up to the current columns.
 
     ``CREATE TABLE IF NOT EXISTS`` leaves an older `works` table exactly as it
-    was — which is correct for tables baton does not own, but means re-running
+    was, which is correct for tables baton does not own, but means re-running
     ``init`` on an existing profile would never add a column Baton now expects.
     The added ones are therefore applied as explicit, idempotent ALTERs here,
     so upgrading is "run init again" rather than hand-editing SQL. New columns
@@ -249,7 +249,7 @@ def _create_database(path: Path, *, sample_data: bool) -> int:
         # The table name is a literal on purpose (M30): this schema was just
         # created by sqlite.sql, which always uses the canonical names. The
         # db.tables mapping exists for pointing baton at an *external*
-        # database whose tables are named differently — something `init`
+        # database whose tables are named differently: something `init`
         # never does, so routing this one count through the mapper would be
         # machinery with no caller it serves.
         return int(connection.execute("SELECT count(*) FROM learners").fetchone()[0])

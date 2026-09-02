@@ -1,7 +1,7 @@
 """Prune must count only directories it actually removed.
 
 Regression: the unlink sweep inside ``prune`` cannot delete subdirectories, so
-a job dir holding one survives ``rmdir`` — but the count still incremented, and
+a job dir holding one survives ``rmdir``, but the count still incremented, and
 the operator's "Removed N job(s)" reported work that did not happen.
 """
 

@@ -15,7 +15,7 @@ one extra question. Substring matches are returned as *candidates* so the
 caller can present real options instead of inventing one.
 
 This is deliberately defence in depth. The agent driving Baton is also told to
-confirm ambiguous names — but an agent that forgets, or that is confidently
+confirm ambiguous names, but an agent that forgets, or that is confidently
 wrong, still cannot get past this.
 """
 
@@ -53,7 +53,7 @@ def resolve_learner(
         query: The name as typed by a person or passed by an agent.
         learners: The full candidate set to resolve against.
         aliases: Optional nickname map, ``{"JK": "Jao Khun"}``. An alias is
-            followed once and its target must then match exactly — chained
+            followed once and its target must then match exactly: chained
             aliases are not resolved, because a chain is impossible to audit.
         label: Domain word used in messages, from the profile's labels.
 
@@ -62,7 +62,7 @@ def resolve_learner(
 
     Raises:
         NeedsHumanError: The name is ambiguous, or matches nothing. Carries a
-            ``candidates`` list — possibly empty — for the caller to show.
+            ``candidates`` list (possibly empty) for the caller to show.
     """
     people = list(learners)
     wanted = normalise(query)
@@ -129,7 +129,7 @@ def resolve_learner_loose(
 ) -> tuple[Learner, str]:
     """Resolve like :func:`resolve_learner`, with one deliberate relaxation.
 
-    A partial match that lands on exactly one person resolves — and returns a
+    A partial match that lands on exactly one person resolves, and returns a
     note saying so, because a booking made under a guess the operator never
     saw is worse than a refusal. Zero matches, or several, re-raise the strict
     gate unchanged: its candidates list is already the right answer, and
@@ -142,7 +142,7 @@ def resolve_learner_loose(
     wrong person is not something an exit code can undo.
 
     Returns:
-        ``(learner, note)`` — the note is empty unless the partial-match
+        ``(learner, note)``: the note is empty unless the partial-match
         relaxation fired, in which case it is a sentence for the operator.
     """
     try:

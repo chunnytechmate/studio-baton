@@ -7,7 +7,7 @@ one exists because its absence caused a real loss:
 **Nothing is deleted until everything else succeeded.** Source clips are moved
 to the trash as the last step, after the upload and the document link. Deleting
 earlier means a crash between the delete and the upload loses the recording
-permanently — the studio has no copy, and neither does anyone else.
+permanently: the studio has no copy, and neither does anyone else.
 
 **A completed upload is never repeated.** ``uploaded`` is recorded with the
 video id the moment YouTube returns it. A resume that re-uploaded would leave
@@ -63,7 +63,7 @@ def _natural_key(path: Path) -> list[Any]:
     """Sort `clip2` before `clip10`.
 
     Phone cameras number clips, and a plain text sort puts the tenth after
-    the ninth only while there are nine — past that the concat order is
+    the ninth only while there are nine: past that the concat order is
     wrong and nothing in the output says so.
     """
     return [int(part) if part.isdigit() else part for part in _NATURAL_SPLIT.split(path.name)]
@@ -78,7 +78,7 @@ def _slug(value: str) -> str:
 
     ``_SAFE`` only keeps ASCII, so a folder named entirely in Thai (or any
     other non-Latin script) strips to nothing and every such learner used to
-    collapse onto the same literal ``"unknown"`` file — one child's job record
+    collapse onto the same literal ``"unknown"`` file: one child's job record
     silently became another's. The hash keeps that collision from happening
     while staying deterministic and still readable as "this was non-ASCII".
     """
@@ -111,7 +111,7 @@ class VideoJob:
     updated_at: str = field(default_factory=_now)
 
     # `error` stays an empty string in memory so every `job.error or ...` reads
-    # naturally, but the JSON schema says "no error" with null — a stable
+    # naturally, but the JSON schema says "no error" with null: a stable
     # schema is the contract `video status --json` is parsed against, and ""
     # forced consumers to branch on a third state that means the same as null.
 
@@ -179,9 +179,9 @@ class VideoJobStore:
             include_archived: Also read jobs :meth:`archive` moved aside. Off
                 by default because `run`, `resume`, and `status` all mean "what
                 is happening now", and a folder accumulates one archived job
-                per week. A caller asking about one past session — `lesson
+                per week. A caller asking about one past session: `lesson
                 publish` repairing a page whose recording was uploaded but
-                never linked — needs them, and without this could only see a
+                never linked: needs them, and without this could only see a
                 past week's upload until the next week's clips arrived.
         """
         if not self.root.is_dir():
@@ -206,12 +206,12 @@ class VideoJobStore:
     def archive(self, job: VideoJob) -> Path:
         """Move a completed job aside so the next session can start fresh.
 
-        The store keys jobs by folder, one live job per learner — but a folder
+        The store keys jobs by folder, one live job per learner, but a folder
         receives new clips every week. Until 0.4.1 the completed job sat in the
         path forever and `run`, finding every step done, swallowed the new
         week's clips in silence; the only way through was `video forget` by
         hand. Archiving keeps the record (a publish may still read its upload)
-        while giving the new job a clean path — :meth:`list` reaches it again
+        while giving the new job a clean path: :meth:`list` reaches it again
         with ``include_archived``.
 
         Returns:
@@ -274,7 +274,7 @@ class VideoPipeline:
         """Whether this exact video is already on the document.
 
         Guards the case where the link succeeded but the step record did not
-        survive — re-linking would put the same video on the page twice.
+        survive: re-linking would put the same video on the page twice.
         """
         for block in self.docs.list_blocks(doc_id):
             if block.type == "video" and block.url == url:
@@ -309,7 +309,7 @@ class VideoPipeline:
                 # so two distinct clips sharing one filename is normal, not a
                 # bug in the source. Downloading both to the same destination
                 # would let the second silently overwrite the first before
-                # either was combined — losing one clip's footage right before
+                # either was combined: losing one clip's footage right before
                 # the run trashes both originals as "already collected".
                 stem, _, suffix = name.rpartition(".")
                 name = f"{stem or name}__{clip.id[:8]}" + (f".{suffix}" if suffix else "")
@@ -367,7 +367,7 @@ class VideoPipeline:
         if job.video_id:
             # Recorded already: never upload a second copy.
             return UploadResult(video_id=job.video_id, url=job.video_url)
-        title = f"{job.learner_name} — {self.session_label} {job.session_number}"
+        title = f"{job.learner_name} - {self.session_label} {job.session_number}"
         result = self.publisher.upload(path, title=title, privacy=self.privacy)
         job.video_id = result.video_id
         job.video_url = result.url
@@ -476,7 +476,7 @@ class VideoPipeline:
             # never on that page: the forced publish an hour later reported
             # `preserved: 0`, and `video` is in the packaged preserve rules, so
             # it was already absent before anything rewrote the page. What
-            # broke the append is still unexplained — which is the reason to
+            # broke the append is still unexplained, which is the reason to
             # ask the page rather than the record. `_link` appends only what
             # the page is missing, so asking twice is free.
             if job.done("doc_linked"):
@@ -525,7 +525,7 @@ class VideoPipeline:
 
         A completed job no longer ends the story for its folder: clips it
         already owns are reclaimed (their trash did not take effect on the
-        source), and clips it has never seen belong to a later lesson — the
+        source), and clips it has never seen belong to a later lesson: the
         done job is archived and a new job starts for the next session, so
         `video forget` is no longer part of the weekly loop.
 
@@ -565,7 +565,7 @@ class VideoPipeline:
         """Continue every job that did not finish, without collecting new clips.
 
         Unfinished jobs continue from their first pending step. A *completed*
-        job whose source clips are still listed also continues here — its
+        job whose source clips are still listed also continues here: its
         trash step recorded a success the source did not honour, and catching
         that lie is recovery, not collection. That is the same selection
         ``run`` sees, minus the new lessons only ``run`` may start, so
@@ -595,7 +595,7 @@ class VideoPipeline:
 
         What `resume` must say out loud instead of "Nothing to process." when
         a later `run` would find work: new lessons waiting, or nothing at all.
-        Clips a done job already owns are not counted — resume has just
+        Clips a done job already owns are not counted: resume has just
         reclaimed those, and only genuinely new clips are `run`'s to start.
         """
         recorded = self.jobs.list()

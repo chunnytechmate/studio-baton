@@ -1,7 +1,7 @@
 """The parity harness.
 
 It is the thing that decides when the old system can be retired, so its own
-comparison logic has to be right — a harness that reports agreement it did not
+comparison logic has to be right: a harness that reports agreement it did not
 verify is worse than no harness.
 """
 
@@ -140,7 +140,7 @@ def test_a_side_that_fails_is_reported_rather_than_assumed_equal(tmp_path, monke
 
 
 def test_a_refusal_is_an_answer_not_a_missing_one(tmp_path, monkeypatch, capsys):
-    """Both systems print their refusal and then exit non-zero — the legacy
+    """Both systems print their refusal and then exit non-zero: the legacy
     prep report exits 1 when nobody passes its gate, Baton exits 5. Throwing
     the payload away turned two systems agreeing to refuse into a disagreement
     for every field compared."""
@@ -260,7 +260,7 @@ def test_non_json_output_is_a_disagreement_not_a_pass(tmp_path, monkeypatch, cap
 
 def test_a_command_is_run_once_however_many_cases_compare_it(tmp_path, monkeypatch, capsys):
     """Real specs compare several fields of the same two commands. Running one
-    prep report seven times is seven rounds of API reads per side — and the
+    prep report seven times is seven rounds of API reads per side, and the
     studio's data is live, so two calls can legitimately differ and turn into a
     disagreement that is not one."""
     counter = tmp_path / "calls"

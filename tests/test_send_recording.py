@@ -3,7 +3,7 @@
 Two things are pinned down hard here, because they are the two ways this
 command could quietly betray its caller. The first is the two-step contract:
 the listing phase must send *nothing*, and ``--pick N`` must mean exactly the
-Nth row of the list that was just shown — never anything remembered or
+Nth row of the list that was just shown, never anything remembered or
 re-derived. The second is the missing-side rule: an incomplete recording sends
 the side it has rather than blocking, but a recording with *no* links anywhere
 is refused outright.
@@ -115,7 +115,7 @@ def test_a_type_and_date_are_shown_when_present_and_absent_when_not():
     dated = compose_recording(WORK_DRIVE_ONLY, learner_name="Ada Whitfield")
 
     assert "(performance) 2026-08-20" in dated
-    # Canon in D carries no type and no date — no filler either way.
+    # Canon in D carries no type and no date, no filler either way.
     plain = compose_recording(WORK_YT_ONLY)
     assert "(performance)" not in plain
 
@@ -315,7 +315,7 @@ def test_pick_one_sends_newest_first_work_through_the_cli(rec_studio, capsys):
     text = messenger.sent[0][1]
     assert "ผลงานบันทึกการเรียนของ Ada Whitfield" in text
     assert "https://youtu.be/up-funk" in text
-    # The second work stays untouched — one pick, one work.
+    # The second work stays untouched: one pick, one work.
     assert "canon" not in text
 
 
@@ -464,7 +464,7 @@ def test_the_packaged_schema_has_the_drive_column_up_front():
 
 def test_upgrading_an_old_database_keeps_rows_and_is_idempotent():
     connection = sqlite3.connect(":memory:")
-    # The pre-Drive shape of `works`, built by hand — no recent migration may
+    # The pre-Drive shape of `works`, built by hand, no recent migration may
     # be used to fake this, or the test would be testing itself.
     connection.executescript(
         """
@@ -565,7 +565,7 @@ def _publish_record(profile, learner_id="1", doc_url="https://example.invalid/do
 
 def test_the_recording_message_ends_with_the_lesson_page(rec_studio, capsys):
     """A parent tapping the recording can continue into the lesson it came
-    from — the line the old sender always attached and the rewrite dropped,
+    from: the line the old sender always attached and the rewrite dropped,
     leaving the message a dead end."""
     profile, _ = rec_studio
     _publish_record(profile)
@@ -573,15 +573,15 @@ def test_the_recording_message_ends_with_the_lesson_page(rec_studio, capsys):
     assert call(rec_studio, "Ada Whitfield", "--to", "teacher", "--pick", "1") == Exit.OK
 
     payload = json.loads(capsys.readouterr().out)
-    assert "📝 รายละเอียด Notion: https://example.invalid/doc-ada-03" in payload["message"]
+    assert "📝 รายละเอียดการเรียน: https://example.invalid/doc-ada-03" in payload["message"]
     assert payload["message"].rstrip().endswith("https://example.invalid/doc-ada-03")
 
 
 def test_a_recording_still_sends_without_any_published_lesson(rec_studio, capsys):
-    """Nothing published yet — the links go out the way the old sender sent
+    """Nothing published yet: the links go out the way the old sender sent
     them when its own fetch failed: no line, no block."""
     assert call(rec_studio, "Ada Whitfield", "--to", "teacher", "--pick", "1") == Exit.OK
 
     payload = json.loads(capsys.readouterr().out)
-    assert "รายละเอียด Notion" not in payload["message"]
+    assert "รายละเอียดการเรียน" not in payload["message"]
     assert payload["sent"] is True

@@ -6,7 +6,7 @@ on without it gets a sentence rather than an ImportError.
 
 Every call goes through :func:`_calendar_call`, which does two things the raw
 client does not. It retries rate limiting and the 5xx family with the same
-backoff the rest of Baton uses — the pipeline this replaced had exactly that,
+backoff the rest of Baton uses: the pipeline this replaced had exactly that,
 and dropping it made a booking fail on a transient 429 that one more attempt
 would have carried. And it turns a vendor exception into an
 :class:`~baton.errors.UpstreamError`, so a calendar fault reaches the operator
@@ -40,8 +40,8 @@ class _Transient(Exception):
 def _http_status(exc: BaseException) -> int | None:
     """The HTTP status a googleapiclient error carries, if it carries one.
 
-    The attribute moved between client releases — newer ones expose
-    ``status_code``, older ones only the underlying ``resp.status`` — and
+    The attribute moved between client releases: newer ones expose
+    ``status_code``, older ones only the underlying ``resp.status``, and
     pinning either one alone means the retry silently stops working after an
     upgrade.
     """
@@ -57,7 +57,7 @@ def _http_status(exc: BaseException) -> int | None:
 def _calendar_call(what: str, operation: Callable[[], _T], *, attempts: int = 3) -> _T:
     """Run one calendar request, retrying transient faults, mapping the rest.
 
-    A fault with no HTTP status is only retried when it is an ``OSError`` —
+    A fault with no HTTP status is only retried when it is an ``OSError``:
     a dropped connection or a timeout. Anything else without a status is a
     bug in this process, and retrying a bug three times only delays the
     traceback while hiding what caused it.
@@ -215,7 +215,7 @@ class GoogleCalendar:
         Google refreshes the access token lazily, on the first call, and a
         refresh token that has been revoked or has expired fails there with a
         `RefreshError` rather than anything Baton defines. Left alone it reaches
-        `doctor` as a traceback — which is the one thing doctor must never
+        `doctor` as a traceback, which is the one thing doctor must never
         print, since its whole job is to name every problem at once.
         """
         try:

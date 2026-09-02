@@ -2,7 +2,7 @@
 
 The calendar was the only adapter calling its vendor client raw: no retry, and
 a `googleapiclient.HttpError` escaping as a traceback rather than an exit code.
-It is also the adapter where that hurts most — `book` creates the event only
+It is also the adapter where that hurts most: `book` creates the event only
 after the session document is already marked in progress, so a fault here is
 the one thing that can still leave the two records disagreeing.
 """
@@ -162,7 +162,7 @@ def test_a_programming_error_is_not_retried_three_times():
 
 
 def test_a_baton_error_passes_straight_through():
-    """Already inside the contract — re-wrapping it would bury the remedy the
+    """Already inside the contract: re-wrapping it would bury the remedy the
     original error was carrying."""
 
     def already_ours():
