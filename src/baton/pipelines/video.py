@@ -343,8 +343,13 @@ class VideoPipeline:
     def _combine(self, job: VideoJob, paths: list[Path]) -> Path:
         output = self._clip_dir(job.learner_folder) / "combined.mp4"
         if not output.exists():
-            self.encoder.combine(sorted(paths, key=_natural_key), output, self.profile)
-        job.record("combined", output=str(output))
+            result = self.encoder.combine(sorted(paths, key=_natural_key), output, self.profile)
+            # Which of the two paths produced the file is worth a year's
+            # hindsight: a session that quietly stopped copying is a session
+            # back on the slow path, and the job record is where that shows.
+            job.record("combined", output=str(result.path), method=result.method)
+        else:
+            job.record("combined", output=str(output))
         return output
 
     def _resolve(self, job: VideoJob, learner: Learner) -> None:

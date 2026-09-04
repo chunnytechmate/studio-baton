@@ -4,6 +4,42 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.1.0 (2026-09-04)
+
+The video pipeline decodes and re-encodes every clip it combines. On the
+studio's own hardware that is 30 minutes of CPU per lesson and, on a burstable
+cloud instance, more than the encode watchdog allows: a real five-minute
+lesson filmed as one burst on one phone could no longer finish. Most lessons
+are exactly that, and joining files that agree needs no compute at all.
+
+### Video
+
+- **Matching clips are now joined by stream copy.** Before encoding anything,
+  the probed clips are compared on everything the concat demuxer is strict
+  about and the concat filter never was: codec, profile, pixel format, frame
+  rate, time base, frame size (rotation already folded in), sample aspect
+  ratio, HDR state, and the audio codec, rate, and layout. Full agreement
+  joins the files at packet boundaries with `-c copy`: nothing is decoded, so
+  nothing is re-encoded, and the deliverable is first-generation rather than
+  a second lossy pass over footage the phone already compressed. On the clips
+  that motivated this, the join is I/O-bound.
+- **The copy is verified, then trusted.** The joined file's duration is
+  checked against the sum of its parts; a copy that lands on the wrong length
+  (edit lists, mismatched time bases) is discarded and the normalising encode
+  runs instead. Every failure of the copy path falls back rather than fails:
+  unknown probe, disagreement, ffmpeg error, timeout.
+- **The job record says which path ran.** `combined.method` is `stream-copy`
+  or `encode`, so `baton video status` shows which sessions skipped the
+  encode. `VideoEncoder.combine` now returns a `CombineResult` carrying the
+  path and the method instead of a bare `Path`; the atomic-write promise is
+  unchanged.
+- **A single-clip session is a remux.** One clip has nothing to disagree
+  with, so it now copies too, where it was previously re-encoded on its own.
+- **What still encodes:** any disagreement between clips; a forced
+  `media.encode.fps`; HDR sources under an enabled tone-map; the `1080p`
+  profile over any other size. Each of these asks for a change a copy cannot
+  make. `media.encode.copy_when_safe: false` restores always-encode.
+
 ## 1.0.5 (2026-09-02)
 
 One fix, found by running 1.0.4 against the real calendar an hour after

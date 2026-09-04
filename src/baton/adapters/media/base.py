@@ -49,6 +49,21 @@ class UploadResult:
         return {"video_id": self.video_id, "url": self.url, "title": self.title}
 
 
+@dataclass(frozen=True)
+class CombineResult:
+    """One combined file, and how it was produced.
+
+    ``method`` says which of the two paths produced it: ``"stream-copy"`` when
+    the clips already agreed on enough that they could be joined at packet
+    boundaries without decoding, ``"encode"`` when they were decoded,
+    normalised, and re-encoded. The job record carries it, so an operator can
+    see which sessions skipped the encode and which did not.
+    """
+
+    path: Path
+    method: str
+
+
 @dataclass
 class EncodeProfile:
     """How to turn source clips into one deliverable file."""
@@ -69,6 +84,14 @@ class EncodeProfile:
     #: alone, which is the default because forcing 30 on 60fps phone footage
     #: throws away half the motion for no benefit the viewer asked for.
     fps: int = 0
+    #: Join clips at packet boundaries, without decoding or re-encoding, when
+    #: every probed clip agrees on the parameters the concat demuxer needs.
+    #: On by default: a session filmed as one burst on one phone is the common
+    #: case, and copying it is both faster by orders of magnitude and free of
+    #: a second lossy generation. Any disagreement falls back to the encode
+    #: path, as does anything that asks for a change copy cannot make (a
+    #: forced frame rate, tone-mapping, the 1080p profile on other sizes).
+    copy_when_safe: bool = True
 
 
 @runtime_checkable
@@ -98,7 +121,7 @@ class MediaSource(Protocol):
 class VideoEncoder(Protocol):
     """Combines and normalises clips."""
 
-    def combine(self, inputs: list[Path], output: Path, profile: EncodeProfile) -> Path:
+    def combine(self, inputs: list[Path], output: Path, profile: EncodeProfile) -> CombineResult:
         """Produce one file from several.
 
         Must write atomically: a killed encode leaves no partial file at

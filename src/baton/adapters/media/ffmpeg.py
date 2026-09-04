@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ...errors import ConfigError, UpstreamError
-from .base import EncodeProfile
+from .base import CombineResult, EncodeProfile
 
 #: The deliverable frame. Everything that has to be resized lands here.
 _TARGET_WIDTH = 1920
@@ -122,6 +122,11 @@ class ClipTraits:
     ``width``/``height`` are the *displayed* size: the rotation in the
     display matrix already applied, because that is the size the filter graph
     sees, and disagreeing about it is the failure this class exists to detect.
+
+    The fields below ``channel_layout`` exist for the copy path: the concat
+    *demuxer* is far stricter than the filter, and a parameter it needs that
+    the filter never asked about is exactly the kind of thing two clips from
+    the same phone agree on and two clips from different phones do not.
     """
 
     width: int = 0
@@ -130,6 +135,12 @@ class ClipTraits:
     hdr: bool = False
     sample_rate: str = ""
     channel_layout: str = ""
+    codec: str = ""
+    profile: str = ""
+    pix_fmt: str = ""
+    fps: str = ""
+    time_base: str = ""
+    audio_codec: str = ""
 
     @property
     def video_shape(self) -> tuple[int, int, str]:
@@ -190,7 +201,123 @@ def _traits_from_streams(streams: list[dict]) -> ClipTraits:
         hdr=_is_hdr(video),
         sample_rate=str((audio or {}).get("sample_rate") or ""),
         channel_layout=str((audio or {}).get("channel_layout") or ""),
+        codec=str(video.get("codec_name") or ""),
+        profile=str(video.get("profile") or ""),
+        pix_fmt=str(video.get("pix_fmt") or ""),
+        fps=str(video.get("r_frame_rate") or ""),
+        time_base=str(video.get("time_base") or ""),
+        audio_codec=str((audio or {}).get("codec_name") or ""),
     )
+
+
+#: Traits the concat demuxer needs agreed before packets can be joined as-is.
+#: A missing value means the probe could not see that far into the file, and
+#: an unseen parameter is not an agreed one.
+_COPY_REQUIRED = (
+    "codec",
+    "profile",
+    "pix_fmt",
+    "fps",
+    "time_base",
+    "audio_codec",
+    "sample_rate",
+    "channel_layout",
+)
+
+
+def _copy_safe(traits: list[ClipTraits]) -> bool:
+    """Whether these clips can be joined at packet boundaries without decoding.
+
+    Everything the concat demuxer is strict about must be both *known* and
+    *equal*: codec, profile, pixel format, frame rate and time base, the
+    displayed frame (rotation already folded in), sample aspect ratio, HDR
+    state, and the whole audio shape. One unknown clip or one disagreement
+    means no: the fallback is the encode path this file has always had.
+    """
+    if not traits:
+        return False
+    for item in traits:
+        if not item.width or not item.height:
+            return False
+        if any(not getattr(item, name) for name in _COPY_REQUIRED):
+            return False
+    shapes = {
+        (
+            item.codec,
+            item.profile,
+            item.pix_fmt,
+            item.width,
+            item.height,
+            item.sar,
+            item.fps,
+            item.time_base,
+            item.hdr,
+            item.audio_codec,
+            item.sample_rate,
+            item.channel_layout,
+        )
+        for item in traits
+    }
+    return len(shapes) == 1
+
+
+def _copy_eligible(traits: list[ClipTraits], profile: EncodeProfile) -> bool:
+    """Whether this run may join at packet boundaries instead of encoding.
+
+    Beyond agreement between the clips, the profile must not be asking for
+    anything a copy cannot deliver: a forced frame rate retimes frames, an
+    enabled tone-map rewrites pixels, the 1080p profile promises a frame
+    size. ``extra_args`` tune an encoder, and the copy path has no encoder
+    to tune, so they simply do not apply to it.
+    """
+    if not profile.copy_when_safe:
+        return False
+    if profile.fps > 0:
+        return False
+    if profile.tone_map_hdr and any(item.hdr for item in traits):
+        return False
+    if profile.name == "1080p" and {(i.width, i.height) for i in traits} != {
+        (_TARGET_WIDTH, _TARGET_HEIGHT)
+    }:
+        return False
+    return _copy_safe(traits)
+
+
+def _concat_list(list_path: Path, inputs: list[Path]) -> None:
+    """Write the concat demuxer's playlist.
+
+    Absolute paths, because the demuxer resolves relative entries against the
+    list file, not the working directory; the one quote a camera filename
+    could carry is escaped the way the format's own docs spell out.
+    """
+    lines = []
+    for source in inputs:
+        escaped = str(source.resolve()).replace("'", "'\\''")
+        lines.append(f"file '{escaped}'")
+    list_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _copy_args(list_path: Path, output: Path) -> list[str]:
+    """Build the stream-copy command line. Pure: no subprocess runs here."""
+    return [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        *_INPUT_FLAGS,
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(list_path),
+        "-c",
+        "copy",
+        "-avoid_negative_ts",
+        "make_zero",
+        str(output),
+    ]
 
 
 def _one_line(stderr: str | None) -> str:
@@ -258,6 +385,80 @@ class FfmpegEncoder:
         except json.JSONDecodeError:
             return ClipTraits()
         return _traits_from_streams(list(payload.get("streams") or []))
+
+    def _duration(self, path: Path) -> float:
+        """Container duration in seconds, 0 when it cannot be read."""
+        command = [
+            self.prober,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
+            str(path),
+        ]
+        try:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, timeout=_PROBE_TIMEOUT, check=False
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return 0.0
+        if completed.returncode != 0:
+            return 0.0
+        try:
+            return float(completed.stdout.strip() or 0)
+        except ValueError:
+            return 0.0
+
+    def _try_copy(self, inputs: list[Path], temp_path: Path, profile: EncodeProfile) -> bool:
+        """Attempt the stream-copy join. True when it produced a sane file.
+
+        Never raises: every failure, up to and including a copy that succeeds
+        but lands on the wrong duration, means the encode path runs instead.
+        The durations of the inputs are read first because they are needed to
+        judge the output, and cannot be probed after the fact from a file that
+        no longer exists.
+        """
+        expected = sum(self._duration(source) for source in inputs)
+        if expected <= 0:
+            return False
+
+        list_handle, list_name = tempfile.mkstemp(
+            dir=temp_path.parent, prefix=".baton-concat-", suffix=".txt"
+        )
+        os.close(list_handle)
+        list_path = Path(list_name)
+        try:
+            _concat_list(list_path, inputs)
+            try:
+                completed = subprocess.run(
+                    _copy_args(list_path, temp_path),
+                    capture_output=True,
+                    text=True,
+                    timeout=profile.timeout_seconds,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                temp_path.unlink(missing_ok=True)
+                return False
+            if completed.returncode != 0:
+                temp_path.unlink(missing_ok=True)
+                return False
+            if not temp_path.exists() or temp_path.stat().st_size == 0:
+                return False
+
+            # A copy that ran can still be wrong: edit lists and per-file time
+            # bases both surface as an output whose duration is not the sum of
+            # its parts. Judged generously, because trimmed-in-Photos clips
+            # carry small container-level disagreements by design.
+            actual = self._duration(temp_path)
+            if actual <= 0 or abs(actual - expected) > max(1.0, 0.01 * expected):
+                temp_path.unlink(missing_ok=True)
+                return False
+            return True
+        finally:
+            list_path.unlink(missing_ok=True)
 
     def _segment_chains(
         self,
@@ -383,7 +584,7 @@ class FfmpegEncoder:
         args.append(str(output))
         return args
 
-    def combine(self, inputs: list[Path], output: Path, profile: EncodeProfile) -> Path:
+    def combine(self, inputs: list[Path], output: Path, profile: EncodeProfile) -> CombineResult:
         """Combine ``inputs`` into ``output``.
 
         Raises:
@@ -408,6 +609,14 @@ class FfmpegEncoder:
         )
         os.close(handle)
         temp_path = Path(temp_name)
+
+        method = "encode"
+        if _copy_eligible(traits, profile) and self._try_copy(inputs, temp_path, profile):
+            # The clips agreed on everything the demuxer needs and the joined
+            # file verified against its parts: nothing was decoded, so nothing
+            # was re-encoded, and the deliverable is first-generation.
+            os.replace(temp_path, output)
+            return CombineResult(output, "stream-copy")
 
         try:
             completed = subprocess.run(
@@ -451,4 +660,4 @@ class FfmpegEncoder:
             raise UpstreamError("ffmpeg reported success but produced no output.", service="ffmpeg")
 
         os.replace(temp_path, output)
-        return output
+        return CombineResult(output, method)

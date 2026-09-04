@@ -12,7 +12,7 @@ and fails quietly when it is not. Everything that can be a script here is a
 script, so the model is left with the one job only a model can do (writing the
 summary), and even that is submitted as JSON validated against a schema.
 
-> **Status: 1.0.5 · Production/Stable.** The full cycle (booking, video,
+> **Status: 1.1.0 · Production/Stable.** The full cycle (booking, video,
 > lesson summaries, and delivery) has run end to end on real teaching days.
 > The package is available from PyPI and remains explicit about the parts that
 > still require a person to review or choose.
@@ -539,6 +539,23 @@ Clips arrive from Google Drive or a watched local directory
 account. A source folder resolves to a learner by exact name only: the same
 stance as everywhere else, because uploading one child's lesson onto another
 child's page is not worth the convenience.
+
+**Matching clips are joined without encoding.** Most of a lesson's clips come
+from one phone filming one session, and joining files that already agree on
+codec, frame size, frame rate, and audio shape is a copy, not a compute job:
+packet boundaries line up and nothing is decoded. Before encoding anything,
+the probed clips are compared, and when they agree on everything the concat
+demuxer is strict about, they are joined by stream copy. The joined file is
+then verified against the sum of its parts' durations, and anything short of
+agreement, or a join that does not verify, falls back to the normalising
+encode the pipeline has always had. A session that copies is also
+first-generation: no second lossy pass over footage that was already
+compressed once by the phone. The job record says which happened, as
+`combined.method`: `stream-copy` or `encode`. `media.encode.copy_when_safe:
+false` restores always-encode for a studio that wants it; a forced
+`media.encode.fps`, an enabled tone-map over HDR sources, and the `1080p`
+profile over other sizes each block the copy path on their own, because they
+ask for a change a copy cannot make.
 
 **Long jobs also detach.** Encoding and uploading run for tens of minutes:
 longer than an agent session, an SSH connection, or anyone's patience. Any

@@ -70,6 +70,7 @@ def encode_profile(config: Config) -> EncodeProfile:
         codec=str(config.get("media.encode.codec", "libx264")),
         tone_map_hdr=bool(config.get("media.encode.tone_map_hdr", True)),
         fps=int(config.get("media.encode.fps", 0)),
+        copy_when_safe=bool(config.get("media.encode.copy_when_safe", True)),
     )
 
 
@@ -77,6 +78,7 @@ __all__ = [
     "ENCODER_DRIVERS",
     "PUBLISHER_DRIVERS",
     "SOURCE_DRIVERS",
+    "CombineResult",
     "EncodeProfile",
     "FfmpegEncoder",
     "MediaSource",

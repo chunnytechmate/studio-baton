@@ -499,11 +499,13 @@ class FakeEncoder:
             raise ConfigError("Cannot combine an empty list of clips.")
         from pathlib import Path
 
+        from .media.base import CombineResult
+
         path = Path(output)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"combined")
         self.calls.append(([str(i) for i in inputs], str(output)))
-        return path
+        return CombineResult(path, "fake")
 
     def health(self) -> None:
         pass
