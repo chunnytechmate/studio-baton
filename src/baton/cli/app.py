@@ -10,6 +10,7 @@ than true for the commands someone remembered to wire up correctly.
 from __future__ import annotations
 
 import argparse
+import re
 import signal
 import sys
 import traceback
@@ -299,13 +300,22 @@ def command_names(parser: argparse.ArgumentParser | None = None) -> list[str]:
     return names
 
 
-def _offending_token(argv: Sequence[str]) -> str:
+def _offending_token(argv: Sequence[str], parse_message: str = "") -> str:
     """Best-effort name of what the person got wrong, for the envelope.
 
-    A flag after a valid command ("learner --nope") is the offender; with no
-    such flag, the command itself is ("frobnicate"). Global flags and their
-    values are noise either way.
+    argparse's message names the token it rejected, so read it there first:
+    the argv shape can only guess, and its guess is the first flag after the
+    command, which blames ``--date`` for a typo in the subcommand ("lesson
+    prep"). A value an option rejected ("--field summary") points at the
+    option, not the value. Where the message names nothing, the shape is all
+    there is: a flag after a valid command ("learner --nope") is the
+    offender; with no such flag, the command itself is ("frobnicate").
+    Global flags and their values are noise either way.
     """
+    named = re.search(r"argument ([^:]+): invalid choice: '([^']+)'", parse_message)
+    if named:
+        return named.group(1) if named.group(1).startswith("-") else named.group(2)
+
     value_flags = {"--profile"}
     switches = {"--json", "--quiet"}
     cleaned: list[str] = []
@@ -348,7 +358,7 @@ def _usage_failure(argv: Sequence[str], parse_message: str = "") -> tuple[Report
         locale = "en"
     t = translator(locale)
 
-    offending = _offending_token(argv) or "?"
+    offending = _offending_token(argv, parse_message) or "?"
     message = (
         t("error.unknown_command", command=offending)
         if "invalid choice" in parse_message

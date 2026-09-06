@@ -258,6 +258,20 @@ def test_a_missing_argument_names_the_argument_not_the_command(profile, capsys):
     assert "Unknown command `learner`" not in payload["message"]
 
 
+def test_a_mistyped_subcommand_is_blamed_not_the_flag_after_it(profile, capsys):
+    """`lesson prep` fails inside the lesson subparser, where the offender is
+    `prep` itself; the argv shape used to blame `--date`, the first flag after
+    `lesson`."""
+    from baton.exits import Exit
+
+    assert run(["--json", "lesson", "prep", "--date", "2026-09-07"]) == int(Exit.USAGE)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "`prep`" in payload["message"]
+    assert "`lesson`" not in payload["message"]
+    assert "--date" not in payload["message"]
+
+
 def test_help_still_exits_through_argparse(profile, capsys):
     with pytest.raises(SystemExit) as excinfo:
         run(["--help"])
