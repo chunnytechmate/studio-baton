@@ -17,7 +17,7 @@ from baton.adapters.docs.base import DocStatus
 from baton.adapters.fakes import FakeCalendar, FakeDocStore
 from baton.domain.models import Learner, Session
 from baton.domain.status import StatusVocabulary
-from baton.domain.whenever import parse_date, parse_schedule, parse_time
+from baton.domain.whenever import parse_date, parse_schedule, parse_time, today_in
 from baton.errors import GateError, StateError, UpstreamError, UsageError
 from baton.exits import Exit
 from baton.pipelines.schedule import Scheduler, event_title
@@ -792,9 +792,12 @@ def test_a_range_accepts_the_full_date_grammar(listed, profile, capsys):
     """--from and --to go through the same resolution as every other date."""
     payload = _run_list(profile, capsys, "--from", "+0", "--to", "+1")
 
-    today = date.today().isoformat()
-    assert payload["from"] == today
-    assert payload["to"] == (date.today() + timedelta(days=1)).isoformat()
+    # The grammar resolves against the studio's timezone; the expectation has
+    # to use that clock too. date.today() reads the runner's, and a UTC CI run
+    # just past Bangkok midnight failed this for hours every day.
+    today = today_in("Asia/Bangkok")
+    assert payload["from"] == today.isoformat()
+    assert payload["to"] == (today + timedelta(days=1)).isoformat()
 
 
 @pytest.mark.parametrize(

@@ -606,16 +606,23 @@ class _StubDrive(DriveSource):
 
 
 def _http_error(status, reason):
-    """A real googleapiclient HttpError carrying the given status and reason."""
+    """A stand-in shaped like a googleapiclient ``HttpError``: ``resp.status``
+    plus the JSON error body. The real class is not imported because CI tests
+    without the ``[google]`` extra, and the production code reads these errors
+    duck-typed for exactly that reason."""
     import json
     import types
 
-    from googleapiclient.errors import HttpError
+    class _FakeHttpError(Exception):
+        def __init__(self, resp, content):
+            super().__init__(reason)
+            self.resp = resp
+            self.content = content
 
     content = json.dumps(
         {"error": {"code": status, "errors": [{"reason": reason, "message": reason}]}}
     ).encode("utf-8")
-    return HttpError(types.SimpleNamespace(status=status, reason=""), content)
+    return _FakeHttpError(types.SimpleNamespace(status=status), content)
 
 
 def test_trash_unfiles_a_clip_the_credential_does_not_own():
