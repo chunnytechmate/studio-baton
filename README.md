@@ -540,6 +540,13 @@ account. A source folder resolves to a learner by exact name only: the same
 stance as everywhere else, because uploading one child's lesson onto another
 child's page is not worth the convenience.
 
+**The source is cleared even when the credential does not own the clips.**
+Drive lets only a file's owner trash it, so a studio whose clips arrive from
+the teacher's own account gets `403 insufficientFilePermissions` on every
+trash request. Those clips are removed from the learner folder instead: the
+source is just as clear, nothing is left to collect, and the uploader keeps
+their files.
+
 **Matching clips are joined without encoding.** Most of a lesson's clips come
 from one phone filming one session, and joining files that already agree on
 codec, frame size, frame rate, and audio shape is a copy, not a compute job:

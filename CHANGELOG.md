@@ -4,6 +4,33 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.1.1 (2026-09-07)
+
+Two production days (2026-09-05/06) where every lesson's video was uploaded
+and linked yet every job read `failed`: the last step could not trash clips
+the studio credential did not own, and the error said only `HttpError.`
+
+### Video
+
+- **Source clips the credential does not own are removed from the folder
+  instead of trashed.** Uploading a file makes the uploader its owner, and
+  Drive lets only the owner trash a file. A studio whose clips arrive from
+  the teacher's own account gets `403 insufficientFilePermissions` on every
+  trash request; Baton now answers that by removing the clip from the learner
+  folder, which leaves the source just as clear while the uploader keeps
+  their file. A clip the credential can no longer see at all counts as
+  cleared rather than failing the step.
+- **Rate limits still fail the step.** They answer 403 too, so only
+  `insufficientFilePermissions` falls back to removing; every other error
+  keeps failing as before.
+
+### Errors
+
+- **Google errors say what went wrong.** `gdrive request failed: HttpError
+  403: insufficientFilePermissions.` instead of `HttpError.` with the status
+  and reason dropped. Four production runs of the failing step produced no
+  diagnosis until a manual probe recovered them from the API itself.
+
 ## 1.1.0 (2026-09-04)
 
 The video pipeline decodes and re-encodes every clip it combines. On the
