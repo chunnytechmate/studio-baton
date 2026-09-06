@@ -18,6 +18,7 @@ from baton.adapters.fakes import (
     FakePublisher,
 )
 from baton.adapters.media.base import EncodeProfile, SourceClip
+from baton.adapters.media.google import DriveSource, _google_call
 from baton.domain.models import Learner, Session
 from baton.errors import UpstreamError
 from baton.pipelines.video import STEPS, VideoJobStore, VideoPipeline
@@ -507,7 +508,6 @@ def test_the_fake_encoder_refuses_an_empty_input_list_like_the_real_one(tmp_path
 def test_gdrive_list_pending_skips_non_video_files():
     """The local source always filtered by extension; Drive did not, so a
     photo or note in a learner's folder became a clip."""
-    from baton.adapters.media.google import DriveSource
 
     class FakeDrive(DriveSource):
         def __init__(self):  # no super(): no credentials needed for this test
@@ -533,6 +533,179 @@ def test_gdrive_list_pending_skips_non_video_files():
     clips = FakeDrive().list_pending()
 
     assert [clip.name for clip in clips] == ["lesson.mp4"]
+
+
+# -- trashing clips the credential does not own -------------------------------
+
+
+class _StubRequest:
+    def __init__(self, execute):
+        self.execute = execute
+
+
+class _StubService:
+    def __init__(self, drive):
+        self._drive = drive
+
+    def files(self):
+        return _StubFiles(self._drive)
+
+
+class _StubFiles:
+    def __init__(self, drive):
+        self._drive = drive
+
+    def get(self, fileId, fields=None):
+        drive = self._drive
+
+        def execute():
+            if drive.get_fails_with:
+                raise drive.get_fails_with
+            return {"id": fileId, "parents": drive.parents.get(fileId, [])}
+
+        return _StubRequest(execute)
+
+    def update(self, fileId, body=None, removeParents=None):
+        drive = self._drive
+
+        def execute():
+            if removeParents is None:
+                if drive.trash_fails_with:
+                    raise drive.trash_fails_with
+                drive.trashed.append(fileId)
+            else:
+                drive.unfiled.append((fileId, removeParents))
+            return {"id": fileId}
+
+        return _StubRequest(execute)
+
+
+class _StubDrive(DriveSource):
+    """A DriveSource whose service is scripted: no vendor SDK calls, no network.
+
+    ``trash_fails_with`` is the HttpError every trash request answers with;
+    ``parents`` maps a clip to the folders holding it.
+    """
+
+    def __init__(self, *, parents=None, trash_fails_with=None, get_fails_with=None):
+        self.folder_id = "root"
+        self.parents = parents or {}
+        self.trash_fails_with = trash_fails_with
+        self.get_fails_with = get_fails_with
+        self.trashed: list[str] = []
+        self.unfiled: list[tuple[str, str]] = []
+
+    @property
+    def service(self):
+        return _StubService(self)
+
+    def _children(self, parent_id, *, folders):
+        if parent_id == "root" and folders:
+            return [{"id": "sub", "name": "Ada Whitfield"}]
+        return []
+
+
+def _http_error(status, reason):
+    """A real googleapiclient HttpError carrying the given status and reason."""
+    import json
+    import types
+
+    from googleapiclient.errors import HttpError
+
+    content = json.dumps(
+        {"error": {"code": status, "errors": [{"reason": reason, "message": reason}]}}
+    ).encode("utf-8")
+    return HttpError(types.SimpleNamespace(status=status, reason=""), content)
+
+
+def test_trash_unfiles_a_clip_the_credential_does_not_own():
+    """Uploading makes the uploader the owner, and only the owner may trash.
+    Clips from the teacher's own account must leave the source by being
+    removed from the learner folder, not by failing the step."""
+    drive = _StubDrive(
+        parents={"c1": ["sub"], "c2": ["sub"]},
+        trash_fails_with=_http_error(403, "insufficientFilePermissions"),
+    )
+
+    moved = drive.trash(["c1", "c2"])
+
+    assert moved == 2
+    assert drive.unfiled == [("c1", "sub"), ("c2", "sub")]
+    assert drive.trashed == []
+
+
+def test_trash_leaves_parents_outside_the_source_alone():
+    drive = _StubDrive(
+        parents={"c1": ["elsewhere"]},
+        trash_fails_with=_http_error(403, "insufficientFilePermissions"),
+    )
+
+    moved = drive.trash(["c1"])
+
+    assert moved == 1
+    assert drive.unfiled == []
+
+
+def test_trash_counts_a_clip_out_of_sight_as_moved():
+    drive = _StubDrive(trash_fails_with=_http_error(404, "notFound"))
+
+    moved = drive.trash(["c1"])
+
+    assert moved == 1
+    assert drive.unfiled == []
+
+
+def test_trash_still_fails_on_a_403_that_is_not_the_owner_rule():
+    """Rate limits answer 403 too; those must keep failing the step rather
+    than silently half-clearing the source."""
+    drive = _StubDrive(
+        parents={"c1": ["sub"]},
+        trash_fails_with=_http_error(403, "userRateLimitExceeded"),
+    )
+
+    with pytest.raises(UpstreamError) as raised:
+        drive.trash(["c1"])
+
+    assert "403" in raised.value.message
+    assert "userRateLimitExceeded" in raised.value.message
+
+
+def test_unfile_tolerates_a_clip_that_vanished_midway():
+    drive = _StubDrive(
+        parents={"c1": ["sub"]},
+        trash_fails_with=_http_error(403, "insufficientFilePermissions"),
+        get_fails_with=_http_error(404, "notFound"),
+    )
+
+    moved = drive.trash(["c1"])
+
+    assert moved == 1
+    assert drive.unfiled == []
+
+
+def test_a_google_failure_names_its_status_and_reason():
+    """The class name alone said `HttpError.`; the production failures of
+    2026-09-05/06 carried their whole diagnosis in the parts it dropped."""
+
+    def operation():
+        raise _http_error(403, "insufficientFilePermissions")
+
+    with pytest.raises(UpstreamError) as raised:
+        _google_call("gdrive", operation)
+
+    assert str(raised.value.message) == (
+        "gdrive request failed: HttpError 403: insufficientFilePermissions."
+    )
+
+
+def test_a_google_failure_without_a_body_keeps_the_class_name():
+    def operation():
+        raise TimeoutError("no route to host")
+
+    with pytest.raises(UpstreamError) as raised:
+        _google_call("gdrive", operation)
+
+    assert "TimeoutError" in str(raised.value.message)
 
 
 def test_drive_preserves_authorized_user_file_scopes(profile, monkeypatch, tmp_path):

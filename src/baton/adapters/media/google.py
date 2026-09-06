@@ -8,6 +8,7 @@ install rather than an ImportError traceback.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -93,6 +94,32 @@ def _credentials(config: Config, section: str) -> Any:
     )
 
 
+def _http_detail(exc: BaseException | None) -> tuple[int | None, str | None]:
+    """Status code and reason off a googleapiclient ``HttpError``, if that is
+    what this is.
+
+    The class name alone says ``HttpError.`` and nothing else. The status and
+    reason were the whole diagnosis, and the production trash failures of
+    2026-09-05/06 went undiagnosed for four runs because neither reached the
+    job log. Duck-typed rather than an ``isinstance`` on the vendor class so
+    the tests can raise a stand-in without the ``[google]`` extra installed.
+    """
+    if exc is None:
+        return None, None
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if not isinstance(status, int):
+        return None, None
+    reason: str | None = None
+    try:
+        payload = json.loads(getattr(exc, "content", b"") or b"{}")
+        error = payload.get("error", {})
+        errors = error.get("errors") or [{}]
+        reason = errors[0].get("reason") or error.get("message")
+    except (AttributeError, TypeError, ValueError):
+        reason = None
+    return status, str(reason) if reason else None
+
+
 def _google_call(service: str, operation: Callable[[], _T]) -> _T:
     """Keep vendor exceptions inside Baton's exit/JSON contract."""
     try:
@@ -100,8 +127,14 @@ def _google_call(service: str, operation: Callable[[], _T]) -> _T:
     except (ConfigError, UpstreamError):
         raise
     except Exception as exc:
+        status, reason = _http_detail(exc)
+        detail = f"{type(exc).__name__}"
+        if status:
+            detail = f"HttpError {status}"
+            if reason:
+                detail += f": {reason}"
         raise UpstreamError(
-            f"{service} request failed: {type(exc).__name__}.",
+            f"{service} request failed: {detail}.",
             service=service,
             remedy="Check the service credentials and permissions, then re-run.",
         ) from exc
@@ -213,12 +246,59 @@ class DriveSource:
         return destination
 
     def trash(self, clip_ids: list[str]) -> int:
+        """Clear the source of clips this pipeline has already published.
+
+        Trashing is the first choice: it is what a studio running everything
+        under one account gets. Uploading a file makes the uploader its owner,
+        though, and Drive lets only the owner trash a file, so clips arriving
+        from a teacher's own account answer every trash request with
+        ``403 insufficientFilePermissions`` (in production, every clip of
+        2026-09-05/06). Removing the clip from the learner folders reaches
+        the state this step owes, nothing left to collect, using rights the
+        folder owner already has, and the uploader keeps their file.
+        """
+        subfolders: set[str] | None = None
         moved = 0
         for clip_id in clip_ids:
             request = self.service.files().update(fileId=clip_id, body={"trashed": True})
-            _google_call("gdrive", request.execute)
-            moved += 1
+            try:
+                _google_call("gdrive", request.execute)
+            except UpstreamError as exc:
+                status, reason = _http_detail(exc.__cause__)
+                if status == 404:
+                    # Out of the source and out of this credential's sight:
+                    # nothing left to clear.
+                    moved += 1
+                    continue
+                if status != 403 or reason != "insufficientFilePermissions":
+                    # Rate limits also answer 403; only the owner rule falls
+                    # back to removing, everything else still fails the step.
+                    raise
+                if subfolders is None:
+                    subfolders = {f["id"] for f in self._children(self.folder_id, folders=True)}
+                self._unfile(clip_id, subfolders)
+                moved += 1
+            else:
+                moved += 1
         return moved
+
+    def _unfile(self, clip_id: str, subfolders: set[str]) -> None:
+        """Take one clip out of the learner folders, leaving the file itself
+        with its uploader."""
+        try:
+            meta = _google_call(
+                "gdrive",
+                lambda: self.service.files().get(fileId=clip_id, fields="parents").execute(),
+            )
+        except UpstreamError as exc:
+            status, _reason = _http_detail(exc.__cause__)
+            if status == 404:
+                return
+            raise
+        ours = [parent for parent in meta.get("parents", []) if parent in subfolders]
+        for parent in ours:
+            request = self.service.files().update(fileId=clip_id, removeParents=parent, body={})
+            _google_call("gdrive", request.execute)
 
     def health(self) -> None:
         request = self.service.files().get(fileId=self.folder_id, fields="id")
