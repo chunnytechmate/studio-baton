@@ -322,9 +322,19 @@ media:
     # libx264 (CPU) or h264_nvenc (NVIDIA GPU: needs the driver in the
     # container and an ffmpeg build with NVENC compiled in; check with
     # `ffmpeg -encoders | grep nvenc`). Only the final encode moves to the
-    # GPU (decode and the concat filter stay on CPU either way), so this is
-    # a small, predictable VRAM cost even on a card with little to spare.
+    # GPU, so this is a small, predictable VRAM cost even on a card with
+    # little to spare.
     codec: libx264
+    # Decode on the card too, by passing `-hwaccel` for every input. Empty
+    # decodes on the CPU; `cuda` is the tested value on an NVIDIA card
+    # (`ffmpeg -hwaccels` lists what a build supports). Measured on a GTX
+    # 1650 SUPER joining two clips that disagree: 18.1s against 10.8s, same
+    # encode both times. The concat filter still runs on the CPU, so what
+    # this adds is one decode surface of VRAM per input: measured on that
+    # card, 181 MiB for the encode alone against 369 MiB with two accelerated
+    # decodes, so roughly 90 MiB a clip. A session that stream-copies never
+    # decodes at all, so this changes nothing for the common case.
+    hwaccel: ""
     # Tone-map HDR clips (iPhone HLG, and anything BT.2020 or 10-bit) down to
     # BT.709 before encoding. Left on, an HDR source keeps its transfer
     # characteristics and plays back washed out on the SDR screens most

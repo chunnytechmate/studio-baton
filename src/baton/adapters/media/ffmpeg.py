@@ -67,13 +67,18 @@ _AUDIO_LAYOUT = "stereo"
 #: duration disagree with the stream duration, and concat inherits the gap.
 _INPUT_FLAGS = ["-fflags", "+genpts+igndts"]
 
-#: Encoder args per `EncodeProfile.codec`. Deliberately CPU-decode,
-#: CPU-filter (rotation/scale/tone-map/concat), GPU-encode-only when a codec
-#: asks for NVENC: offloading decode and the filter graph too would need a
-#: hwaccel/hwupload pipeline (format-mismatch prone, and a real VRAM cost for
-#: every concurrent decode surface); the encode itself is the expensive step
-#: that was timing out, and NVENC's own footprint for it is small regardless
-#: of how little VRAM the card has to spare.
+#: Encoder args per `EncodeProfile.codec`. GPU-encode-only by default:
+#: rotation, scale, tone-map and concat all run on the CPU, and so does the
+#: decode unless `EncodeProfile.hwaccel` asks otherwise. The encode is the
+#: step that was timing out, and NVENC's footprint for it is small however
+#: little VRAM the card has to spare.
+#:
+#: The filter graph stays on the CPU whatever `hwaccel` says, and that is not
+#: an omission. Keeping frames on the card would need `scale_cuda` feeding a
+#: `concat` that accepts CUDA frames, and `concat` does not: it fails the
+#: whole command with "Error reinitializing filters". A decode with no
+#: `-hwaccel_output_format` hands its frames back to system memory, where
+#: this graph already lives, so the two compose without a hwdownload step.
 _CODEC_ARGS = {
     "libx264": ["-c:v", "libx264", "-preset", "medium", "-crf", "20"],
     "h264_nvenc": ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "20"],
@@ -527,11 +532,23 @@ class FfmpegEncoder:
         """
         shapes = traits if traits is not None else [ClipTraits() for _ in inputs]
 
+        copying = profile.name == "passthrough" and len(inputs) == 1
+
+        # `-hwaccel` is an input option: it applies to the `-i` that follows
+        # it, so it is repeated per input and useless on a command that
+        # decodes nothing. It sits ahead of the edit-list flags rather than
+        # behind them because the flag immediately before each `-i` is what
+        # those flags are pinned by, and input options do not care about the
+        # order among themselves.
+        decode_flags = list(_INPUT_FLAGS)
+        if profile.hwaccel and not copying:
+            decode_flags = ["-hwaccel", profile.hwaccel, *decode_flags]
+
         args = [self.binary, "-y", "-hide_banner", "-loglevel", "error"]
         for source in inputs:
-            args += [*_INPUT_FLAGS, "-i", str(source)]
+            args += [*decode_flags, "-i", str(source)]
 
-        if profile.name == "passthrough" and len(inputs) == 1:
+        if copying:
             # Nothing is decoded, so nothing needs normalising.
             args += ["-c", "copy", *profile.extra_args, str(output)]
             return args

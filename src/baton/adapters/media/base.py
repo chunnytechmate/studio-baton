@@ -75,6 +75,16 @@ class EncodeProfile:
     #: default) or "h264_nvenc" (NVIDIA GPU: much faster, needs the driver
     #: and a codec-capable ffmpeg build; see FfmpegEncoder._args).
     codec: str = "libx264"
+    #: Decode on the card as well, by giving ffmpeg `-hwaccel` for every
+    #: input. Empty, the default, decodes on the CPU. "cuda" is the tested
+    #: value on an NVIDIA card. Measured on a GTX 1650 SUPER joining two
+    #: clips that disagree: 18.1s with a CPU decode against 10.8s with this,
+    #: the same NVENC encode in both. What it costs is VRAM: on that card
+    #: the NVENC session alone peaks at 181 MiB, and two accelerated 1080p
+    #: decodes take it to 369 MiB, so a decode surface is roughly 90 MiB and
+    #: grows with the number of clips joined at once. Off until asked for,
+    #: because the same card is often driving a display.
+    hwaccel: str = ""
     #: Tone-map HDR clips down to BT.709 before encoding. On by default: an
     #: untouched HDR source plays back washed out on the SDR screens most
     #: viewers use. Only clips that probe as HDR are affected. Turn off to

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from baton.adapters.media import encode_profile
 from baton.adapters.media.base import EncodeProfile
 from baton.adapters.media.ffmpeg import (
     ClipTraits,
@@ -18,6 +19,7 @@ from baton.adapters.media.ffmpeg import (
     _one_line,
     _traits_from_streams,
 )
+from baton.core.config import Config
 from baton.errors import ConfigError
 
 ENCODER = FfmpegEncoder()
@@ -254,6 +256,66 @@ def test_passthrough_of_a_single_clip_is_still_untouched():
     assert "-filter_complex" not in args
     assert "-vf" not in args
     assert args[args.index("-c") + 1] == "copy"
+
+
+def test_the_decode_stays_on_the_cpu_unless_something_asks():
+    args = ENCODER._args(TWO_CLIPS, OUT, EncodeProfile(), [LANDSCAPE, LANDSCAPE])
+
+    assert "-hwaccel" not in args
+
+
+def test_hwaccel_is_repeated_per_input_and_leaves_the_edit_list_flags_next_to_i():
+    """`-hwaccel` applies to the input that follows it, so two inputs need two
+    of them, and the demuxer flags still have to be the last thing before -i."""
+    args = ENCODER._args(TWO_CLIPS, OUT, EncodeProfile(hwaccel="cuda"), [LANDSCAPE, LANDSCAPE])
+
+    assert args.count("-hwaccel") == 2
+    for index in [i for i, item in enumerate(args) if item == "-hwaccel"]:
+        assert args[index + 1] == "cuda"
+    for index in [i for i, item in enumerate(args) if item == "-i"]:
+        assert args[index - 1] == "+genpts+igndts"
+
+
+def test_hwaccel_never_reaches_a_command_that_decodes_nothing():
+    """-c copy reads packets and writes them. A decoder that is never built
+    cannot be accelerated, and asking for one only invites an error about a
+    device on a machine that has none."""
+    args = ENCODER._args(
+        [CLIP], OUT, EncodeProfile(name="passthrough", hwaccel="cuda"), [LANDSCAPE]
+    )
+
+    assert args[args.index("-c") + 1] == "copy"
+    assert "-hwaccel" not in args
+
+
+def test_the_filter_graph_stays_on_the_cpu_under_hwaccel():
+    """No `-hwaccel_output_format`, so decoded frames come back to system
+    memory, where this graph lives. Keeping them on the card would need a
+    `concat` that accepts CUDA frames, and there is not one."""
+    args = ENCODER._args(TWO_CLIPS, OUT, EncodeProfile(hwaccel="cuda"), [LANDSCAPE, PORTRAIT])
+
+    assert "-hwaccel_output_format" not in args
+    assert "scale_cuda" not in _graph(args)
+    assert args[args.index("-c:v") + 1] == "libx264"
+
+
+def _config(**encode: object) -> Config:
+    return Config(
+        data={"media": {"encode": encode}},
+        config_file=Path("baton.yaml"),
+        profile_dir=Path("."),
+    )
+
+
+def test_the_profile_carries_hwaccel_through_from_config():
+    assert encode_profile(_config(hwaccel="cuda")).hwaccel == "cuda"
+
+
+def test_an_empty_hwaccel_key_reads_as_off_rather_than_as_a_device_named_none():
+    """`hwaccel:` with nothing after it is None in YAML, and str(None) would
+    hand ffmpeg a device type called "None"."""
+    assert encode_profile(_config(hwaccel=None)).hwaccel == ""
+    assert encode_profile(_config()).hwaccel == ""
 
 
 def test_a_single_clip_that_needs_work_gets_a_graph_not_a_dangling_map():
