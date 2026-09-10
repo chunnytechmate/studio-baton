@@ -564,6 +564,19 @@ false` restores always-encode for a studio that wants it; a forced
 profile over other sizes each block the copy path on their own, because they
 ask for a change a copy cannot make.
 
+**The decode can move to the card as well.** `media.encode.codec:
+h264_nvenc` puts the encode on an NVIDIA GPU and leaves everything else on
+the CPU. `media.encode.hwaccel: cuda` moves the decode too, by passing
+`-hwaccel` for each input. Measured on a GTX 1650 SUPER joining two clips
+that disagree: 18.1s becomes 10.8s, the same encoder settings and a
+byte-identical output. What it costs is VRAM, one decode surface per input,
+about 90 MiB for 1080p on that card against 181 MiB for the NVENC session
+itself. Empty by default, because the card is often also driving a display.
+The filter graph stays on the CPU whatever this says: keeping frames on the
+card would need a `concat` that accepts CUDA frames, and there is not one. A
+session that stream-copies never decodes at all, so this changes nothing for
+the common case.
+
 **Long jobs also detach.** Encoding and uploading run for tens of minutes:
 longer than an agent session, an SSH connection, or anyone's patience. Any
 command can be handed to a supervisor that outlives the shell that started it:

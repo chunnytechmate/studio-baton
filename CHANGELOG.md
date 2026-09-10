@@ -4,6 +4,30 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.1.2 (2026-09-10)
+
+One knob, for studios whose machine has a GPU and whose lessons are filmed on
+more than one device.
+
+### Video
+
+- **`media.encode.hwaccel` moves the decode onto the card too.** Setting it to
+  `cuda` passes `-hwaccel` for every input, so an NVIDIA machine decodes there
+  as well as encodes there. Measured on a GTX 1650 SUPER joining two clips that
+  disagree: 18.1s becomes 10.8s, same encoder settings, byte-identical output.
+  Empty by default. What it costs is VRAM, one decode surface per input, around
+  90 MiB for 1080p against the 181 MiB the NVENC session takes on its own, on a
+  card that is often also driving a display.
+- **The filter graph stays on the CPU, and always will.** Rotation, scale,
+  tone-map and concat need frames in system memory. Keeping them on the card
+  would need a `concat` that accepts CUDA frames, and ffmpeg has none: the
+  attempt fails the whole command with `Error reinitializing filters`. Leaving
+  `-hwaccel_output_format` unset is what makes the two compose, since the
+  decoder then hands its frames back where the graph already lives.
+- **Nothing changes for a session that copies.** A lesson filmed on one device
+  is joined by stream copy, which decodes nothing, so this only reaches lessons
+  filmed on more than one.
+
 ## 1.1.1 (2026-09-07)
 
 Two production days (2026-09-05/06) where every lesson's video was uploaded
