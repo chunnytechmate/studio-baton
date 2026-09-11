@@ -29,17 +29,21 @@ from pathlib import Path
 from typing import Any
 
 from ..adapters.db.base import LearnerStore
-from ..adapters.docs.base import DocStore
+from ..adapters.docs.base import DocStore, find_video_link
 from ..adapters.media.base import (
+    UNFILED,
     VIDEO_SUFFIXES,
     EncodeProfile,
     MediaSource,
     SourceClip,
+    TrashOutcome,
     UploadResult,
     VideoEncoder,
     VideoPublisher,
 )
+from ..adapters.media.google import extract_video_id
 from ..core import jsonio
+from ..core.cleanup import CleanupLedger
 from ..domain.models import Learner
 from ..domain.resolve import normalise
 from ..errors import BatonError, StateError
@@ -251,6 +255,10 @@ class VideoPipeline:
     resolve_session: Any = None
     """Callable ``(learner) -> (number, doc_id) | None``, injected by the CLI so
     the pipeline does not need to know how sessions are chosen."""
+    cleanup: CleanupLedger | None = None
+    """Where unfiled clip ids are remembered. ``None`` skips the bookkeeping,
+    which loses the deletions this exists to keep track of; the CLI always
+    passes one."""
 
     # -- helpers -----------------------------------------------------------
 
@@ -372,6 +380,9 @@ class VideoPipeline:
         if job.video_id:
             # Recorded already: never upload a second copy.
             return UploadResult(video_id=job.video_id, url=job.video_url)
+        adopted = self._adopt_existing(job)
+        if adopted is not None:
+            return adopted
         title = f"{job.learner_name} - {self.session_label} {job.session_number}"
         result = self.publisher.upload(path, title=title, privacy=self.privacy)
         job.video_id = result.video_id
@@ -379,6 +390,38 @@ class VideoPipeline:
         # Recorded immediately, before anything else can fail.
         job.record("uploaded", video_id=result.video_id, url=result.url)
         return result
+
+    def _adopt_existing(self, job: VideoJob) -> UploadResult | None:
+        """Reuse the recording already on the session page, if it is ours.
+
+        The job record is the first line of defence against a second upload;
+        this is the second, for the cases where the record was lost anyway:
+        `video forget` on a job that had already uploaded, or a job file
+        removed by hand. The page keeps what the record forgot, and asking it
+        one question ("is there already a video block here that we own?")
+        turns a would-be duplicate into the same link as before.
+
+        A video block is required, not just any link on the page: only the
+        pipeline writes those, so a song bookmark can never be adopted. And
+        ownership is asked of the publisher, so a reference video somebody
+        pasted as a block is left alone and the normal upload still runs.
+        """
+        if not job.doc_id:
+            return None
+        # find_video_link degrades to "" when the store is unreachable, and
+        # an unreachable store is not evidence of anything: fall through to
+        # the upload, which answers for itself.
+        existing = find_video_link(self.docs, job.doc_id, blocks=("video",), exclude=())
+        video_id = extract_video_id(existing) if existing else None
+        if not video_id:
+            return None
+        with contextlib.suppress(BatonError):
+            if not self.publisher.owns(video_id):
+                return None
+        job.video_id = video_id
+        job.video_url = existing
+        job.record("uploaded", video_id=video_id, url=existing, adopted=True)
+        return UploadResult(video_id=video_id, url=existing)
 
     def _link(self, job: VideoJob) -> None:
         """Put the recording on the session page, above the summary.
@@ -418,8 +461,30 @@ class VideoPipeline:
         job.record("cleaned")
 
     def _trash(self, job: VideoJob) -> None:
-        moved = self.source.trash(job.clip_ids) if job.clip_ids else 0
-        job.record("source_trashed", moved=moved)
+        outcomes = self.source.trash(job.clip_ids) if job.clip_ids else []
+        self._settle(outcomes, job)
+        job.record(
+            "source_trashed",
+            moved=len(outcomes),
+            unfiled=sum(1 for item in outcomes if item.outcome == UNFILED),
+        )
+
+    def _settle(self, outcomes: list[TrashOutcome], job: VideoJob) -> None:
+        """Pay the cleanup ledger what these outcomes owe.
+
+        Unfiled clips still exist in their uploader's Drive, out of the
+        pipeline's sight; without an entry here their ids are lost and the
+        files sit there forever. Trashed and gone clips settle any old entry
+        theirs (a retried `video resume` clears what a previous run deferred).
+        """
+        if self.cleanup is None:
+            return
+        unfiled = [item.clip_id for item in outcomes if item.outcome == UNFILED]
+        settled = [item.clip_id for item in outcomes if item.settled]
+        if unfiled:
+            self.cleanup.record_unfiled(unfiled, job=job, now=_now())
+        if settled:
+            self.cleanup.mark_cleared(settled, now=_now())
 
     # -- run ---------------------------------------------------------------
 
@@ -512,8 +577,14 @@ class VideoPipeline:
                 # counts of 4 and 3, and the clips stayed in Drive until a
                 # person trashed them by hand.
                 # Re-issuing the trash is idempotent on clips already gone.
-                moved = self.source.trash(leftover)
-                job.record("source_trashed", moved=moved, reclaimed=len(leftover))
+                outcomes = self.source.trash(leftover)
+                self._settle(outcomes, job)
+                job.record(
+                    "source_trashed",
+                    moved=len(outcomes),
+                    unfiled=sum(1 for item in outcomes if item.outcome == UNFILED),
+                    reclaimed=len(leftover),
+                )
 
             job.status = "done"
             self.jobs.save(job)

@@ -17,7 +17,7 @@ from baton.adapters.fakes import (
     FakeMediaSource,
     FakePublisher,
 )
-from baton.adapters.media.base import EncodeProfile, SourceClip
+from baton.adapters.media.base import GONE, UNFILED, EncodeProfile, SourceClip
 from baton.adapters.media.google import DriveSource, _google_call
 from baton.domain.models import Learner, Session
 from baton.errors import UpstreamError
@@ -634,9 +634,12 @@ def test_trash_unfiles_a_clip_the_credential_does_not_own():
         trash_fails_with=_http_error(403, "insufficientFilePermissions"),
     )
 
-    moved = drive.trash(["c1", "c2"])
+    outcomes = drive.trash(["c1", "c2"])
 
-    assert moved == 2
+    assert [(o.clip_id, o.outcome) for o in outcomes] == [
+        ("c1", UNFILED),
+        ("c2", UNFILED),
+    ]
     assert drive.unfiled == [("c1", "sub"), ("c2", "sub")]
     assert drive.trashed == []
 
@@ -647,18 +650,18 @@ def test_trash_leaves_parents_outside_the_source_alone():
         trash_fails_with=_http_error(403, "insufficientFilePermissions"),
     )
 
-    moved = drive.trash(["c1"])
+    outcomes = drive.trash(["c1"])
 
-    assert moved == 1
+    assert [(o.clip_id, o.outcome) for o in outcomes] == [("c1", UNFILED)]
     assert drive.unfiled == []
 
 
 def test_trash_counts_a_clip_out_of_sight_as_moved():
     drive = _StubDrive(trash_fails_with=_http_error(404, "notFound"))
 
-    moved = drive.trash(["c1"])
+    outcomes = drive.trash(["c1"])
 
-    assert moved == 1
+    assert [(o.clip_id, o.outcome) for o in outcomes] == [("c1", GONE)]
     assert drive.unfiled == []
 
 
@@ -684,9 +687,9 @@ def test_unfile_tolerates_a_clip_that_vanished_midway():
         get_fails_with=_http_error(404, "notFound"),
     )
 
-    moved = drive.trash(["c1"])
+    outcomes = drive.trash(["c1"])
 
-    assert moved == 1
+    assert [(o.clip_id, o.outcome) for o in outcomes] == [("c1", GONE)]
     assert drive.unfiled == []
 
 
@@ -821,3 +824,134 @@ def test_the_recording_is_above_the_summary_when_it_arrives_first_too(pipeline):
     types = [block.type for block in docs.list_blocks("doc-ada-03")]
     assert types[0] == "video"
     assert types[1:] == ["heading_2", "paragraph"]
+
+
+# -- the cleanup ledger: deletions a run could only defer ---------------------
+
+
+class _UnfilingSource(FakeMediaSource):
+    """Every trash request answers "not yours to trash".
+
+    The clip leaves the learner folder (the run's obligation) but the file
+    keeps existing in its uploader's Drive: exactly the 2026-09-05/06
+    production situation, and the one the ledger exists for.
+    """
+
+    def __init__(self, clips):
+        super().__init__(clips)
+        self.unfiled: list[str] = []
+
+    def trash(self, clip_ids):
+        from baton.adapters.media.base import UNFILED, TrashOutcome
+
+        self._check()
+        self.unfiled.extend(clip_ids)
+        return [TrashOutcome(clip_id, UNFILED) for clip_id in clip_ids]
+
+
+def _with_cleanup(fixture, tmp_path):
+    """The fixture pipeline, plus the ledger the CLI always passes."""
+    from dataclasses import replace
+
+    from baton.core.cleanup import CleanupLedger
+
+    built, *rest = fixture
+    return (replace(built, cleanup=CleanupLedger(tmp_path / "cleanup.json")), *rest)
+
+
+def test_an_unfiled_clip_finishes_done_but_owes_a_ledger_debt(pipeline, tmp_path):
+    """Upload and link succeed, the clip leaves the folder, and the run says
+    done: the deletion is the only thing left, and it must not be lost."""
+    built, _source, _encoder, _publisher, _docs, _jobs = _with_cleanup(pipeline, tmp_path)
+    unfiling = _UnfilingSource(list(CLIPS))
+    built = _swap_source(built, unfiling)
+
+    (job,) = built.run()
+
+    assert job.status == "done"
+    assert job.steps["source_trashed"]["unfiled"] == 2
+    pending = built.cleanup.pending()
+    assert sorted(item.clip_id for item in pending) == ["c1", "c2"]
+    assert pending[0].learner_name == "Ada Whitfield"
+    assert pending[0].session_number == 3
+
+
+def _swap_source(built, source):
+    from dataclasses import replace
+
+    return replace(built, source=source)
+
+
+def test_a_reclaimed_clip_settles_its_ledger_debt(pipeline, tmp_path):
+    """The clips stayed listed, so a later resume re-issues the trash; with a
+    credential that can trash, the debt settles instead of piling up."""
+    built, *_ = _with_cleanup(pipeline, tmp_path)
+    built = _swap_source(built, _UnfilingSource(list(CLIPS)))
+    built.run()
+
+    built = _swap_source(built, FakeMediaSource(list(CLIPS)))  # can trash now
+    built.resume()
+
+    assert built.cleanup.pending() == []
+    assert built.cleanup.summary()["cleared"] == 2
+
+
+def test_a_trashed_clip_owes_nothing(pipeline, tmp_path):
+    built, *_ = _with_cleanup(pipeline, tmp_path)
+
+    built.run()
+
+    assert built.cleanup.pending() == []
+    assert built.cleanup.summary() == {"pending": 0, "cleared": 0}
+
+
+# -- never upload a second copy when the record was lost ----------------------
+
+
+def test_a_lost_job_record_adopts_the_recording_already_on_the_page(pipeline):
+    """`video forget` on a job that had uploaded used to mean a second copy on
+    YouTube. The page remembers what the record forgot: a video block we own
+    is adopted instead of uploaded again."""
+    built, _source, _encoder, publisher, docs, _jobs = pipeline
+    docs.append_blocks(
+        "doc-ada-03",
+        [
+            {
+                "object": "block",
+                "type": "video",
+                "video": {"type": "external", "external": {"url": "https://youtu.be/vidExisting"}},
+            }
+        ],
+    )
+
+    (job,) = built.run()
+
+    assert publisher.uploads == []
+    assert job.video_id == "vidExisting"
+    assert job.video_url == "https://youtu.be/vidExisting"
+    assert job.steps["uploaded"].get("adopted") is True
+    video_blocks = [block for block in docs.blocks["doc-ada-03"] if block.type == "video"]
+    assert len(video_blocks) == 1
+
+
+def test_a_foreign_video_block_is_never_adopted(pipeline):
+    """A reference video pasted as a block belongs to another channel: the
+    normal upload runs, and the stranger's video is left alone."""
+    built, _source, _encoder, publisher, docs, _jobs = pipeline
+    publisher.foreign_video_ids.add("vidExisting")
+    docs.append_blocks(
+        "doc-ada-03",
+        [
+            {
+                "object": "block",
+                "type": "video",
+                "video": {"type": "external", "external": {"url": "https://youtu.be/vidExisting"}},
+            }
+        ],
+    )
+
+    (job,) = built.run()
+
+    assert len(publisher.uploads) == 1
+    assert job.video_id.startswith("vid")
+    assert job.video_id != "vidExisting"

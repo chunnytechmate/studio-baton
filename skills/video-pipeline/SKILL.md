@@ -20,10 +20,10 @@ baton video run --dry-run --json        # what is waiting, changes nothing
 baton video run --detach --json         # start it; returns a job id at once
 baton job wait <id> --timeout 90 --json
 baton job logs <id> --tail 50
-baton video status --json               # per-learner progress; every job has
-                                        # learner_name, and error is null (not
-                                        # "") when there is none
+baton video status --json               # per-learner progress; error is
+                                        # null (not "") when there is none
 baton video resume --detach --json      # continue whatever did not finish
+baton video cleanup --json              # retry the deletions a run deferred
 ```
 
 ## Rules
@@ -43,10 +43,9 @@ and the two follow-up commands to the user.
 running: that is not a failure, report it and offer to keep waiting.
 
 **Keep `--timeout` under your own harness's limit.** Claude Code kills a shell
-command at two minutes by default; a `--timeout 600` never returns its exit 8,
-it gets killed, and a killed wait tells you nothing about the job. Wait in short
-turns instead (90 seconds, report, wait again) or just report the job id and
-check `baton job status` later. The job outlives every one of these calls.
+command at two minutes by default; a `--timeout 600` gets killed instead of
+returning its exit 8. Report the job id and check `baton job status` later:
+the job outlives every one of these calls.
 
 **Re-running is safe and is the correct response to most failures.** A finished
 upload is never repeated, and source clips are only discarded once everything
@@ -92,9 +91,16 @@ is `running`: see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for the rest.
 `done` says the process finished cleanly; the other three all end with
 `baton video resume --detach`, after reading the logs and the state.
 
-**Never use `baton video forget`** unless the user explicitly asks and
-understands it: if the upload already happened, starting over publishes a
-second copy.
+**Never use `baton video forget`** unless the user explicitly asks: if the
+upload already happened, a fresh run adopts the recording already on the
+session page instead of uploading a second copy.
+
+**Unfiled clips are a debt, not a done deal.** A clip the credential cannot
+trash leaves the learner folder and the job still finishes `done`, but the
+file exists in the uploader's Drive: its id sits in the cleanup ledger, and
+`cleanup_pending` in run reports counts the debt. `baton video cleanup` pays
+it, given the uploading account's credential (Drive lets only the owner
+trash): see `media.drive.cleanup_credentials_file` or `--credential-file`.
 
 **A skipped learner is not a failure.** It means no learner is named exactly
 like that source folder. Report the folder name and ask which learner it is:

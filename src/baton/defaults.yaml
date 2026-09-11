@@ -279,6 +279,12 @@ media:
     # Optional authorized-user JSON, resolved relative to the profile. When
     # set, it owns Drive auth and the three *_env settings below are ignored.
     credentials_file: ""
+    # Optional second authorized-user JSON, used only by `baton video
+    # cleanup`. Give it the account that uploads the clips: Drive lets only
+    # the owner trash, so clips another account uploaded can only be deleted
+    # by that account's credential. Empty means cleanup retries with the
+    # credential above and reports what it still cannot delete.
+    cleanup_credentials_file: ""
     # Preserve the pre-0.2.3 shared-token default. Profiles with separate
     # credentials should override this key or set credentials_file above.
     refresh_token_env: YOUTUBE_REFRESH_TOKEN

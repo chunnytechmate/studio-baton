@@ -49,6 +49,34 @@ class UploadResult:
         return {"video_id": self.video_id, "url": self.url, "title": self.title}
 
 
+#: The clip reached the Drive trash, which empties itself.
+TRASHED = "trashed"
+#: The clip could not be trashed (typically not ours to trash) and was only
+#: removed from the learner folder. The file still exists, so somebody has to
+#: remember its id if it is ever to be deleted: that is the cleanup ledger.
+UNFILED = "unfiled"
+#: Already gone when the request arrived; nothing left anywhere to clear.
+GONE = "gone"
+
+
+@dataclass(frozen=True)
+class TrashOutcome:
+    """What happened to one clip when the source was cleared.
+
+    A bare count used to be enough, until clips the credential cannot trash
+    started leaving the folder without leaving any record of *which* clips
+    were only unfiled. The per-clip outcome is what the cleanup ledger records.
+    """
+
+    clip_id: str
+    outcome: str
+
+    @property
+    def settled(self) -> bool:
+        """True when no further action can or must be taken."""
+        return self.outcome in (TRASHED, GONE)
+
+
 @dataclass(frozen=True)
 class CombineResult:
     """One combined file, and how it was produced.
@@ -116,11 +144,14 @@ class MediaSource(Protocol):
         """Fetch one clip. Implementations verify the size after transfer."""
         ...
 
-    def trash(self, clip_ids: list[str]) -> int:
-        """Move clips out of the way. Returns how many were moved.
+    def trash(self, clip_ids: list[str]) -> list[TrashOutcome]:
+        """Clear the source of these clips, one outcome per clip.
 
         Called only after everything else for that learner has succeeded:
-        see :mod:`baton.pipelines.video` on deferred trashing.
+        see :mod:`baton.pipelines.video` on deferred trashing. Callers owe
+        the ``UNFILED`` outcomes a ledger entry: those files still exist
+        somewhere the pipeline can no longer see, and only their recorded
+        ids can find them again.
         """
         ...
 
@@ -150,6 +181,14 @@ class VideoPublisher(Protocol):
     def upload(
         self, path: Path, *, title: str, description: str = "", privacy: str = "unlisted"
     ) -> UploadResult: ...
+
+    def owns(self, video_id: str) -> bool:
+        """Whether the video belongs to the configured channel.
+
+        Asked before adopting a link found on a document, so a reference
+        video pasted by hand never counts as the learner's own recording.
+        """
+        ...
 
     def update_description(self, video_id: str, description: str) -> None: ...
 

@@ -4,6 +4,44 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.2.0 (2026-09-12)
+
+The follow-through to 1.1.1's fallback: unfiled clips were disappearing from
+the learner folders and staying in the uploader's Drive forever, with no
+record of which ones. Now every unfiled clip is a ledger entry, the deletion
+is retried on demand, and a lost job record can no longer cause a duplicate
+upload.
+
+### Video
+
+- **Unfiled clips are remembered in a cleanup ledger.** A clip the credential
+  cannot trash (its uploader owns it) leaves the learner folder but keeps
+  existing, out of the pipeline's sight from then on. Its id is now kept in
+  `state/video/cleanup.json`, and `video status` and every run report carry
+  `cleanup_pending` when something is owed.
+- **`baton video cleanup` retries the deletions.** Drive lets only the owner
+  trash, so the command takes the uploading account's credential
+  (`media.drive.cleanup_credentials_file` in the profile, or
+  `--credential-file` on the command) and replays the pending entries. Exit
+  `6` means entries remain that this credential cannot delete; the human
+  output says so. `--rebuild` seeds the ledger from the clip ids held by the
+  job records, archived ones included, which adopts the backlog that
+  predates the ledger.
+- **A lost job record adopts the recording instead of uploading a second
+  copy.** `video forget` on a job that had already uploaded, or a job file
+  removed by hand, used to mean a duplicate on YouTube. The upload step now
+  asks the session page first: a video block owned by the studio's own
+  channel is adopted as-is, and a reference video on someone else's channel
+  is ignored, so the normal upload still runs. The `video forget` warning
+  softened accordingly.
+- **A clip that vanished mid-cleanup counts as gone, not unfiled.** Its
+  ledger entry settles instead of piling up as a debt that can never be
+  paid.
+- `media.source.trash` implementations now return one outcome per clip
+  (`trashed` / `unfiled` / `gone`) instead of a count. Source drivers outside
+  this repository need the same change; the shipped `gdrive` and `local`
+  drivers have it.
+
 ## 1.1.2 (2026-09-10)
 
 One knob, for studios whose machine has a GPU and whose lessons are filmed on

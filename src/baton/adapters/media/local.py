@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ...core.config import Config
 from ...errors import ConfigError
-from .base import VIDEO_SUFFIXES, SourceClip
+from .base import GONE, TRASHED, VIDEO_SUFFIXES, SourceClip, TrashOutcome
 
 COLLECTED_DIRNAME = ".collected"
 
@@ -66,17 +66,18 @@ class LocalSource:
         shutil.copy2(source, destination)
         return destination
 
-    def trash(self, clip_ids: list[str]) -> int:
-        moved = 0
+    def trash(self, clip_ids: list[str]) -> list[TrashOutcome]:
+        outcomes: list[TrashOutcome] = []
         for clip_id in clip_ids:
             source = Path(clip_id)
             if not source.is_file():
+                outcomes.append(TrashOutcome(clip_id, GONE))
                 continue
             target = self.root / COLLECTED_DIRNAME / source.parent.name
             target.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(target / source.name))
-            moved += 1
-        return moved
+            outcomes.append(TrashOutcome(clip_id, TRASHED))
+        return outcomes
 
     def health(self) -> None:
         if not self.root.is_dir():

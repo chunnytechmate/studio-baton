@@ -17,7 +17,7 @@ from typing import Any, TypeVar
 from ...core.config import Config
 from ...errors import ConfigError, UpstreamError
 from .. import google_http
-from .base import VIDEO_SUFFIXES, SourceClip, UploadResult
+from .base import GONE, TRASHED, UNFILED, VIDEO_SUFFIXES, SourceClip, TrashOutcome, UploadResult
 
 _VIDEO_ID = re.compile(r"(?:youtu\.be/|[?&]v=|/embed/)(?P<id>[A-Za-z0-9_-]{11})")
 
@@ -62,12 +62,19 @@ def _timeout(config: Config, section: str) -> float:
     return float(config.get(f"{section}.timeout_seconds", google_http.DEFAULT_TIMEOUT_SECONDS))
 
 
-def _credentials(config: Config, section: str) -> Any:
-    """Build credentials without changing the refresh token's original scopes."""
+def _credentials(config: Config, section: str, *, override_file: str | None = None) -> Any:
+    """Build credentials without changing the refresh token's original scopes.
+
+    ``override_file`` names an authorized-user JSON that takes the place of
+    ``<section>.credentials_file``: used by the cleanup credential, which is
+    a different account from the one the pipeline reads with.
+    """
     _, _, Credentials = _require_google()
-    credentials_file = str(config.get(f"{section}.credentials_file", "")).strip()
+    credentials_file = str(override_file or config.get(f"{section}.credentials_file", "")).strip()
     if credentials_file:
-        path = config.path(f"{section}.credentials_file")
+        path = Path(credentials_file).expanduser()
+        if not path.is_absolute():
+            path = config.profile_dir / path
         if not path.is_file():
             raise ConfigError(
                 f"No Google credentials file exists at {path}.",
@@ -145,18 +152,27 @@ class DriveSource:
 
     driver = "gdrive"
 
-    def __init__(self, folder_id: str, config: Config, *, download_retries: int = 3) -> None:
+    def __init__(
+        self,
+        folder_id: str,
+        config: Config,
+        *,
+        download_retries: int = 3,
+        credentials_file: str | None = None,
+    ) -> None:
         self.folder_id = folder_id
         self.config = config
         self.download_retries = download_retries
+        self.credentials_file = credentials_file
         self._service: Any = None
 
     @classmethod
-    def from_config(cls, config: Config) -> DriveSource:
+    def from_config(cls, config: Config, *, credentials_file: str | None = None) -> DriveSource:
         return cls(
             folder_id=str(config.secret("media.drive.folder_id_env")),
             config=config,
             download_retries=int(config.get("media.drive.download_retries", 3)),
+            credentials_file=credentials_file,
         )
 
     @property
@@ -170,7 +186,9 @@ class DriveSource:
                     "v3",
                     cache_discovery=False,
                     **google_http.build_kwargs(
-                        _credentials(self.config, "media.drive"),
+                        _credentials(
+                            self.config, "media.drive", override_file=self.credentials_file
+                        ),
                         _timeout(self.config, "media.drive"),
                     ),
                 ),
@@ -245,7 +263,7 @@ class DriveSource:
             )
         return destination
 
-    def trash(self, clip_ids: list[str]) -> int:
+    def trash(self, clip_ids: list[str]) -> list[TrashOutcome]:
         """Clear the source of clips this pipeline has already published.
 
         Trashing is the first choice: it is what a studio running everything
@@ -256,9 +274,14 @@ class DriveSource:
         2026-09-05/06). Removing the clip from the learner folders reaches
         the state this step owes, nothing left to collect, using rights the
         folder owner already has, and the uploader keeps their file.
+
+        The unfiled clips are returned as ``UNFILED`` outcomes rather than
+        counted, because a file that left every folder the credential can see
+        is unreachable from then on: only its recorded id can ever find it
+        again, and the pipeline owes each one a cleanup-ledger entry.
         """
         subfolders: set[str] | None = None
-        moved = 0
+        results: list[TrashOutcome] = []
         for clip_id in clip_ids:
             request = self.service.files().update(fileId=clip_id, body={"trashed": True})
             try:
@@ -268,7 +291,7 @@ class DriveSource:
                 if status == 404:
                     # Out of the source and out of this credential's sight:
                     # nothing left to clear.
-                    moved += 1
+                    results.append(TrashOutcome(clip_id, GONE))
                     continue
                 if status != 403 or reason != "insufficientFilePermissions":
                     # Rate limits also answer 403; only the owner rule falls
@@ -276,15 +299,20 @@ class DriveSource:
                     raise
                 if subfolders is None:
                     subfolders = {f["id"] for f in self._children(self.folder_id, folders=True)}
-                self._unfile(clip_id, subfolders)
-                moved += 1
+                seen = self._unfile(clip_id, subfolders)
+                results.append(TrashOutcome(clip_id, UNFILED if seen else GONE))
             else:
-                moved += 1
-        return moved
+                results.append(TrashOutcome(clip_id, TRASHED))
+        return results
 
-    def _unfile(self, clip_id: str, subfolders: set[str]) -> None:
+    def _unfile(self, clip_id: str, subfolders: set[str]) -> bool:
         """Take one clip out of the learner folders, leaving the file itself
-        with its uploader."""
+        with its uploader.
+
+        Returns whether the file was still there to unfile. A clip that
+        vanished before this call is gone rather than merely unfiled, and its
+        caller owes the ledger nothing.
+        """
         try:
             meta = _google_call(
                 "gdrive",
@@ -293,12 +321,13 @@ class DriveSource:
         except UpstreamError as exc:
             status, _reason = _http_detail(exc.__cause__)
             if status == 404:
-                return
+                return False
             raise
         ours = [parent for parent in meta.get("parents", []) if parent in subfolders]
         for parent in ours:
             request = self.service.files().update(fileId=clip_id, removeParents=parent, body={})
             _google_call("gdrive", request.execute)
+        return True
 
     def health(self) -> None:
         request = self.service.files().get(fileId=self.folder_id, fields="id")
@@ -378,6 +407,28 @@ class YouTubePublisher:
             "youtube", self.service.channels().list(part="id", mine=True).execute
         )
         return {str(item["id"]) for item in response.get("items", [])}
+
+    def owns(self, video_id: str) -> bool:
+        """Whether the video belongs to the configured channel.
+
+        Adoption of a link already on a session document rides on this: the
+        same ownership rule as ``update_description``, asked as a yes/no so a
+        reference video on someone else's channel is simply never adopted
+        rather than raising. A video that no longer resolves is not ours
+        either.
+        """
+        listing = _google_call(
+            "youtube", self.service.videos().list(part="snippet", id=video_id).execute
+        )
+        items = listing.get("items", [])
+        if not items:
+            return False
+        our_channel_ids = self._own_channel_ids()
+        if not our_channel_ids:
+            # The account's channel list came back empty, which says nothing
+            # about the video. Not the same as a definite "not ours".
+            return False
+        return str(items[0]["snippet"].get("channelId", "")) in our_channel_ids
 
     def update_description(self, video_id: str, description: str) -> None:
         """Replace a video's description, keeping its title, tags, and category.

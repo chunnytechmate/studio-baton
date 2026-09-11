@@ -515,7 +515,11 @@ loses or duplicates a recording:
   copy, and a crash before the upload would lose the lesson permanently.
 - **A completed upload is never repeated.** The video id is recorded the
   moment the platform returns it, so a resume cannot publish a second copy of
-  a child's lesson with no way to tell which link was sent.
+  a child's lesson with no way to tell which link was sent. And when the
+  record itself is lost (`video forget` on a job that had uploaded, a job
+  file removed by hand), the run first adopts a video block already on the
+  session page if it belongs to the studio's own channel, instead of
+  uploading again.
 - **One learner's failure does not stop the others.** A corrupt clip from one
   phone must not mean nobody's recording goes out that night.
 
@@ -524,6 +528,7 @@ baton video run --dry-run     # what is waiting
 baton video run --detach      # background, survives the session
 baton video status            # per-learner progress through the steps
 baton video resume            # continue whatever did not finish
+baton video cleanup           # delete the clips a run could only unfile
 ```
 
 ```
@@ -545,7 +550,13 @@ Drive lets only a file's owner trash it, so a studio whose clips arrive from
 the teacher's own account gets `403 insufficientFilePermissions` on every
 trash request. Those clips are removed from the learner folder instead: the
 source is just as clear, nothing is left to collect, and the uploader keeps
-their files.
+their files. A clip that was only unfiled still exists somewhere the pipeline
+can no longer see, so its id is kept in a cleanup ledger and `baton video
+cleanup` retries the deletion, usually with the uploading account's
+credential (`media.drive.cleanup_credentials_file` or `--credential-file`):
+Drive lets only the owner trash. `--rebuild` seeds the ledger from the clip
+ids in the job records, archived ones included, which adopts a backlog that
+predates the ledger.
 
 **Matching clips are joined without encoding.** Most of a lesson's clips come
 from one phone filming one session, and joining files that already agree on

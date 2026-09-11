@@ -73,16 +73,18 @@ class ReusableSource:
         return path
 
     def trash(self, clip_ids):
+        from baton.adapters.media.base import TRASHED, TrashOutcome
+
         if self.fail_trash_with is not None:
             raise self.fail_trash_with
         self.trash_calls.append(list(clip_ids))
-        moved = 0
+        outcomes = []
         for clip_id in clip_ids:
             if clip_id in self.sticky:
                 continue  # the update "succeeds" and the clip stays listed
             self.clips = [clip for clip in self.clips if clip.id != clip_id]
-            moved += 1
-        return moved
+            outcomes.append(TrashOutcome(clip_id, TRASHED))
+        return outcomes
 
     def health(self) -> None:
         return None

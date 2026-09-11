@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ..adapters.db import open_store
 from ..adapters.docs import open_docs
 from ..adapters.media import encode_profile, open_encoder, open_publisher, open_source
+from ..core.cleanup import CleanupLedger
 from ..core.jobs import JobRunner, run_lock
 from ..domain.models import Learner
 from ..domain.status import StatusVocabulary
@@ -83,6 +85,38 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     forget.add_argument("folder", metavar="FOLDER")
     forget.add_argument("--yes", action="store_true", help="Required: this discards progress.")
     forget.set_defaults(handler=handle_forget)
+
+    cleanup = group.add_parser(
+        "cleanup",
+        help="Delete the clips a run could only unfile, by their recorded ids.",
+        description=(
+            "Replays the cleanup ledger: every clip that left its learner "
+            "folder without being trashed, because the pipeline credential "
+            "does not own it, is retried here. Drive lets only the owner "
+            "trash, so the entries usually clear once the uploading "
+            "account's credential is configured "
+            "(media.drive.cleanup_credentials_file, or --credential-file)."
+        ),
+    )
+    cleanup.add_argument(
+        "--credential-file",
+        metavar="PATH",
+        help=(
+            "Authorized-user JSON used for this cleanup only, overriding "
+            "media.drive.cleanup_credentials_file. Give it the account that "
+            "uploads the clips."
+        ),
+    )
+    cleanup.add_argument(
+        "--rebuild",
+        action="store_true",
+        help=(
+            "Seed the ledger from every clip id in the job records (archived "
+            "ones included) before clearing. For adopting the backlog that "
+            "predates the ledger."
+        ),
+    )
+    cleanup.set_defaults(handler=handle_cleanup)
 
 
 def _require_subcommand(ctx: Context) -> Exit:
@@ -166,17 +200,20 @@ def _build(ctx: Context) -> VideoPipeline:
         privacy=str(config.get("media.youtube.privacy", "unlisted")),
         session_label=config.label("session"),
         resolve_session=resolve_session,
+        cleanup=CleanupLedger.for_state(config.state_dir),
     )
 
 
 def _report(ctx: Context, jobs: list, *, verb: str) -> Exit:
     """Render a run's outcome and pick the exit code."""
+    cleanup = CleanupLedger.for_state(ctx.config.state_dir).summary()
     payload: dict[str, Any] = {
         "jobs": [job.to_dict() for job in jobs],
         "processed": len(jobs),
         "done": sum(1 for job in jobs if job.status == "done"),
         "failed": sum(1 for job in jobs if job.status == "failed"),
         "skipped": sum(1 for job in jobs if job.status == "skipped"),
+        "cleanup_pending": cleanup["pending"],
     }
 
     if not jobs:
@@ -188,6 +225,11 @@ def _report(ctx: Context, jobs: list, *, verb: str) -> Exit:
         mark = _MARK.get(job.status, "·")
         detail = job.error or job.video_url or ""
         lines.append(f"  {mark} {job.learner_folder:<20} {job.status:<12} {detail}")
+    if cleanup["pending"]:
+        lines.append(
+            f"  ⚠ {cleanup['pending']} clip(s) unfiled but not deleted: "
+            "`baton video cleanup` clears them"
+        )
     ctx.report.result(payload, human="\n".join(lines))
 
     # A partial run is not a success. Its exit code has to say so, while the
@@ -258,10 +300,18 @@ def handle_status(ctx: Context) -> Exit:
     from ..pipelines.video import STEPS
 
     jobs = _jobs(ctx).list()
-    payload = {"jobs": [job.to_dict() for job in jobs], "count": len(jobs)}
+    cleanup = CleanupLedger.for_state(ctx.config.state_dir).summary()
+    payload = {
+        "jobs": [job.to_dict() for job in jobs],
+        "count": len(jobs),
+        "cleanup": cleanup,
+    }
 
     if not jobs:
-        ctx.report.result(payload, human="No video jobs recorded.")
+        human = "No video jobs recorded."
+        if cleanup["pending"]:
+            human += f"\n  ⚠ {cleanup['pending']} clip(s) unfiled but not deleted."
+        ctx.report.result(payload, human=human)
         return Exit.OK
 
     lines = []
@@ -278,6 +328,11 @@ def handle_status(ctx: Context) -> Exit:
             lines.append(f"      next step: {pending}")
     lines.append("")
     lines.append("  steps: " + " → ".join(STEPS))
+    if cleanup["pending"]:
+        lines.append(
+            f"  ⚠ cleanup: {cleanup['pending']} clip(s) unfiled but not deleted "
+            "(`baton video cleanup`)"
+        )
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
 
@@ -295,8 +350,9 @@ def handle_forget(ctx: Context) -> Exit:
         warning = ""
         if job.video_id:
             warning = (
-                f" This job already uploaded {job.video_id}; starting over will "
-                "publish a second copy."
+                f" This job already uploaded {job.video_id}; a fresh run adopts "
+                "that recording from the document instead of uploading a second "
+                "copy, but only while the page still carries it."
             )
         raise UsageError(
             f"`video forget` discards the recorded progress for {ctx.args.folder}.{warning}",
@@ -309,3 +365,83 @@ def handle_forget(ctx: Context) -> Exit:
         human=f"Discarded the job record for {ctx.args.folder}.",
     )
     return Exit.OK
+
+
+def handle_cleanup(ctx: Context) -> Exit:
+    """Retry the deletions a run could only defer."""
+    from ..adapters.media.base import UNFILED
+    from ..errors import BatonError
+
+    ledger = CleanupLedger.for_state(ctx.config.state_dir)
+    seeded = 0
+    if ctx.args.rebuild:
+        for job in _jobs(ctx).list(include_archived=True):
+            if not job.clip_ids:
+                continue
+            fresh = ledger.record_unfiled(list(job.clip_ids), job=job, now=_now_stamp())
+            seeded += len(fresh)
+
+    source = _cleanup_source(ctx)
+    entries = ledger.pending()
+    cleared: list[str] = []
+    blocked: list[tuple[str, str]] = []
+    for entry in entries:
+        try:
+            outcomes = source.trash([entry.clip_id])
+        except BatonError as exc:
+            blocked.append((entry.clip_id, str(exc.message)))
+            continue
+        outcome = outcomes[0] if outcomes else None
+        if outcome is not None and outcome.settled:
+            cleared.append(entry.clip_id)
+        else:
+            reason = (
+                "this credential cannot trash it (not the owner)"
+                if outcome is not None and outcome.outcome == UNFILED
+                else "no outcome returned"
+            )
+            blocked.append((entry.clip_id, reason))
+    if cleared:
+        ledger.mark_cleared(cleared, now=_now_stamp())
+    for clip_id, reason in blocked:
+        ledger.mark_blocked([clip_id], reason=reason)
+
+    remaining = ledger.pending()
+    payload = {
+        "seeded": seeded,
+        "pending_before": len(entries),
+        "cleared": len(cleared),
+        "remaining": len(remaining),
+        "cleared_ids": cleared,
+        "remaining_ids": [item.clip_id for item in remaining[:50]],
+    }
+    lines = [f"cleared {len(cleared)} of {len(entries)} pending clip(s)"]
+    if seeded:
+        lines.insert(0, f"rebuild seeded {seeded} clip id(s) from job records")
+    if remaining:
+        lines.append(f"  ⚠ {len(remaining)} still undeletable with this credential")
+        lines.append(
+            "    Drive lets only the owner trash: give --credential-file the "
+            "authorized-user JSON of the account that uploads the clips."
+        )
+    ctx.report.result(payload, human="\n".join(lines))
+    return Exit.OK if not remaining else Exit.UPSTREAM
+
+
+def _cleanup_source(ctx: Context):
+    """The source to clear with, honouring the cleanup credential override."""
+    driver = str(ctx.config.get("media.source.driver", "gdrive"))
+    if driver != "gdrive":
+        # The local source never unfiles; there is nothing it could clear
+        # differently, so the ordinary source is also the cleanup source.
+        return open_source(ctx.config)
+    from ..adapters.media.google import DriveSource
+
+    override = ctx.args.credential_file or str(
+        ctx.config.get("media.drive.cleanup_credentials_file", "")
+    )
+    return DriveSource.from_config(ctx.config, credentials_file=override.strip() or None)
+
+
+def _now_stamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")

@@ -472,10 +472,12 @@ class FakeMediaSource:
         self.downloaded.append(clip.id)
         return path
 
-    def trash(self, clip_ids: list[str]) -> int:
+    def trash(self, clip_ids: list[str]) -> list[Any]:
         self._check()
+        from .media.base import TRASHED, TrashOutcome
+
         self.trashed.extend(clip_ids)
-        return len(clip_ids)
+        return [TrashOutcome(clip_id, TRASHED) for clip_id in clip_ids]
 
     def health(self) -> None:
         self._check()
@@ -549,6 +551,9 @@ class FakePublisher:
 
             raise UpstreamError(f"Video {video_id} belongs to another channel.", service="youtube")
         self.descriptions[video_id] = description
+
+    def owns(self, video_id: str) -> bool:
+        return bool(video_id) and video_id not in self.foreign_video_ids
 
     def health(self) -> None:
         pass
