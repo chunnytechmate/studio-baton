@@ -4,7 +4,7 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
-## 1.3.0 (unreleased)
+## 1.3.0 (2026-09-13)
 
 A learner who stopped studying kept showing up next to everyone else's
 bookings: a name typed for one person could land on the candidate list of
