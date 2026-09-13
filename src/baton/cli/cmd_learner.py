@@ -25,6 +25,7 @@ from ..pipelines.learner import LearnerHistory, PublishedPieceUpdater, SessionVi
 from ..pipelines.recording import attach_work, list_candidates, recording_blocks
 from ..pipelines.staging import PublishedRecord
 from .cmd_calendar import _scheduler
+from .naming import warn_if_inactive
 
 if TYPE_CHECKING:
     from .app import Context
@@ -42,7 +43,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     group = parser.add_subparsers(dest="learner_command", metavar="<subcommand>")
     parser.set_defaults(handler=_require_subcommand)
 
-    listing = group.add_parser("list", help="List every learner.")
+    listing = group.add_parser(
+        "list",
+        help="List the learners still studying.",
+        description=(
+            "Active learners only by default; --all includes everyone who "
+            "stopped, each marked (inactive). Nothing is ever deleted, so "
+            "--all is also the honest full roster."
+        ),
+    )
+    listing.add_argument(
+        "--all", action="store_true", help="Include learners who stopped studying."
+    )
     listing.set_defaults(handler=handle_list)
 
     show = group.add_parser(
@@ -205,6 +217,36 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     attach.add_argument("--dry-run", action="store_true", help="Report what would be written.")
     attach.set_defaults(handler=handle_attach_work)
 
+    activate = group.add_parser(
+        "activate",
+        help="Mark learners as studying here again.",
+        description=(
+            "The reverse of deactivate: the learner returns to matching "
+            "candidates and rosters. Their history was never gone."
+        ),
+    )
+    activate.add_argument("names", nargs="*", metavar="NAME")
+    activate.set_defaults(handler=handle_activate)
+
+    deactivate = group.add_parser(
+        "deactivate",
+        help="Mark learners as no longer studying. Nothing is deleted.",
+        description=(
+            "Their history stays reachable by exact name; they leave the "
+            "matching candidates and the rosters. Reversible with `baton "
+            "learner activate`. --serve opens a localhost checklist to tick "
+            "several at once instead of naming them here."
+        ),
+    )
+    deactivate.add_argument("names", nargs="*", metavar="NAME")
+    deactivate.add_argument(
+        "--serve",
+        action="store_true",
+        help="Open a localhost checklist instead of naming learners.",
+    )
+    deactivate.add_argument("--port", type=int, default=8765, metavar="N", help="Port for --serve.")
+    deactivate.set_defaults(handler=handle_deactivate)
+
 
 def _require_subcommand(ctx: Context) -> Exit:
     raise UsageError(
@@ -238,12 +280,14 @@ def _history(ctx: Context, store) -> LearnerHistory:
 
 def _resolve(ctx: Context, store, name: str):
     """Resolve a typed name, or raise NeedsHumanError with candidates."""
-    return resolve_learner(
+    learner = resolve_learner(
         name,
         store.list_learners(),
         aliases=ctx.config.get("db.aliases", {}) or {},
         label=ctx.config.label("learner"),
     )
+    warn_if_inactive(ctx, learner)
+    return learner
 
 
 def _session_line(view: SessionView, vocabulary: StatusVocabulary, label: str) -> str:
@@ -265,7 +309,9 @@ def _session_line(view: SessionView, vocabulary: StatusVocabulary, label: str) -
 def handle_list(ctx: Context) -> Exit:
     store = _store(ctx)
     try:
-        learners = store.list_learners()
+        everyone = store.list_learners()
+        learners = everyone if ctx.args.all else [item for item in everyone if item.is_active]
+        hidden = 0 if ctx.args.all else len(everyone) - len(learners)
         # One extra read, only when there is a list to annotate: the piece
         # catalogue is small, and knowing who is on what without a second
         # command is the whole point of a roster.
@@ -273,9 +319,20 @@ def handle_list(ctx: Context) -> Exit:
     finally:
         store.close()
 
-    payload = {"learners": [item.to_dict() for item in learners], "count": len(learners)}
+    payload = {
+        "learners": [item.to_dict() for item in learners],
+        "count": len(learners),
+        "scope": "all" if ctx.args.all else "active",
+        "hidden_inactive": hidden,
+    }
     if not learners:
-        ctx.report.result(payload, human=f"No {ctx.config.label('learners')} recorded.")
+        human = (
+            f"No {ctx.config.label('learners')} recorded."
+            if hidden == 0
+            else f"No active {ctx.config.label('learners')}; {hidden} no longer "
+            f"studying (--all shows them)."
+        )
+        ctx.report.result(payload, human=human)
         return Exit.OK
 
     width = max(len(item.name) for item in learners)
@@ -284,7 +341,11 @@ def handle_list(ctx: Context) -> Exit:
         line = f"  {item.name:<{width}}  {item.instrument or '-':<10} {item.tone or '-'}"
         if item.current_piece_id:
             line += f"  : {titles.get(item.current_piece_id, '?')}"
+        if not item.is_active:
+            line += "  (inactive)"
         lines.append(line)
+    if hidden:
+        lines.append(f"  ({hidden} no longer studying; --all shows them)")
     ctx.report.result(payload, human="\n".join(lines))
     return Exit.OK
 
@@ -958,3 +1019,80 @@ def handle_assign(ctx: Context) -> Exit:
         ),
     )
     return Exit.OK
+
+
+def _set_active_many(ctx: Context, names: list[str], *, active: bool) -> Exit:
+    """Flip one status per named learner, after every name has resolved.
+
+    Nothing is written until the whole batch resolves: a typo in the last
+    name must not leave the first three already marked, and re-running the
+    corrected command is then exactly what it says it is.
+    """
+    store = _store(ctx)
+    try:
+        resolved = [_resolve(ctx, store, name) for name in names]
+
+        written: list[Learner] = []
+        for learner in resolved:
+            try:
+                store.set_active(learner.id, active)
+            except BatonError as exc:
+                raise UpstreamError(
+                    f"{len(written)} of {len(resolved)} status changes were written "
+                    f"before one failed: {exc.message}",
+                    service="db",
+                    remedy="Check what landed with `baton learner list --all`, "
+                    "then re-run the names that are still missing.",
+                    details={
+                        "written": [item.to_dict() for item in written],
+                        "remaining": [item.name for item in resolved[len(written) :]],
+                    },
+                ) from exc
+            # The store keeps its own truth; read the flag back from the row
+            # the store just confirmed rather than guessing its shape.
+            fresh = store.get_learner(learner.id)
+            written.append(fresh if fresh is not None else learner)
+    finally:
+        store.close()
+
+    verb = "studying here again" if active else "no longer studying"
+    names_text = ", ".join(item.name for item in written)
+    human = (
+        f"Marked {len(written)} {ctx.config.label('learners')} as {verb}: {names_text}."
+        if len(written) != 1
+        else f"Marked {names_text} as {verb}."
+    )
+    ctx.report.result(
+        {"active": active, "count": len(written), "learners": [item.to_dict() for item in written]},
+        human=human,
+    )
+    return Exit.OK
+
+
+def handle_activate(ctx: Context) -> Exit:
+    if not ctx.args.names:
+        raise UsageError(
+            "`baton learner activate` needs at least one name.",
+            remedy='Try `baton learner activate "Clara Nguyen"`.',
+        )
+    return _set_active_many(ctx, ctx.args.names, active=True)
+
+
+def handle_deactivate(ctx: Context) -> Exit:
+    if ctx.args.serve and ctx.args.names:
+        raise UsageError(
+            "`baton learner deactivate --serve` takes no names.",
+            remedy="Tick the learners in the checklist it opens, or drop --serve.",
+        )
+    if not ctx.args.serve and not ctx.args.names:
+        raise UsageError(
+            "`baton learner deactivate` needs names, or --serve for the checklist.",
+            remedy='Try `baton learner deactivate "Clara Nguyen"`, or --serve.',
+        )
+    if ctx.args.serve:
+        # Imported here, not at the top, so the CLI's import cost stays flat
+        # for everyone who never serves a checklist (the `_ask` precedent).
+        from .serve import run_checklist
+
+        return run_checklist(ctx, port=ctx.args.port)
+    return _set_active_many(ctx, ctx.args.names, active=False)

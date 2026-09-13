@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS learners (
     tone             text NOT NULL DEFAULT 'standard',
     has_instrument   boolean NOT NULL DEFAULT false,
     current_piece_id bigint REFERENCES pieces (id) ON DELETE SET NULL,
+    -- Whether they still study here. Deactivating removes a learner from
+    -- matching and rosters; nothing is ever deleted, and `learner activate`
+    -- brings them back.
+    is_active        boolean NOT NULL DEFAULT true,
     created_at       timestamptz NOT NULL DEFAULT now()
 );
 

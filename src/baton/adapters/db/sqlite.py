@@ -210,6 +210,9 @@ class SqliteStore:
             tone=_text(self._get(row, fields, "tone")),
             has_instrument=_to_bool(self._get(row, fields, "has_instrument", False)),
             current_piece_id=None if current in (None, "") else _text(current),
+            # Unmapped (or absent) means active: a studio that has not adopted
+            # the column keeps every learner in matching, exactly as before.
+            is_active=_to_bool(self._get(row, fields, "is_active", True)),
             raw=dict(row),
         )
 
@@ -246,6 +249,27 @@ class SqliteStore:
         if cursor.rowcount == 0:
             raise StateError(
                 f"No learner with id {learner_id}; the assignment was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
+    def set_active(self, learner_id: str, active: bool) -> None:
+        fields = self.schema.learners
+        self._ensure_columns(fields)
+        if not fields.has("is_active"):
+            raise ConfigError(
+                "This profile does not map an active-status column.",
+                remedy="Add db.fields.learner.is_active to baton.yaml.",
+            )
+        sql = (
+            f"UPDATE {fields.table} SET {fields.column('is_active')} = ? "  # noqa: S608
+            f"WHERE {fields.column('id')} = ?"
+        )
+        cursor = self._write(sql, (1 if active else 0, learner_id))
+        # Same refusal as `set_current_piece`: a status change that matched no
+        # row must not read back as "marked" to the teacher.
+        if cursor.rowcount == 0:
+            raise StateError(
+                f"No learner with id {learner_id}; the status was not written.",
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 

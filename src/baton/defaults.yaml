@@ -65,6 +65,11 @@ db:
       tone: tone
       has_instrument: has_instrument
       current_piece_id: current_piece_id
+      # Whether they still study here. Unmapped (a studio without the column)
+      # reads everyone as active, so adopting it is a plain ALTER plus this
+      # mapping. Profiles deep-merge with these defaults, so the column must
+      # exist before a studio upgrades to a release that maps it.
+      is_active: is_active
     session:
       id: id
       learner_id: learner_id

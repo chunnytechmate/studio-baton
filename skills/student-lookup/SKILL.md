@@ -19,7 +19,8 @@ Every command takes `--json` and prints one document. Read the exit code first.
 
 | Ask | Command |
 | --- | --- |
-| Everyone | `baton learner list --json` |
+| Everyone still studying | `baton learner list --json` |
+| Everyone, including who stopped | `baton learner list --all --json` |
 | One learner in full | `baton learner show "<name>" --json` |
 | All their sessions | `baton learner sessions "<name>" --json` |
 | **The latest session that happened** | `baton learner latest "<name>" --json` |
@@ -31,6 +32,8 @@ Every command takes `--json` and prints one document. Read the exit code first.
 | Assign a piece | `baton learner assign "<name>" --piece <id> --json` |
 | Assign and repair published piece sections | `baton learner assign "<name>" --piece <id> --update-published --dry-run --json` |
 | Enrol a new learner | `baton learner add "<name>" --instrument <i> [--tone <t>] [--page-urls <url>...] --json` |
+| Someone stopped studying | `baton learner deactivate "<name>" --json` |
+| A former learner is back | `baton learner activate "<name>" --json` |
 
 ## Rules
 
@@ -46,6 +49,13 @@ that it was empty. For a whole day of lessons at once, use `baton prep`.
 **A name that is not exact stops the work.** Exit `3` carries
 `details.candidates`. Show them to the user and wait for an answer. Do not pick
 the only candidate, even when there is only one.
+
+**A learner with `is_active: false` no longer studies here.** Their exact
+name still resolves and their history is still readable: say so when it
+comes up. `learner list` only shows them with `--all`, and they never appear
+in a `candidates` list. Nothing is deleted, and `learner deactivate --serve`
+(a localhost checklist, not something this skill drives) is how the teacher
+marks several at once by hand.
 
 **Writes take `--dry-run`.** Use it when the user's intent is ambiguous, show
 the result, and confirm before running it for real.

@@ -815,3 +815,39 @@ def test_range_argument_mistakes_are_refused(listed, profile, args):
     from baton.cli.app import run
 
     assert run(["--profile", str(profile), "--json", "calendar", "list", *args]) == Exit.USAGE
+
+
+def test_an_inactive_learners_stale_booking_is_unmatched_not_owed():
+    """The leftover event of someone who stopped studying must not keep them
+    in "who owes a summary" forever; the person still sees it, filed under
+    unmatched next to the dentist."""
+    calendar = FakeCalendar(
+        [
+            _event("Ada Whitfield (lesson 3)", "2026-08-15T17:00:00+07:00"),
+            _event("Bruno Castell (lesson 9)", "2026-08-15T10:00:00+07:00"),
+        ]
+    )
+    scheduler, store = _window(calendar)
+    store.set_active(BRUNO.id, False)
+
+    report = scheduler.in_progress(store, today=date(2026, 8, 16))
+
+    assert [(learner.name, view.number) for learner, view in report.found] == [("Ada Whitfield", 3)]
+    assert [entry["title"] for entry in report.unmatched] == ["Bruno Castell (lesson 9)"]
+
+
+def test_who_is_booked_skips_a_deactivated_learner():
+    """Same scope on the send roster: the day's list is who still studies."""
+    calendar = FakeCalendar(
+        [
+            _event("Ada Whitfield (lesson 3)", "2026-08-15T17:00:00+07:00"),
+            _event("Bruno Castell (lesson 9)", "2026-08-15T10:00:00+07:00"),
+        ]
+    )
+    scheduler, store = _window(calendar)
+    store.set_active(BRUNO.id, False)
+
+    learners, unmatched = scheduler.who_is_booked(store, day=date(2026, 8, 15))
+
+    assert [learner.name for learner in learners] == ["Ada Whitfield"]
+    assert [entry["title"] for entry in unmatched] == ["Bruno Castell (lesson 9)"]

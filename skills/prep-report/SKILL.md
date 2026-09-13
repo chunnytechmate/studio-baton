@@ -25,7 +25,10 @@ baton prep --json          # machine output; the verbatim report is under "repor
 ```
 
 Who appears: every learner booked on the day (calendar titles Baton itself
-writes: `Name (Week N)`), or exactly the `--learner` names given.
+writes: `Name (Week N)`), or exactly the `--learner` names given. A booking
+left over for someone who was deactivated does not appear here: it falls
+into `unmatched_events` instead, same as any other event Baton could not
+match to a learner.
 
 ## Rules
 

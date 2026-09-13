@@ -60,6 +60,7 @@ from ..render import piece as render_piece
 from ..render import summary as render
 from ..render import youtube as render_youtube
 from .guard import guarded
+from .naming import warn_if_inactive
 
 if TYPE_CHECKING:
     from .app import Context
@@ -298,12 +299,14 @@ def _named(ctx: Context) -> str:
 
 
 def _resolve(ctx: Context, store, name: str):
-    return resolve_learner(
+    learner = resolve_learner(
         name,
         store.list_learners(),
         aliases=ctx.config.get("db.aliases", {}) or {},
         label=ctx.config.label("learner"),
     )
+    warn_if_inactive(ctx, learner)
+    return learner
 
 
 def _capture_piece_snapshot(store: LearnerStore, learner: Learner) -> PieceSnapshot:

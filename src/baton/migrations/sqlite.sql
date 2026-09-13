@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS learners (
     -- goals are never dropped, since a lesson always leaves something to do.
     has_instrument   INTEGER NOT NULL DEFAULT 0,
     current_piece_id INTEGER REFERENCES pieces(id) ON DELETE SET NULL,
+    -- Whether they still study here. Deactivating removes a learner from
+    -- matching and rosters; nothing is ever deleted, and `learner activate`
+    -- brings them back.
+    is_active        INTEGER NOT NULL DEFAULT 1,
     created_at       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 

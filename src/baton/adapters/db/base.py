@@ -159,6 +159,15 @@ class LearnerStore(Protocol):
         """Assign (or clear) the piece a learner is working on."""
         ...
 
+    def set_active(self, learner_id: str, active: bool) -> None:
+        """Mark a learner as still studying here (or not).
+
+        Records are never deleted: a learner who stopped is flagged, not
+        removed, so their history stays reachable by exact name while
+        matching and rosters carry on without them.
+        """
+        ...
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         """Enrol a learner. Returns them with the id the store assigned.
 

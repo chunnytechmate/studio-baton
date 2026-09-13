@@ -22,6 +22,7 @@ db:
       tone: tone
       has_instrument: has_instrument
       current_piece_id: current_song_id
+      is_active: is_active
     session:
       id: id
       learner_id: student_id
@@ -44,7 +45,7 @@ Only this much:
 
 | Entity | Required | Optional |
 | --- | --- | --- |
-| learner | `id`, `name` | `instrument`, `tone`, `has_instrument`, `current_piece_id` |
+| learner | `id`, `name` | `instrument`, `tone`, `has_instrument`, `current_piece_id`, `is_active` |
 | session | `id`, `learner_id`, `number` | `doc_id` |
 | piece | `id`, `title` | `source_link`, `practice_track`, `sheet_link` |
 | work | `id`, `learner_id`, `title` | `type`, `video_link`, `performed_date` |
@@ -55,6 +56,10 @@ nothing is lost by passing data through it.
 Session **status** deliberately is not a column. It lives on the session
 document, and copying it into the database is how the two came to disagree in
 the system Baton replaces.
+
+Mapping `is_active` turns on `learner activate`/`deactivate` and the
+active-only default of `learner list` and the rosters. Left unmapped, every
+learner reads as active and nothing about matching changes.
 
 ## Print the reference schema
 

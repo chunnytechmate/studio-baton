@@ -25,6 +25,7 @@ from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
 from ..pipelines.schedule import Scheduler
 from .guard import guarded
+from .naming import warn_if_inactive
 
 if TYPE_CHECKING:
     from .app import Context
@@ -114,12 +115,14 @@ def _require_subcommand(ctx: Context) -> Exit:
 
 
 def _resolve(ctx: Context, store, name: str):
-    return resolve_learner(
+    learner = resolve_learner(
         name,
         store.list_learners(),
         aliases=ctx.config.get("db.aliases", {}) or {},
         label=ctx.config.label("learner"),
     )
+    warn_if_inactive(ctx, learner)
+    return learner
 
 
 def _resolve_for_booking(ctx: Context, store, name: str) -> tuple[Learner, str]:

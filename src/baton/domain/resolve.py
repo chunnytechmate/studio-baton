@@ -14,6 +14,11 @@ and a booking silently made against the wrong person is far more expensive than
 one extra question. Substring matches are returned as *candidates* so the
 caller can present real options instead of inventing one.
 
+A learner who stopped studying is still a learner: an exact name (or an alias
+to one) keeps resolving so their history stays reachable, but every
+*candidate list* carries active learners only. A name someone stopped
+answering should not sit in the choices offered for someone else's booking.
+
 This is deliberately defence in depth. The agent driving Baton is also told to
 confirm ambiguous names, but an agent that forgets, or that is confidently
 wrong, still cannot get past this.
@@ -66,16 +71,19 @@ def resolve_learner(
     """
     people = list(learners)
     wanted = normalise(query)
+    active_people = [p for p in people if p.is_active]
 
     if not wanted:
         raise NeedsHumanError(
             f"No {label} name was given.",
-            candidates=_as_candidates(people),
+            candidates=_as_candidates(active_people),
             remedy=f"Pass the {label}'s name exactly as it is recorded.",
         )
 
     exact = [p for p in people if normalise(p.name) == wanted]
     if len(exact) == 1:
+        # An inactive learner still resolves: the caller warns (see
+        # :func:`inactive_note`), and their history stays reachable.
         return exact[0]
     if len(exact) > 1:
         # Two records genuinely share a name. No amount of cleverness picks the
@@ -100,22 +108,34 @@ def resolve_learner(
                 )
             raise NeedsHumanError(
                 f"The alias “{query}” points at a {label} who is not recorded.",
-                candidates=_as_candidates(people),
+                candidates=_as_candidates(active_people),
                 remedy=f"Fix the alias in baton.yaml, or add the missing {label} to the database.",
             )
 
     partial = [p for p in people if wanted in normalise(p.name)]
     if partial:
         # Never resolved automatically, however few there are. See module docs.
+        # Candidates are active learners only; when every near match stopped
+        # studying, the remedy says so instead of offering names nobody should
+        # book against — the full name still reaches that history.
+        active_partial = [p for p in partial if p.is_active]
+        remedy = f"Ask which {label} is meant, then re-run with the full name."
+        if not active_partial:
+            names = ", ".join(p.name for p in sorted(partial, key=lambda p: p.name))
+            remedy = (
+                f"The only near matches no longer study here: {names}. Re-run "
+                f"with a full name to reach that history, or check the "
+                f"spelling with the {label} list."
+            )
         raise NeedsHumanError(
             f"“{query}” is not an exact match for any {label}.",
-            candidates=_as_candidates(partial),
-            remedy=f"Ask which {label} is meant, then re-run with the full name.",
+            candidates=_as_candidates(active_partial),
+            remedy=remedy,
         )
 
     raise NeedsHumanError(
         f"No {label} matches “{query}”.",
-        candidates=_as_candidates(people),
+        candidates=_as_candidates(active_people),
         remedy=f"Check the spelling with the {label} list, or add them first.",
     )
 
@@ -141,20 +161,43 @@ def resolve_learner_loose(
     keeps the strict gate, because a message that leaves the studio for the
     wrong person is not something an exit code can undo.
 
+    A partial match that lands on exactly one *inactive* learner also
+    resolves, carrying the :func:`inactive_note` sentence: a former learner
+    booking a one-off lesson back is exactly the case the studio wants to
+    serve, and the note keeps the operator in on it.
+
     Returns:
-        ``(learner, note)``: the note is empty unless the partial-match
-        relaxation fired, in which case it is a sentence for the operator.
+        ``(learner, note)``: the note is empty for an exact match on an
+        active learner, and a sentence for the operator otherwise (partial
+        relaxation, inactive learner, or both).
     """
     try:
-        return resolve_learner(query, learners, aliases=aliases, label=label), ""
+        resolved = resolve_learner(query, learners, aliases=aliases, label=label)
     except NeedsHumanError:
         wanted = normalise(query)
         if not wanted:
             raise
         matches = [p for p in learners if wanted in normalise(p.name)]
         if len(matches) == 1:
-            return matches[0], (f'resolved the partial {label} name "{query}" to {matches[0].name}')
+            person = matches[0]
+            note = f'resolved the partial {label} name "{query}" to {person.name}'
+            extra = inactive_note(person, label)
+            if extra:
+                note = f"{note}; {extra}"
+            return person, note
         raise
+    return resolved, inactive_note(resolved, label)
+
+
+def inactive_note(learner: Learner, label: str = "learner") -> str:
+    """``""`` for an active learner; one warning sentence for one who stopped.
+
+    The sentence is written to be embedded in a report line or a booking
+    note, so it names the person and states the fact, nothing else.
+    """
+    if learner.is_active:
+        return ""
+    return f"{learner.name} is recorded as no longer studying"
 
 
 def _alias_target(wanted: str, aliases: Mapping[str, str]) -> str | None:

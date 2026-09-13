@@ -231,6 +231,12 @@ def _upgrade_database(connection: sqlite3.Connection) -> None:
     if columns and "drive_link" not in columns:
         connection.execute("ALTER TABLE works ADD COLUMN drive_link TEXT NOT NULL DEFAULT ''")
 
+    learner_columns = {row[1] for row in connection.execute("PRAGMA table_info(learners)")}
+    if learner_columns and "is_active" not in learner_columns:
+        # Existing rows default to active: upgrading changes no roster until
+        # someone is deliberately marked with `learner deactivate`.
+        connection.execute("ALTER TABLE learners ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+
 
 def _create_database(path: Path, *, sample_data: bool) -> int:
     """Build the SQLite schema, optionally with the sample rows.

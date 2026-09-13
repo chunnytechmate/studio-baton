@@ -70,21 +70,27 @@ class FakeLearnerStore:
         self._check()
         for index, learner in enumerate(self.learners):
             if learner.id == str(learner_id):
-                self.learners[index] = Learner(
-                    id=learner.id,
-                    name=learner.name,
-                    instrument=learner.instrument,
-                    tone=learner.tone,
-                    has_instrument=learner.has_instrument,
-                    current_piece_id=piece_id,
-                    raw=learner.raw,
-                )
+                # `replace`, not a hand-rebuilt Learner: a reconstruction that
+                # names every field silently drops the next one added (exactly
+                # what `is_active` would have suffered).
+                self.learners[index] = replace(learner, current_piece_id=piece_id)
                 return
         # The same refusal the real stores make: a write that matched no row
         # is not a success, and `learner assign` printed "is now working on"
         # over one for as long as this was silent anywhere.
         raise StateError(
             f"No learner with id {learner_id}; the assignment was not written.",
+            remedy="Re-read the learner (`baton learner list`) and try again.",
+        )
+
+    def set_active(self, learner_id: str, active: bool) -> None:
+        self._check()
+        for index, learner in enumerate(self.learners):
+            if learner.id == str(learner_id):
+                self.learners[index] = replace(learner, is_active=active)
+                return
+        raise StateError(
+            f"No learner with id {learner_id}; the status was not written.",
             remedy="Re-read the learner (`baton learner list`) and try again.",
         )
 

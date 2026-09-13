@@ -206,4 +206,12 @@ def test_learner_list_json_is_unchanged_by_the_piece_annotation(studio, capsys):
     payload = json.loads(capsys.readouterr().out)
 
     ada = next(item for item in payload["learners"] if item["name"] == "Ada Whitfield")
-    assert set(ada) == {"id", "name", "instrument", "tone", "has_instrument", "current_piece_id"}
+    assert set(ada) == {
+        "id",
+        "name",
+        "instrument",
+        "tone",
+        "has_instrument",
+        "current_piece_id",
+        "is_active",
+    }

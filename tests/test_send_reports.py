@@ -207,6 +207,25 @@ def test_the_report_names_what_the_send_would_refuse_on(studio, capsys):
     assert [item["field"] for item in refusal["details"]["missing"]] == ["short_summary"]
 
 
+def test_a_deactivated_learner_drops_out_of_the_documents_roster(studio, capsys):
+    """The documents fallback has the same scope as the calendar roster: a
+    learner who stopped studying does not surface just because their old
+    page still carries the day's date."""
+    publish(studio)
+    profile, _ = studio
+    connection = sqlite3.connect(profile / "data" / "studio.db")
+    connection.execute("UPDATE learners SET is_active = 0 WHERE name = 'Ada Whitfield'")
+    connection.commit()
+    connection.close()
+
+    assert call(studio, "readiness", "--date", DAY) == Exit.OK
+    payload = out(capsys)
+
+    assert payload["source"] == "documents"
+    assert payload["total"] == 0
+    assert payload["learners"] == []
+
+
 def test_not_publishing_is_a_layer_below_the_gate(studio, capsys):
     assert call(studio, "readiness", "--date", DAY) == Exit.OK
     payload = out(capsys)

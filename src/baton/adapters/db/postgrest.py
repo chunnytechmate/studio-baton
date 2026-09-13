@@ -183,6 +183,9 @@ class PostgrestStore:
             tone=_text(self._get(row, fields, "tone")),
             has_instrument=_to_bool(self._get(row, fields, "has_instrument", False)),
             current_piece_id=None if current in (None, "") else _text(current),
+            # Unmapped (or absent) means active: a studio that has not adopted
+            # the column keeps every learner in matching, exactly as before.
+            is_active=_to_bool(self._get(row, fields, "is_active", True)),
             raw=row,
         )
 
@@ -218,6 +221,30 @@ class PostgrestStore:
         if not rows:
             raise StateError(
                 f"No learner with id {learner_id}; the assignment was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
+    def set_active(self, learner_id: str, active: bool) -> None:
+        fields = self.schema.learners
+        if not fields.has("is_active"):
+            raise ConfigError(
+                "This profile does not map an active-status column.",
+                remedy="Add db.fields.learner.is_active to baton.yaml.",
+            )
+        updated = self._request(
+            "PATCH",
+            fields.table,
+            params=f"{fields.column('id')}=eq.{quote(str(learner_id))}",
+            json_body={fields.column("is_active"): active},
+            prefer="return=representation",
+        )
+        # Same empty-array trap as `set_current_piece`: a 200 whose
+        # representation is empty means the filter matched nothing, and the
+        # teacher must not read that as "marked".
+        rows = updated if isinstance(updated, list) else [updated]
+        if not rows:
+            raise StateError(
+                f"No learner with id {learner_id}; the status was not written.",
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 

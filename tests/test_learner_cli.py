@@ -413,3 +413,132 @@ def test_in_progress_without_the_flag_reads_no_blocks(studio, capsys, monkeypatc
     payload = json.loads(capsys.readouterr().out)
     assert "video_link" not in payload["in_progress"][0]
     assert fake.blocks.get("doc-bruno-01") is None
+
+
+# -- activate / deactivate ------------------------------------------------------
+
+
+def _deactivate_in_sqlite(studio, name: str) -> None:
+    """The studio's own tool is `learner deactivate`; the raw UPDATE here is
+    the database's own truth for tests that start from an already-gone learner."""
+    profile, _ = studio
+    connection = sqlite3.connect(profile / "data" / "studio.db")
+    connection.execute("UPDATE learners SET is_active = 0 WHERE name = ?", (name,))
+    connection.commit()
+    connection.close()
+
+
+def test_deactivate_hides_a_learner_from_the_default_list(studio, capsys):
+    assert call(studio, "deactivate", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "list") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["count"] == 3
+    assert payload["scope"] == "active"
+    assert payload["hidden_inactive"] == 1
+    assert all(item["name"] != "Clara Nguyen" for item in payload["learners"])
+
+    assert call(studio, "list", "--all") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["count"] == 4
+    clara = next(item for item in payload["learners"] if item["name"] == "Clara Nguyen")
+    assert clara["is_active"] is False
+
+
+def test_the_default_list_names_how_many_it_is_hiding(studio, capsys):
+    assert call(studio, "deactivate", "Clara Nguyen", "Devon Marsh") == Exit.OK
+    capsys.readouterr()
+
+    profile, _ = studio
+    assert run(["--profile", str(profile), "learner", "list"]) == Exit.OK
+    human = capsys.readouterr().out
+
+    assert "(2 no longer studying; --all shows them)" in human
+
+
+def test_deactivate_resolves_every_name_before_writing(studio, capsys):
+    """One typo in the batch must not leave the earlier names already marked."""
+    assert call(studio, "deactivate", "Clara Nguyen", "Nobody At All") == Exit.NEEDS_HUMAN
+    capsys.readouterr()
+
+    assert call(studio, "list", "--all") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    clara = next(item for item in payload["learners"] if item["name"] == "Clara Nguyen")
+    assert clara["is_active"] is True
+
+
+def test_deactivate_is_idempotent(studio, capsys):
+    assert call(studio, "deactivate", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+    assert call(studio, "deactivate", "Clara Nguyen") == Exit.OK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["count"] == 1
+    assert payload["learners"][0]["is_active"] is False
+
+
+def test_activate_brings_a_learner_back(studio, capsys):
+    assert call(studio, "deactivate", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "activate", "Clara Nguyen") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["active"] is True
+    assert payload["learners"][0]["is_active"] is True
+
+
+def test_show_still_reaches_an_inactive_learners_history(studio, capsys):
+    assert call(studio, "deactivate", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "show", "Clara Nguyen") == Exit.OK
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["learner"]["is_active"] is False
+    # The warning rides stderr so the JSON envelope stays one document.
+    assert "no longer studying" in captured.err
+
+
+def test_the_status_commands_need_something_to_do(studio, capsys):
+    assert call(studio, "deactivate") == Exit.USAGE
+    assert call(studio, "activate") == Exit.USAGE
+    capsys.readouterr()
+
+    profile, _ = studio
+    args = [
+        "--profile",
+        str(profile),
+        "--json",
+        "learner",
+        "deactivate",
+        "--serve",
+        "Clara Nguyen",
+    ]
+    assert run(args) == Exit.USAGE
+
+
+def test_an_inactive_learner_leaves_the_ambiguity_choices(studio, capsys):
+    _deactivate_in_sqlite(studio, "Bruno Castell")
+    capsys.readouterr()
+
+    # "a" partial-matches everyone; Bruno (inactive) must drop out of the
+    # choices while the active learners stay, which is the booking that
+    # prompted the feature.
+    assert call(studio, "show", "a") == Exit.NEEDS_HUMAN
+
+    payload = json.loads(capsys.readouterr().out)
+    names = [c["name"] for c in payload["details"]["candidates"]]
+    assert "Bruno Castell" not in names
+    assert "Ada Whitfield" in names
+
+
+def test_a_partial_that_only_matches_the_gone_is_named_in_the_remedy(studio, capsys):
+    _deactivate_in_sqlite(studio, "Clara Nguyen")
+    capsys.readouterr()
+
+    assert call(studio, "show", "Cla") == Exit.NEEDS_HUMAN
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["details"]["candidates"] == []
+    assert "Clara Nguyen" in payload["remedy"]

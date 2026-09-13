@@ -200,3 +200,15 @@ def test_a_degraded_read_reaches_stderr_through_the_cli(profile, monkeypatch, ca
 
     assert "db.fallback" in captured.err
     assert json.loads(captured.out)["count"] == 2
+
+
+def test_status_writes_also_refuse_to_divert(pair):
+    """A deactivation that landed only in the failover copy would quietly
+    resurrect the learner on the next healthy read of the primary."""
+    primary, secondary, store = pair
+    primary.fail_with = UpstreamError("down", service="supabase")
+
+    with pytest.raises(UpstreamError):
+        store.set_active("1", False)
+
+    assert secondary.get_learner("1").is_active is True

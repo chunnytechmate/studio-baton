@@ -40,6 +40,7 @@ from ..domain.archive import SpanFormat, archive_title, strip_span
 from ..domain.resolve import resolve_learner
 from ..errors import GateError, UpstreamError, UsageError
 from ..exits import Exit
+from .naming import warn_if_inactive
 
 if TYPE_CHECKING:
     from .app import Context
@@ -135,12 +136,14 @@ def _span_format(ctx: Context) -> SpanFormat:
 
 
 def _resolve(ctx: Context, store: Any) -> Any:
-    return resolve_learner(
+    learner = resolve_learner(
         ctx.args.name,
         store.list_learners(),
         aliases=ctx.config.get("db.aliases", {}) or {},
         label=ctx.config.label("learner"),
     )
+    warn_if_inactive(ctx, learner)
+    return learner
 
 
 def _sessions(ctx: Context, store: Any, learner: Any) -> list[Any]:

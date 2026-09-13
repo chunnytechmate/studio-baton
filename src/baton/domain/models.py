@@ -25,6 +25,9 @@ class Learner:
     tone: str = ""
     has_instrument: bool = False
     current_piece_id: str | None = None
+    # Someone who stopped studying is still a person the studio taught: their
+    # record stays, but matching and rosters read this flag.
+    is_active: bool = True
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -35,6 +38,7 @@ class Learner:
             "tone": self.tone,
             "has_instrument": self.has_instrument,
             "current_piece_id": self.current_piece_id,
+            "is_active": self.is_active,
         }
 
 

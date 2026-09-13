@@ -373,7 +373,9 @@ class Scheduler:
             key=lambda event: event.start,
         )
 
-        by_name = {learner.name: learner for learner in store.list_learners()}
+        # Active learners only: a stale booking left behind by someone who
+        # stopped studying is noise in "who owes a summary", not work.
+        by_name = {item.name: item for item in store.list_learners() if item.is_active}
         found: list[tuple[Learner, SessionView]] = []
         unreadable: list[dict[str, Any]] = []
         unmatched: list[dict[str, Any]] = []
@@ -434,7 +436,10 @@ class Scheduler:
         end = combine(day + timedelta(days=1), parse_time("00:00"), self.timezone).isoformat()
         events = sorted(self.calendar.list_between(start, end), key=lambda event: event.start)
 
-        by_name = {learner.name: learner for learner in store.list_learners()}
+        # Active learners only: a deactivated learner's leftover event falls
+        # through to `unmatched` below, where a person still sees it, rather
+        # than pulling someone who left into the day's roster.
+        by_name = {item.name: item for item in store.list_learners() if item.is_active}
         learners: list[Learner] = []
         unmatched: list[dict[str, Any]] = []
         seen: set[str] = set()

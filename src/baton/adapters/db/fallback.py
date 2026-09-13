@@ -109,6 +109,9 @@ class FallbackStore:
     def set_current_piece(self, learner_id: str, piece_id: str | None) -> None:
         self._write("set_current_piece", learner_id, piece_id)
 
+    def set_active(self, learner_id: str, active: bool) -> None:
+        self._write("set_active", learner_id, active)
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         return self._write("add_learner", learner, extra)
 

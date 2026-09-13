@@ -211,3 +211,58 @@ def test_an_unmapped_extra_field_raises_before_any_request(monkeypatch):
         store.add_learner(Learner(id="", name="Ghost"), extra={"prompt_level": 2})
 
     assert calls == []
+
+
+# -- set_active ----------------------------------------------------------------
+
+
+def test_set_active_patches_the_mapped_column(monkeypatch):
+    """The write path the deactivation checklist and CLI both land on."""
+    store = _store()
+    # The base _store() maps no is_active; the production profile does, and
+    # so must any store asked to change a status.
+    store.schema.learners.columns["is_active"] = "is_active"
+
+    seen: dict[str, object] = {}
+
+    def patch(*args: object, **kwargs: object) -> _Reply:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return _Reply(200, b'[{"id": 7}]', [{"id": 7}])
+
+    monkeypatch.setattr(postgrest_module, "http_request", patch)
+
+    store.set_active("7", False)
+
+    assert seen["kwargs"]["json"] == {"is_active": False}
+    assert seen["args"][1].endswith("learners?id=eq.7")
+    assert seen["kwargs"]["headers"]["Prefer"] == "return=representation"
+    assert seen["args"][0] == "PATCH"
+
+
+def test_set_active_on_an_unmatched_row_is_a_state_error(monkeypatch):
+    """The 200-with-empty-array trap: matched nothing, marked nothing."""
+    store = _store()
+    store.schema.learners.columns["is_active"] = "is_active"
+
+    def nobody(*_args, **_kwargs):
+        return _Reply(200, b"[]", [])
+
+    monkeypatch.setattr(postgrest_module, "http_request", nobody)
+
+    from baton.errors import StateError
+
+    with pytest.raises(StateError):
+        store.set_active("7", False)
+
+
+def test_set_active_without_a_mapping_refuses_before_any_request(monkeypatch):
+    store = _store()
+
+    def must_not_happen(*_args, **_kwargs):  # pragma: no cover - the point
+        raise AssertionError("no request may leave before the config error")
+
+    monkeypatch.setattr(postgrest_module, "http_request", must_not_happen)
+
+    with pytest.raises(ConfigError):
+        store.set_active("7", False)

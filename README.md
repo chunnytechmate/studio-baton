@@ -249,6 +249,21 @@ destroying a booking on a relaxed guess is a different act from creating one;
 and in `schedule` a learner named twice under two spellings blocks the second
 slot (naming the slot to remove) rather than refusing the whole day.
 
+**A learner who stopped studying is a status, not a deletion.** `learner
+deactivate "Name"` (and its reverse, `learner activate`) flip one flag;
+nothing about the record is removed. Their exact name (or an alias to it)
+still resolves, so history stays reachable and a returning student can be
+booked without re-activating anything first: the command warns on stderr
+when it does. What changes is the *candidate lists*: an inactive learner
+never appears in the names offered for an ambiguous query, so a former
+learner sharing a nickname with someone still enrolled stops being a live
+choice. `learner list` shows active learners only unless `--all` is passed,
+and a stale calendar event left behind by someone who left falls into the
+day's `unmatched` events rather than pulling them back into the roster.
+`learner deactivate --serve` opens a localhost checklist (stdlib only, bound
+to `127.0.0.1`) to tick several people at once instead of naming them on the
+command line.
+
 **The model returns data, never prose.** A summary is the one thing Baton
 cannot script, so it is the one thing a model writes: as JSON against a schema,
 which Baton then renders itself. The loop is three commands:

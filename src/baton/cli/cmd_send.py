@@ -44,6 +44,7 @@ from ..pipelines.staging import (
     StagingStore,
 )
 from .guard import guarded
+from .naming import warn_if_inactive
 
 if TYPE_CHECKING:
     from .app import Context
@@ -245,12 +246,14 @@ def _require_subcommand(ctx: Context) -> Exit:
 
 
 def _resolve(ctx: Context, store, name: str):
-    return resolve_learner(
+    learner = resolve_learner(
         name,
         store.list_learners(),
         aliases=ctx.config.get("db.aliases", {}) or {},
         label=ctx.config.label("learner"),
     )
+    warn_if_inactive(ctx, learner)
+    return learner
 
 
 def _required_optional(ctx: Context) -> tuple[list[str], list[str]]:
@@ -403,7 +406,12 @@ def _roster_for_day(
     except ConfigError:
         history = LearnerHistory(store, docs, vocabulary)
         learners = []
+        # Same scope as the calendar roster above it: a learner who stopped
+        # studying does not come back into the day's send list just because
+        # the calendar is missing.
         for learner in store.list_learners():
+            if not learner.is_active:
+                continue
             for view in history.sessions(learner):
                 if str(view.doc.date or "")[:10] == day.isoformat():
                     learners.append(learner)

@@ -4,6 +4,74 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.3.0 (unreleased)
+
+A learner who stopped studying kept showing up next to everyone else's
+bookings: a name typed for one person could land on the candidate list of
+someone who left years ago, and the busier the roster got, the more that near
+miss cost. Learners now carry an `is_active` status. Nothing about a record is
+ever removed; deactivating just takes someone out of the names a command will
+offer or act on by default.
+
+### Learners
+
+- **`baton learner activate` / `baton learner deactivate`.** Flip the status
+  for one or more names in a batch (every name resolves before anything is
+  written, so a typo in the last name never leaves the first three already
+  marked). `deactivate --serve [--port N]` opens a localhost checklist
+  instead: tick several learners and submit, without naming them on the
+  command line. stdlib only, bound to `127.0.0.1`.
+- **`baton learner list` shows active learners only by default.** `--all`
+  includes everyone who stopped, each marked `(inactive)`; the JSON payload
+  gains `scope` and `hidden_inactive`.
+- **An inactive learner's exact name (or alias) still resolves.** Their
+  history stays reachable, and a returning student can be booked back in
+  without reactivating first: the resolving command warns on stderr when it
+  happens. What changes is the *candidate list* offered for an ambiguous
+  name: an inactive learner never appears there, and a query whose only near
+  matches stopped studying says so in its remedy instead of offering them.
+- **Rosters carry the same scope.** `learner in-progress`, `who is booked`
+  (read by `send readiness`/`aftermath`), and the day's documents-fallback
+  roster all skip inactive learners; a stale calendar event left behind by
+  someone who left falls into that day's `unmatched` events, where a person
+  still sees it.
+- Deliberately unchanged: `learner add`'s duplicate/similar-name check, `song
+  show`/`song remove`'s piece-holder check, and the video pipeline's
+  exact-folder match all still see everyone, active or not.
+
+### Upgrading
+
+A fresh `baton init` already has the `is_active` column. An existing SQLite
+profile picks it up the same way it always has: run `baton init <profile-dir>
+--force --yes` again, or apply the column by hand if the profile is hand
+edited:
+
+```sql
+ALTER TABLE learners ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+```
+
+A Supabase or PostgREST studio adopting an existing schema runs the
+equivalent SQL against its own table, then maps it:
+
+```sql
+ALTER TABLE students ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+```
+
+```yaml
+db:
+  fields:
+    learner:
+      is_active: is_active
+```
+
+**Run the `ALTER` before upgrading Baton**, not after. `db.fields.learner`
+now maps `is_active` in the packaged defaults, and profile settings merge
+onto those defaults rather than replacing them, so upgrading Baton before
+the column exists makes every learner command exit `2` naming the missing
+column. Left unmapped (an older profile that has not adopted the column at
+all), every learner still reads as active: nothing about matching changes
+until the mapping is added.
+
 ## 1.2.0 (2026-09-12)
 
 The follow-through to 1.1.1's fallback: unfiled clips were disappearing from
