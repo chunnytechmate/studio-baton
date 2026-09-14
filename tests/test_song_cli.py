@@ -214,4 +214,5 @@ def test_learner_list_json_is_unchanged_by_the_piece_annotation(studio, capsys):
         "has_instrument",
         "current_piece_id",
         "is_active",
+        "deleted_at",
     }

@@ -49,11 +49,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         description=(
             "Active learners only by default; --all includes everyone who "
             "stopped, each marked (inactive). Nothing is ever deleted, so "
-            "--all is also the honest full roster."
+            "--all is also the honest full roster. --trashed shows only "
+            "learners `learner trash` moved out of the way."
         ),
     )
     listing.add_argument(
         "--all", action="store_true", help="Include learners who stopped studying."
+    )
+    listing.add_argument(
+        "--trashed", action="store_true", help="Show only trashed learners, instead."
     )
     listing.set_defaults(handler=handle_list)
 
@@ -264,6 +268,27 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     deactivate.add_argument("--port", type=int, default=8765, metavar="N", help="Port for --serve.")
     deactivate.set_defaults(handler=handle_deactivate)
 
+    trash = group.add_parser(
+        "trash",
+        help="Move a learner out of the way entirely. Reversible.",
+        description=(
+            "Unlike deactivate, a trashed learner is hidden even from `learner "
+            "list --all`, and their name stops resolving for every other "
+            "command. The row, sessions, pieces, and recorded work are kept "
+            "exactly as they are. Reversible with `baton learner untrash`."
+        ),
+    )
+    trash.add_argument("name", metavar="NAME")
+    trash.add_argument("--dry-run", action="store_true", help="Show the change, and stop.")
+    trash.set_defaults(handler=handle_trash)
+
+    untrash = group.add_parser(
+        "untrash",
+        help="Bring a trashed learner back. Nothing about their history moved.",
+    )
+    untrash.add_argument("name", metavar="NAME")
+    untrash.set_defaults(handler=handle_untrash)
+
 
 def _require_subcommand(ctx: Context) -> Exit:
     raise UsageError(
@@ -296,7 +321,13 @@ def _history(ctx: Context, store) -> LearnerHistory:
 
 
 def _resolve(ctx: Context, store, name: str):
-    """Resolve a typed name, or raise NeedsHumanError with candidates."""
+    """Resolve a typed name, or raise NeedsHumanError with candidates.
+
+    A trashed learner's name never resolves here: ``store.list_learners()``
+    excludes them by default, so trash acts on every other command exactly
+    like the learner is gone. Only ``trash``/``untrash`` themselves need to
+    find one; they use :func:`_resolve_including_trashed` instead.
+    """
     learner = resolve_learner(
         name,
         store.list_learners(),
@@ -305,6 +336,17 @@ def _resolve(ctx: Context, store, name: str):
     )
     warn_if_inactive(ctx, learner)
     return learner
+
+
+def _resolve_including_trashed(ctx: Context, store, name: str):
+    """Like :func:`_resolve`, but a trashed learner's exact name still finds
+    them. Used only by ``learner trash``/``learner untrash``."""
+    return resolve_learner(
+        name,
+        store.list_learners(include_trashed=True),
+        aliases=ctx.config.get("db.aliases", {}) or {},
+        label=ctx.config.label("learner"),
+    )
 
 
 def _session_line(view: SessionView, vocabulary: StatusVocabulary, label: str) -> str:
@@ -324,17 +366,43 @@ def _session_line(view: SessionView, vocabulary: StatusVocabulary, label: str) -
 
 
 def handle_list(ctx: Context) -> Exit:
+    if ctx.args.all and ctx.args.trashed:
+        raise UsageError(
+            "--all and --trashed cannot both be given.",
+            remedy="--all shows everyone still in the roster; --trashed shows "
+            "who was moved out of it. Pick one.",
+        )
+
     store = _store(ctx)
     try:
-        everyone = store.list_learners()
-        learners = everyone if ctx.args.all else [item for item in everyone if item.is_active]
-        hidden = 0 if ctx.args.all else len(everyone) - len(learners)
-        # One extra read, only when there is a list to annotate: the piece
-        # catalogue is small, and knowing who is on what without a second
-        # command is the whole point of a roster.
-        titles = {p.id: p.title for p in store.list_pieces()} if learners else {}
+        if ctx.args.trashed:
+            everyone = store.list_learners(include_trashed=True)
+            learners = [item for item in everyone if item.deleted_at]
+            titles = {p.id: p.title for p in store.list_pieces()} if learners else {}
+        else:
+            everyone = store.list_learners()
+            learners = everyone if ctx.args.all else [item for item in everyone if item.is_active]
+            hidden = 0 if ctx.args.all else len(everyone) - len(learners)
+            # One extra read, only when there is a list to annotate: the piece
+            # catalogue is small, and knowing who is on what without a second
+            # command is the whole point of a roster.
+            titles = {p.id: p.title for p in store.list_pieces()} if learners else {}
     finally:
         store.close()
+
+    if ctx.args.trashed:
+        payload = {
+            "learners": [item.to_dict() for item in learners],
+            "count": len(learners),
+            "scope": "trashed",
+        }
+        human = (
+            f"No trashed {ctx.config.label('learners')}."
+            if not learners
+            else "\n".join(f"  {item.name}  (trashed {item.deleted_at})" for item in learners)
+        )
+        ctx.report.result(payload, human=human)
+        return Exit.OK
 
     payload = {
         "learners": [item.to_dict() for item in learners],
@@ -845,6 +913,56 @@ def handle_rename(ctx: Context) -> Exit:
             "    Calendar events, pages, and folders already carrying the old "
             "name keep it; new bookings match the new name."
         ),
+    )
+    return Exit.OK
+
+
+def handle_trash(ctx: Context) -> Exit:
+    """Move a learner out of the way entirely, in the database, and only there.
+
+    Unlike deactivate, this hides them even from `learner list --all` and
+    stops their name from resolving for every other command. Nothing about
+    the row, sessions, pieces, or recorded work changes, and nothing outside
+    the database is touched: Notion pages, source folders, and calendar
+    history are this command's business to leave exactly as they are.
+    Trashing twice is safe and changes nothing further.
+    """
+    store = _store(ctx)
+    try:
+        learner = _resolve_including_trashed(ctx, store, ctx.args.name)
+        if ctx.args.dry_run:
+            ctx.report.result(
+                {"learner": learner.to_dict(), "dry_run": True},
+                human=f"Would trash {learner.name} in the database.",
+            )
+            return Exit.OK
+        store.trash_learner(learner.id)
+    finally:
+        store.close()
+
+    ctx.report.result(
+        {"learner": {**learner.to_dict(), "deleted_at": learner.deleted_at or "now"}},
+        human=(
+            f"Trashed {learner.name} in the database.\n"
+            "    Nothing outside it moved. Reversible with "
+            f'`baton learner untrash "{learner.name}"`.'
+        ),
+    )
+    return Exit.OK
+
+
+def handle_untrash(ctx: Context) -> Exit:
+    """The reverse of `learner trash`. Safe on a learner who was never trashed."""
+    store = _store(ctx)
+    try:
+        learner = _resolve_including_trashed(ctx, store, ctx.args.name)
+        store.untrash_learner(learner.id)
+    finally:
+        store.close()
+
+    ctx.report.result(
+        {"learner": {**learner.to_dict(), "deleted_at": None}},
+        human=f"{learner.name} is back. Nothing about their history moved.",
     )
     return Exit.OK
 

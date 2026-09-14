@@ -147,8 +147,14 @@ class LearnerStore(Protocol):
 
     # -- learners ----------------------------------------------------------
 
-    def list_learners(self) -> list[Learner]:
-        """Every learner, ordered by name."""
+    def list_learners(self, include_trashed: bool = False) -> list[Learner]:
+        """Every learner, ordered by name.
+
+        Trashed learners are excluded by default, even from ``--all``: trash
+        means fully out of the way, unlike an inactive learner. Pass
+        ``include_trashed=True`` only for ``learner untrash`` and ``learner
+        list --trashed``, the two places that need to find one.
+        """
         ...
 
     def get_learner(self, learner_id: str) -> Learner | None:
@@ -166,6 +172,20 @@ class LearnerStore(Protocol):
         removed, so their history stays reachable by exact name while
         matching and rosters carry on without them.
         """
+        ...
+
+    def trash_learner(self, learner_id: str) -> None:
+        """Hide a learner from every listing and from ordinary name resolution.
+
+        The row, sessions, pieces, and recorded work are all kept exactly as
+        they are; nothing is deleted. Reversible with :meth:`untrash_learner`.
+        Safe to call twice.
+        """
+        ...
+
+    def untrash_learner(self, learner_id: str) -> None:
+        """The reverse of :meth:`trash_learner`. Safe to call on a learner
+        who was never trashed."""
         ...
 
     def rename_learner(self, learner_id: str, name: str) -> None:

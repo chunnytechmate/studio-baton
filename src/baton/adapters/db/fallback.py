@@ -83,8 +83,8 @@ class FallbackStore:
 
     # -- reads -------------------------------------------------------------
 
-    def list_learners(self) -> list[Learner]:
-        return self._read("list_learners")
+    def list_learners(self, include_trashed: bool = False) -> list[Learner]:
+        return self._read("list_learners", include_trashed)
 
     def get_learner(self, learner_id: str) -> Learner | None:
         return self._read("get_learner", learner_id)
@@ -111,6 +111,12 @@ class FallbackStore:
 
     def set_active(self, learner_id: str, active: bool) -> None:
         self._write("set_active", learner_id, active)
+
+    def trash_learner(self, learner_id: str) -> None:
+        self._write("trash_learner", learner_id)
+
+    def untrash_learner(self, learner_id: str) -> None:
+        self._write("untrash_learner", learner_id)
 
     def rename_learner(self, learner_id: str, name: str) -> None:
         self._write("rename_learner", learner_id, name)

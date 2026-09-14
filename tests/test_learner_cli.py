@@ -547,6 +547,81 @@ def test_rename_of_an_unknown_name_is_needs_human(studio, capsys):
     assert call(studio, "rename", "Nobody At All", "--to", "Someone") == Exit.NEEDS_HUMAN
 
 
+# -- trash / untrash --------------------------------------------------------
+
+
+def test_trash_hides_a_learner_even_from_all(studio, capsys):
+    """Unlike deactivate, trash is gone from --all too."""
+    assert call(studio, "trash", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "list", "--all") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert all(item["name"] != "Clara Nguyen" for item in payload["learners"])
+
+    assert call(studio, "list", "--trashed") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["scope"] == "trashed"
+    trashed = next(item for item in payload["learners"] if item["name"] == "Clara Nguyen")
+    assert trashed["deleted_at"] is not None
+
+
+def test_trash_stops_the_name_from_resolving_for_ordinary_commands(studio, capsys):
+    assert call(studio, "trash", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "show", "Clara Nguyen") == Exit.NEEDS_HUMAN
+    assert call(studio, "rename", "Clara Nguyen", "--to", "Someone Else") == Exit.NEEDS_HUMAN
+
+
+def test_trash_is_idempotent(studio, capsys):
+    assert call(studio, "trash", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+    assert call(studio, "trash", "Clara Nguyen") == Exit.OK
+
+
+def test_untrash_brings_a_learner_back_with_history_intact(studio, capsys):
+    assert call(studio, "assign", "Clara Nguyen", "--piece", "1") == Exit.OK
+    capsys.readouterr()
+    assert call(studio, "trash", "Clara Nguyen") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "untrash", "Clara Nguyen") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["learner"]["deleted_at"] is None
+
+    assert call(studio, "list", "--all") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    clara = next(item for item in payload["learners"] if item["name"] == "Clara Nguyen")
+    assert clara["is_active"] is True
+
+    assert call(studio, "show", "Clara Nguyen") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["current_piece"]["title"] == "Autumn Leaves"
+
+
+def test_trash_dry_run_writes_nothing(studio, capsys):
+    assert call(studio, "trash", "Clara Nguyen", "--dry-run") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True
+
+    assert call(studio, "list", "--all") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert any(item["name"] == "Clara Nguyen" for item in payload["learners"])
+
+
+def test_trash_of_an_unknown_name_is_needs_human(studio, capsys):
+    assert call(studio, "trash", "Nobody At All") == Exit.NEEDS_HUMAN
+
+
+def test_untrash_of_a_name_that_was_never_trashed_still_resolves(studio, capsys):
+    assert call(studio, "untrash", "Clara Nguyen") == Exit.OK
+
+
+def test_list_and_all_refuse_together_with_trashed(studio, capsys):
+    assert call(studio, "list", "--all", "--trashed") == Exit.USAGE
+
+
 def test_the_status_commands_need_something_to_do(studio, capsys):
     assert call(studio, "deactivate") == Exit.USAGE
     assert call(studio, "activate") == Exit.USAGE

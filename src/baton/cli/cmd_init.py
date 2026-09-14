@@ -236,6 +236,10 @@ def _upgrade_database(connection: sqlite3.Connection) -> None:
         # Existing rows default to active: upgrading changes no roster until
         # someone is deliberately marked with `learner deactivate`.
         connection.execute("ALTER TABLE learners ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if learner_columns and "deleted_at" not in learner_columns:
+        # NULL means not trashed: upgrading traps nobody until `learner
+        # trash` is run deliberately.
+        connection.execute("ALTER TABLE learners ADD COLUMN deleted_at TEXT DEFAULT NULL")
 
 
 def _create_database(path: Path, *, sample_data: bool) -> int:

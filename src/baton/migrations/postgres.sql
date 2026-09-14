@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS learners (
     -- matching and rosters; nothing is ever deleted, and `learner activate`
     -- brings them back.
     is_active        boolean NOT NULL DEFAULT true,
+    -- Fully out of the way: hidden even from `learner list --all`, unlike
+    -- is_active. NULL means not trashed. `learner trash`/`learner untrash`
+    -- are the only things that ever touch this. Nothing is ever deleted.
+    deleted_at       timestamptz DEFAULT NULL,
     created_at       timestamptz NOT NULL DEFAULT now()
 );
 

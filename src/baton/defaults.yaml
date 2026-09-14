@@ -70,6 +70,10 @@ db:
       # mapping. Profiles deep-merge with these defaults, so the column must
       # exist before a studio upgrades to a release that maps it.
       is_active: is_active
+      # Fully out of the way, unlike is_active: hidden even from `--all`.
+      # Same adoption order as is_active: ALTER before upgrading, since
+      # profiles deep-merge onto these defaults rather than replacing them.
+      deleted_at: deleted_at
     session:
       id: id
       learner_id: learner_id

@@ -272,6 +272,15 @@ the same refusal `learner add` makes.
 to `127.0.0.1`) to tick several people at once instead of naming them on the
 command line.
 
+**Trash is a second, further status, not a stronger deactivate.** `learner
+trash "Name"` (and its reverse, `learner untrash`) hide a learner even from
+`learner list --all`, and their name stops resolving for every other
+command: the same refusal an unknown name gets. Nothing about the row is
+deleted: sessions, pieces, recorded work, calendar history, Notion pages,
+and source folders are all left exactly as they were, and trashing the same
+learner twice is safe. `learner list --trashed` shows only who was moved
+out of the way.
+
 **The model returns data, never prose.** A summary is the one thing Baton
 cannot script, so it is the one thing a model writes: as JSON against a schema,
 which Baton then renders itself. The loop is three commands:

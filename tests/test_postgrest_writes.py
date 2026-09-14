@@ -266,3 +266,73 @@ def test_set_active_without_a_mapping_refuses_before_any_request(monkeypatch):
 
     with pytest.raises(ConfigError):
         store.set_active("7", False)
+
+
+# -- trash / untrash -------------------------------------------------------------
+
+
+def test_trash_learner_patches_the_mapped_column_with_a_timestamp(monkeypatch):
+    store = _store()
+    store.schema.learners.columns["deleted_at"] = "deleted_at"
+
+    seen: dict[str, object] = {}
+
+    def patch(*args: object, **kwargs: object) -> _Reply:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return _Reply(200, b'[{"id": 7}]', [{"id": 7}])
+
+    monkeypatch.setattr(postgrest_module, "http_request", patch)
+
+    store.trash_learner("7")
+
+    assert isinstance(seen["kwargs"]["json"]["deleted_at"], str)
+    assert seen["kwargs"]["json"]["deleted_at"]  # non-empty ISO stamp
+    assert seen["args"][1].endswith("learners?id=eq.7")
+    assert seen["kwargs"]["headers"]["Prefer"] == "return=representation"
+    assert seen["args"][0] == "PATCH"
+
+
+def test_untrash_learner_patches_the_mapped_column_with_null(monkeypatch):
+    store = _store()
+    store.schema.learners.columns["deleted_at"] = "deleted_at"
+
+    seen: dict[str, object] = {}
+
+    def patch(*args: object, **kwargs: object) -> _Reply:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return _Reply(200, b'[{"id": 7}]', [{"id": 7}])
+
+    monkeypatch.setattr(postgrest_module, "http_request", patch)
+
+    store.untrash_learner("7")
+
+    assert seen["kwargs"]["json"] == {"deleted_at": None}
+
+
+def test_trash_learner_on_an_unmatched_row_is_a_state_error(monkeypatch):
+    store = _store()
+    store.schema.learners.columns["deleted_at"] = "deleted_at"
+
+    def nobody(*_args, **_kwargs):
+        return _Reply(200, b"[]", [])
+
+    monkeypatch.setattr(postgrest_module, "http_request", nobody)
+
+    from baton.errors import StateError
+
+    with pytest.raises(StateError):
+        store.trash_learner("7")
+
+
+def test_trash_learner_without_a_mapping_refuses_before_any_request(monkeypatch):
+    store = _store()
+
+    def must_not_happen(*_args, **_kwargs):  # pragma: no cover - the point
+        raise AssertionError("no request may leave before the config error")
+
+    monkeypatch.setattr(postgrest_module, "http_request", must_not_happen)
+
+    with pytest.raises(ConfigError):
+        store.trash_learner("7")

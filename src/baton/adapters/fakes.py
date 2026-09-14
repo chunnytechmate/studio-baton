@@ -58,9 +58,10 @@ class FakeLearnerStore:
 
     # -- learners ----------------------------------------------------------
 
-    def list_learners(self) -> list[Learner]:
+    def list_learners(self, include_trashed: bool = False) -> list[Learner]:
         self._check()
-        return sorted(self.learners, key=lambda item: item.name)
+        pool = self.learners if include_trashed else [p for p in self.learners if not p.deleted_at]
+        return sorted(pool, key=lambda item: item.name)
 
     def get_learner(self, learner_id: str) -> Learner | None:
         self._check()
@@ -91,6 +92,28 @@ class FakeLearnerStore:
                 return
         raise StateError(
             f"No learner with id {learner_id}; the status was not written.",
+            remedy="Re-read the learner (`baton learner list`) and try again.",
+        )
+
+    def trash_learner(self, learner_id: str) -> None:
+        self._check()
+        for index, learner in enumerate(self.learners):
+            if learner.id == str(learner_id):
+                self.learners[index] = replace(learner, deleted_at="2026-01-01T00:00:00+00:00")
+                return
+        raise StateError(
+            f"No learner with id {learner_id}; nothing was trashed.",
+            remedy="Re-read the learner (`baton learner list`) and try again.",
+        )
+
+    def untrash_learner(self, learner_id: str) -> None:
+        self._check()
+        for index, learner in enumerate(self.learners):
+            if learner.id == str(learner_id):
+                self.learners[index] = replace(learner, deleted_at=None)
+                return
+        raise StateError(
+            f"No learner with id {learner_id}; nothing was untrashed.",
             remedy="Re-read the learner (`baton learner list`) and try again.",
         )
 

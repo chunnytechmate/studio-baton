@@ -28,6 +28,10 @@ class Learner:
     # Someone who stopped studying is still a person the studio taught: their
     # record stays, but matching and rosters read this flag.
     is_active: bool = True
+    # Orthogonal to is_active. Set means trashed: fully out of the way, hidden
+    # even from `learner list --all`, unlike an inactive learner. Nothing is
+    # deleted; `learner untrash` clears this and nothing else changes.
+    deleted_at: str | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
@@ -39,6 +43,7 @@ class Learner:
             "has_instrument": self.has_instrument,
             "current_piece_id": self.current_piece_id,
             "is_active": self.is_active,
+            "deleted_at": self.deleted_at,
         }
 
 

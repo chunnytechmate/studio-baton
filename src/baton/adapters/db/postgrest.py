@@ -14,6 +14,7 @@ and 5xx are retried with backoff and a lost connection becomes a typed
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -176,6 +177,7 @@ class PostgrestStore:
     def _learner(self, row: dict[str, Any]) -> Learner:
         fields = self.schema.learners
         current = self._get(row, fields, "current_piece_id", None)
+        deleted = self._get(row, fields, "deleted_at", None)
         return Learner(
             id=_text(row.get(fields.column("id"))),
             name=_text(row.get(fields.column("name"))),
@@ -186,12 +188,17 @@ class PostgrestStore:
             # Unmapped (or absent) means active: a studio that has not adopted
             # the column keeps every learner in matching, exactly as before.
             is_active=_to_bool(self._get(row, fields, "is_active", True)),
+            # Unmapped (or null) means not trashed, the same graceful default.
+            deleted_at=None if deleted in (None, "") else _text(deleted),
             raw=row,
         )
 
-    def list_learners(self) -> list[Learner]:
+    def list_learners(self, include_trashed: bool = False) -> list[Learner]:
         fields = self.schema.learners
-        rows = self._rows(fields, order=f"{fields.column('name')}.asc")
+        filters = ""
+        if not include_trashed and fields.has("deleted_at"):
+            filters = f"{fields.column('deleted_at')}=is.null"
+        rows = self._rows(fields, filters=filters, order=f"{fields.column('name')}.asc")
         return [self._learner(row) for row in rows]
 
     def get_learner(self, learner_id: str) -> Learner | None:
@@ -245,6 +252,49 @@ class PostgrestStore:
         if not rows:
             raise StateError(
                 f"No learner with id {learner_id}; the status was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
+    def trash_learner(self, learner_id: str) -> None:
+        fields = self.schema.learners
+        if not fields.has("deleted_at"):
+            raise ConfigError(
+                "This profile does not map a trash column.",
+                remedy="Add db.fields.learner.deleted_at to baton.yaml.",
+            )
+        stamp = datetime.now(timezone.utc).isoformat()
+        updated = self._request(
+            "PATCH",
+            fields.table,
+            params=f"{fields.column('id')}=eq.{quote(str(learner_id))}",
+            json_body={fields.column("deleted_at"): stamp},
+            prefer="return=representation",
+        )
+        rows = updated if isinstance(updated, list) else [updated]
+        if not rows:
+            raise StateError(
+                f"No learner with id {learner_id}; nothing was trashed.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
+    def untrash_learner(self, learner_id: str) -> None:
+        fields = self.schema.learners
+        if not fields.has("deleted_at"):
+            raise ConfigError(
+                "This profile does not map a trash column.",
+                remedy="Add db.fields.learner.deleted_at to baton.yaml.",
+            )
+        updated = self._request(
+            "PATCH",
+            fields.table,
+            params=f"{fields.column('id')}=eq.{quote(str(learner_id))}",
+            json_body={fields.column("deleted_at"): None},
+            prefer="return=representation",
+        )
+        rows = updated if isinstance(updated, list) else [updated]
+        if not rows:
+            raise StateError(
+                f"No learner with id {learner_id}; nothing was untrashed.",
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 

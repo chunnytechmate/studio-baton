@@ -45,7 +45,7 @@ Only this much:
 
 | Entity | Required | Optional |
 | --- | --- | --- |
-| learner | `id`, `name` | `instrument`, `tone`, `has_instrument`, `current_piece_id`, `is_active` |
+| learner | `id`, `name` | `instrument`, `tone`, `has_instrument`, `current_piece_id`, `is_active`, `deleted_at` |
 | session | `id`, `learner_id`, `number` | `doc_id` |
 | piece | `id`, `title` | `source_link`, `practice_track`, `sheet_link` |
 | work | `id`, `learner_id`, `title` | `type`, `video_link`, `performed_date` |
@@ -60,6 +60,10 @@ the system Baton replaces.
 Mapping `is_active` turns on `learner activate`/`deactivate` and the
 active-only default of `learner list` and the rosters. Left unmapped, every
 learner reads as active and nothing about matching changes.
+
+Mapping `deleted_at` turns on `learner trash`/`untrash` and hides trashed
+learners even from `learner list --all`, a distinct, further status from
+`is_active`. Left unmapped, every learner reads as not trashed.
 
 ## Print the reference schema
 

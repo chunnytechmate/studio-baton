@@ -203,6 +203,7 @@ class SqliteStore:
     def _learner(self, row: sqlite3.Row) -> Learner:
         fields = self.schema.learners
         current = self._get(row, fields, "current_piece_id", None)
+        deleted = self._get(row, fields, "deleted_at", None)
         return Learner(
             id=_text(row[fields.column("id")]),
             name=_text(row[fields.column("name")]),
@@ -213,13 +214,18 @@ class SqliteStore:
             # Unmapped (or absent) means active: a studio that has not adopted
             # the column keeps every learner in matching, exactly as before.
             is_active=_to_bool(self._get(row, fields, "is_active", True)),
+            # Unmapped (or NULL) means not trashed, the same graceful default.
+            deleted_at=None if deleted in (None, "") else _text(deleted),
             raw=dict(row),
         )
 
-    def list_learners(self) -> list[Learner]:
+    def list_learners(self, include_trashed: bool = False) -> list[Learner]:
         fields = self.schema.learners
         self._ensure_columns(fields)
-        sql = self._select(fields, order=f"{fields.column('name')} ASC")
+        where = ""
+        if not include_trashed and fields.has("deleted_at"):
+            where = f"{fields.column('deleted_at')} IS NULL"
+        sql = self._select(fields, where=where, order=f"{fields.column('name')} ASC")
         return [self._learner(row) for row in self._query(sql)]
 
     def get_learner(self, learner_id: str) -> Learner | None:
@@ -270,6 +276,44 @@ class SqliteStore:
         if cursor.rowcount == 0:
             raise StateError(
                 f"No learner with id {learner_id}; the status was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
+    def trash_learner(self, learner_id: str) -> None:
+        fields = self.schema.learners
+        self._ensure_columns(fields)
+        if not fields.has("deleted_at"):
+            raise ConfigError(
+                "This profile does not map a trash column.",
+                remedy="Add db.fields.learner.deleted_at to baton.yaml.",
+            )
+        sql = (
+            f"UPDATE {fields.table} SET {fields.column('deleted_at')} = datetime('now') "  # noqa: S608
+            f"WHERE {fields.column('id')} = ?"
+        )
+        cursor = self._write(sql, (learner_id,))
+        if cursor.rowcount == 0:
+            raise StateError(
+                f"No learner with id {learner_id}; nothing was trashed.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
+    def untrash_learner(self, learner_id: str) -> None:
+        fields = self.schema.learners
+        self._ensure_columns(fields)
+        if not fields.has("deleted_at"):
+            raise ConfigError(
+                "This profile does not map a trash column.",
+                remedy="Add db.fields.learner.deleted_at to baton.yaml.",
+            )
+        sql = (
+            f"UPDATE {fields.table} SET {fields.column('deleted_at')} = NULL "  # noqa: S608
+            f"WHERE {fields.column('id')} = ?"
+        )
+        cursor = self._write(sql, (learner_id,))
+        if cursor.rowcount == 0:
+            raise StateError(
+                f"No learner with id {learner_id}; nothing was untrashed.",
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 

@@ -4,6 +4,53 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.5.0 (unreleased)
+
+A learner taken out of the way with `deactivate` still shows up in the full
+roster (`--all`), which is correct for someone who graduated but not for a
+record that should be fully out of view. `learner trash` adds a second,
+distinct status for that: hidden even from `--all`, and their name stops
+resolving for every other command, while nothing about the row is deleted.
+
+### Learners
+
+- **`baton learner trash NAME` / `baton learner untrash NAME`.** Trash is
+  orthogonal to `is_active`: it hides a learner from `learner list` even
+  with `--all`, and their name refuses to resolve for `rename`, `assign`,
+  `add-work`, and everything else: the same `NeedsHumanError` an unknown
+  name gets. Nothing outside the database row moves: sessions, pieces,
+  recorded work, calendar history, Notion pages, and source folders are all
+  left exactly as they were. `--dry-run` shows the change without writing
+  it. Trashing (or untrashing) the same learner twice is safe.
+- **`baton learner list --trashed`** shows only trashed learners, the
+  counterpart to `--all` for the roster that's normally hidden entirely.
+
+### Upgrading
+
+A fresh `baton init` already has the `deleted_at` column. An existing
+SQLite profile picks it up the same way `is_active` did: run `baton init
+<profile-dir> --force --yes` again, or apply the column by hand if the
+profile is hand edited:
+
+```sql
+ALTER TABLE learners ADD COLUMN deleted_at TEXT DEFAULT NULL;
+```
+
+A Supabase or PostgREST studio adopting an existing schema runs the
+equivalent SQL against its own table:
+
+```sql
+ALTER TABLE students ADD COLUMN IF NOT EXISTS deleted_at timestamptz DEFAULT NULL;
+```
+
+`db.fields.learner.deleted_at` is already mapped in the packaged defaults
+(the same column name, `deleted_at`), so no profile change is needed unless
+the studio's column is named differently. **Run the `ALTER` before
+upgrading Baton**, not after, for the same reason `is_active` did: upgrading
+before the column exists makes every learner command exit `2` naming the
+missing column. Left unmapped, every learner reads as not trashed and
+nothing about matching changes until the column and mapping both exist.
+
 ## 1.4.0 (2026-09-14)
 
 A new learner taking over a leaver's slot was a delete-and-re-add, which

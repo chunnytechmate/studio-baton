@@ -148,6 +148,48 @@ def test_rename_of_an_unknown_id_refuses_rather_than_succeeding(store):
         store.rename_learner("99", "Anyone")
 
 
+def test_trash_hides_a_learner_from_list_learners_by_default(store):
+    store.trash_learner("3")
+
+    assert all(item.id != "3" for item in store.list_learners())
+    everyone = store.list_learners(include_trashed=True)
+    trashed = next(item for item in everyone if item.id == "3")
+    assert trashed.deleted_at is not None
+    # The row itself did not move.
+    assert trashed.instrument == "piano"
+
+
+def test_trash_is_idempotent(store):
+    store.trash_learner("3")
+    store.trash_learner("3")  # must not raise
+
+    everyone = store.list_learners(include_trashed=True)
+    assert next(item for item in everyone if item.id == "3").deleted_at is not None
+
+
+def test_untrash_clears_the_marker_and_nothing_else(store):
+    store.trash_learner("3")
+    store.untrash_learner("3")
+
+    learner = next(item for item in store.list_learners() if item.id == "3")
+    assert learner.deleted_at is None
+    assert learner.instrument == "piano"
+
+
+def test_trash_of_an_unknown_id_refuses_rather_than_succeeding(store):
+    from baton.errors import StateError
+
+    with pytest.raises(StateError):
+        store.trash_learner("99")
+
+
+def test_untrash_of_an_unknown_id_refuses_rather_than_succeeding(store):
+    from baton.errors import StateError
+
+    with pytest.raises(StateError):
+        store.untrash_learner("99")
+
+
 def test_add_learner_returns_the_stored_row_with_its_id(store):
     created = store.add_learner(
         Learner(id="", name="Elin Frost", instrument="violin", tone="child")
