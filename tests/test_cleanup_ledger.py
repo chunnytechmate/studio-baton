@@ -165,3 +165,95 @@ def test_a_pending_entry_survives_a_blocked_cleanup_and_clears_later(
     _patch_source(monkeypatch, {"c9": TRASHED})
     assert run(["--profile", str(profile), "--json", "video", "cleanup"]) == int(Exit.OK)
     assert CleanupLedger.for_state(video_state).pending() == []
+
+
+def test_status_does_not_report_the_ledger_as_a_job(profile, video_state, capsys):
+    """2026-09-13, in production: `cleanup.json` sits in the job directory,
+    so `video status` showed a phantom in_progress entry with no learner,
+    and the operator was told about it after every single run."""
+    run(["--profile", str(profile), "--json", "video", "status"])
+
+    payload = json.loads(capsys.readouterr().out)
+    folders = [job["learner_folder"] for job in payload["jobs"]]
+    assert folders == ["Ada Whitfield"]
+    assert all(job["learner_folder"] for job in payload["jobs"])
+
+
+def test_a_run_clears_leftover_ledger_debts_itself(profile, video_state, monkeypatch, capsys):
+    """The tail replay: a run that finds nothing to process still pays the
+    ledger what older runs owed, so nobody repeats `baton video cleanup` by
+    hand (production did, twice on 2026-09-13)."""
+    ledger = CleanupLedger.for_state(video_state)
+    job = VideoJob(learner_folder="Ada Whitfield")
+    ledger.record_unfiled(["c9"], job=job, now="2026-09-11T00:00:00+00:00")
+
+    class _NothingToDo:
+        def run(self, only=None):
+            return []
+
+    from baton.cli import cmd_video
+
+    monkeypatch.setattr(cmd_video, "_build", lambda ctx: _NothingToDo())
+    _patch_source(monkeypatch, {"c9": TRASHED})
+
+    exit_code = run(["--profile", str(profile), "--json", "video", "run"])
+
+    assert exit_code == int(Exit.OK)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["cleanup_cleared"] == 1
+    assert payload["cleanup_pending"] == 0
+    assert CleanupLedger.for_state(video_state).pending() == []
+
+
+def test_a_run_reports_undeletable_leftovers_without_failing(profile, video_state, monkeypatch):
+    """The tail is a warning, never the run's exit code: a credential that
+    cannot trash is not a video failure, and an agent branching on the code
+    must keep reading this as success."""
+    ledger = CleanupLedger.for_state(video_state)
+    job = VideoJob(learner_folder="Ada Whitfield")
+    ledger.record_unfiled(["c9"], job=job, now="2026-09-11T00:00:00+00:00")
+
+    class _NothingToDo:
+        def run(self, only=None):
+            return []
+
+    from baton.cli import cmd_video
+
+    monkeypatch.setattr(cmd_video, "_build", lambda ctx: _NothingToDo())
+    _patch_source(monkeypatch, {"c9": UNFILED})
+
+    exit_code = run(["--profile", str(profile), "--json", "video", "run"])
+
+    assert exit_code == int(Exit.OK)
+    (entry,) = CleanupLedger.for_state(video_state).pending()
+    assert "not the owner" in entry.reason
+
+
+def test_the_tail_replay_does_not_need_cleanups_own_flag(profile, video_state, monkeypatch):
+    """`--credential-file` is only ever registered on `cleanup`'s own
+    subparser. `run` and `resume` reach the same `_cleanup_source` through
+    the tail replay with no such flag on their args, so reading it must not
+    assume the attribute exists (it doesn't patch `_cleanup_source` itself,
+    unlike the other tests here, precisely to exercise that line for real)."""
+    ledger = CleanupLedger.for_state(video_state)
+    job = VideoJob(learner_folder="Ada Whitfield")
+    ledger.record_unfiled(["c9"], job=job, now="2026-09-11T00:00:00+00:00")
+
+    class _NothingToDo:
+        def run(self, only=None):
+            return []
+
+    from baton.adapters.media.google import DriveSource
+    from baton.cli import cmd_video
+
+    monkeypatch.setattr(cmd_video, "_build", lambda ctx: _NothingToDo())
+    monkeypatch.setattr(
+        DriveSource,
+        "from_config",
+        classmethod(lambda cls, config, **kw: _ScriptedSource({"c9": TRASHED})),
+    )
+
+    exit_code = run(["--profile", str(profile), "--json", "video", "run"])
+
+    assert exit_code == int(Exit.OK)
+    assert CleanupLedger.for_state(video_state).pending() == []

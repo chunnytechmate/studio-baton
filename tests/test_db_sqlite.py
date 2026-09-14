@@ -132,6 +132,22 @@ def test_set_current_piece_round_trips_including_clearing(store):
     assert store.get_learner("4").current_piece_id is None
 
 
+def test_rename_learner_moves_the_name_and_keeps_the_row(store):
+    store.rename_learner("3", "Clara Nunez")
+
+    learner = store.get_learner("3")
+    assert learner.name == "Clara Nunez"
+    assert learner.instrument == "piano"  # the rest of the row did not move
+    assert [s.doc_id for s in store.list_sessions("3")] == ["doc-clara-01"]
+
+
+def test_rename_of_an_unknown_id_refuses_rather_than_succeeding(store):
+    from baton.errors import StateError
+
+    with pytest.raises(StateError):
+        store.rename_learner("99", "Anyone")
+
+
 def test_add_learner_returns_the_stored_row_with_its_id(store):
     created = store.add_learner(
         Learner(id="", name="Elin Frost", instrument="violin", tone="child")

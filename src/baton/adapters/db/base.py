@@ -168,6 +168,17 @@ class LearnerStore(Protocol):
         """
         ...
 
+    def rename_learner(self, learner_id: str, name: str) -> None:
+        """Change the name a learner is recorded under.
+
+        The database row only. Calendar events, session pages, and source
+        folders already carrying the old name keep it; what moves is what
+        future bookings and clips match against. That is the studio's
+        replacement flow: a new learner taking over an old slot, history
+        included, without touching anything already written.
+        """
+        ...
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         """Enrol a learner. Returns them with the id the store assigned.
 

@@ -196,8 +196,18 @@ class VideoJobStore:
         jobs = []
         for path in paths:
             data = jsonio.read_json(path, None)
-            if isinstance(data, dict):
-                jobs.append(VideoJob.from_dict(data))
+            if not isinstance(data, dict):
+                continue
+            # A job file always names its learner folder. The cleanup ledger
+            # lives in this same directory (`cleanup.json`, and its `.bak`),
+            # carries no such field, and until 0.5.2 was parsed as a job:
+            # every `video status` reported a phantom `in_progress` entry
+            # with no name (production, 2026-09-13), and `resume` would have
+            # run it as a real folder. Whatever else lands here without a
+            # learner folder is not a job either.
+            if not str(data.get("learner_folder", "")).strip():
+                continue
+            jobs.append(VideoJob.from_dict(data))
         return jobs
 
     def remove(self, learner_folder: str) -> bool:

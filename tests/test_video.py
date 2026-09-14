@@ -7,6 +7,8 @@ and one bad clip taking the whole night's run down with it.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from baton.adapters.docs.base import DocStatus
@@ -21,7 +23,7 @@ from baton.adapters.media.base import GONE, UNFILED, EncodeProfile, SourceClip
 from baton.adapters.media.google import DriveSource, _google_call
 from baton.domain.models import Learner, Session
 from baton.errors import UpstreamError
-from baton.pipelines.video import STEPS, VideoJobStore, VideoPipeline
+from baton.pipelines.video import STEPS, VideoJob, VideoJobStore, VideoPipeline
 
 ADA = Learner(id="1", name="Ada Whitfield", instrument="guitar")
 BRUNO = Learner(id="2", name="Bruno Castell", instrument="drums")
@@ -355,6 +357,27 @@ def test_job_state_survives_a_reload(pipeline, tmp_path):
     assert reloaded.status == "done"
     assert reloaded.video_id == "vid1"
     assert all(reloaded.done(step) for step in STEPS)
+
+
+def test_the_cleanup_ledger_is_not_read_as_a_job(tmp_path):
+    """A regression for 2026-09-13: the ledger (`cleanup.json`) lives in the
+    job store's directory, carries no learner folder, and was parsed as a
+    job: every `video status` reported a phantom `in_progress` entry with no
+    name, and `resume` would have run it as a real folder."""
+    root = tmp_path / "jobs"
+    root.mkdir()
+    real = VideoJob(learner_folder="Ada Whitfield", learner_name="Ada Whitfield")
+    real.record("downloaded", count=1)
+    real.status = "done"
+    (root / "ada_whitfield.json").write_text(json.dumps(real.to_dict()), encoding="utf-8")
+    # What `CleanupLedger._save` writes: version plus entries, no job fields.
+    (root / "cleanup.json").write_text(json.dumps({"version": 1, "entries": {}}), encoding="utf-8")
+
+    listed = VideoJobStore(root).list()
+
+    assert [job.learner_folder for job in listed] == ["Ada Whitfield"]
+    # The phantom never existed, so a resume has no empty folder to run.
+    assert VideoJobStore(root).get("") is None
 
 
 def test_work_files_are_cleaned_up_after_success(pipeline, tmp_path):

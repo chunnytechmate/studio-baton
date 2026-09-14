@@ -260,6 +260,14 @@ learner sharing a nickname with someone still enrolled stops being a live
 choice. `learner list` shows active learners only unless `--all` is passed,
 and a stale calendar event left behind by someone who left falls into the
 day's `unmatched` events rather than pulling them back into the roster.
+
+**A learner who takes over a slot is a rename, not a new row.** `learner
+rename "Old Name" --to "New Name"` rewrites the database row only: the id,
+the sessions, the piece assignment, and the recorded work all stay with it.
+Calendar events, session pages, and source folders already carrying the old
+name keep it; what moves is what future bookings and clips match against. A
+new name another learner already has is refused before anything is written,
+the same refusal `learner add` makes.
 `learner deactivate --serve` opens a localhost checklist (stdlib only, bound
 to `127.0.0.1`) to tick several people at once instead of naming them on the
 command line.
@@ -543,8 +551,15 @@ baton video run --dry-run     # what is waiting
 baton video run --detach      # background, survives the session
 baton video status            # per-learner progress through the steps
 baton video resume            # continue whatever did not finish
-baton video cleanup           # delete the clips a run could only unfile
+baton video cleanup           # retry leftover deletions by hand if ever needed
 ```
+
+Every `run` and `resume` also replays the cleanup ledger as its last step:
+clips a previous run could only unfile are retried with the configured
+cleanup credential, so the ledger does not wait for a person to run
+`baton video cleanup`. Whatever that credential still cannot trash stays in
+the ledger, is reported as a warning with the reason, and never turns the
+run's exit code into a failure: a credential question is not a video one.
 
 ```
   ✗ Ada Whitfield        ##.....  failed

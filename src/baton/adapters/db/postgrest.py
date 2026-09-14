@@ -248,6 +248,25 @@ class PostgrestStore:
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 
+    def rename_learner(self, learner_id: str, name: str) -> None:
+        fields = self.schema.learners
+        updated = self._request(
+            "PATCH",
+            fields.table,
+            params=f"{fields.column('id')}=eq.{quote(str(learner_id))}",
+            json_body={fields.column("name"): name},
+            prefer="return=representation",
+        )
+        # Same empty-array trap as `set_current_piece`: a 200 whose
+        # representation is empty means the filter matched nothing, and the
+        # teacher must not read that as "renamed".
+        rows = updated if isinstance(updated, list) else [updated]
+        if not rows:
+            raise StateError(
+                f"No learner with id {learner_id}; the name was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         fields = self.schema.learners
         payload: dict[str, Any] = {fields.column("name"): learner.name}

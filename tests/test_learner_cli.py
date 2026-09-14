@@ -500,6 +500,53 @@ def test_show_still_reaches_an_inactive_learners_history(studio, capsys):
     assert "no longer studying" in captured.err
 
 
+# -- rename ---------------------------------------------------------------------
+
+
+def test_rename_rewrites_the_row_and_the_history_follows(studio, capsys):
+    """The replacement flow from production (2026-09-13): a new learner
+    takes over a leaver's slot, so the row keeps its id, its sessions, and
+    its piece assignment, and only the name moves."""
+    assert call(studio, "assign", "Clara Nguyen", "--piece", "1") == Exit.OK
+    capsys.readouterr()
+
+    assert call(studio, "rename", "Clara Nguyen", "--to", "Clara Nunez") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["renamed_from"] == "Clara Nguyen"
+    assert payload["learner"]["name"] == "Clara Nunez"
+
+    assert call(studio, "show", "Clara Nunez") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["learner"]["id"] == "3"
+    assert payload["current_piece"]["title"] == "Autumn Leaves"
+    # The old name no longer resolves: identity moved with the row.
+    assert call(studio, "show", "Clara Nguyen") == Exit.NEEDS_HUMAN
+
+
+def test_rename_refuses_a_name_another_learner_has(studio, capsys):
+    assert call(studio, "rename", "Clara Nguyen", "--to", "Ada Whitfield") == Exit.GATE
+    capsys.readouterr()
+
+    assert call(studio, "list", "--all") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    names = [item["name"] for item in payload["learners"]]
+    assert names.count("Ada Whitfield") == 1
+    assert "Clara Nguyen" in names
+
+
+def test_rename_dry_run_writes_nothing(studio, capsys):
+    assert call(studio, "rename", "Clara Nguyen", "--to", "Clara Nunez", "--dry-run") == (Exit.OK)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True
+    assert payload["to"] == "Clara Nunez"
+
+    assert call(studio, "show", "Clara Nguyen") == Exit.OK
+
+
+def test_rename_of_an_unknown_name_is_needs_human(studio, capsys):
+    assert call(studio, "rename", "Nobody At All", "--to", "Someone") == Exit.NEEDS_HUMAN
+
+
 def test_the_status_commands_need_something_to_do(studio, capsys):
     assert call(studio, "deactivate") == Exit.USAGE
     assert call(studio, "activate") == Exit.USAGE

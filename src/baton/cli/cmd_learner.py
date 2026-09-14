@@ -160,6 +160,23 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     add.set_defaults(handler=handle_add)
 
+    rename = group.add_parser(
+        "rename",
+        help="Change the name a learner is recorded under.",
+        description=(
+            "Rewrites the database row only. Calendar events, session pages, "
+            "and source folders that already carry the old name keep it; new "
+            "bookings and clips match the new name from here on. This is the "
+            "replacement flow: a new learner taking over a leaver's slot, "
+            "history included, without re-keying anything. Refuses a name "
+            "another learner already has."
+        ),
+    )
+    rename.add_argument("name", metavar="NAME")
+    rename.add_argument("--to", required=True, metavar="NEW_NAME", dest="new_name")
+    rename.add_argument("--dry-run", action="store_true", help="Show the change, and stop.")
+    rename.set_defaults(handler=handle_rename)
+
     add_work = group.add_parser("add-work", help="Record a finished performance.")
     add_work.add_argument("name", metavar="NAME")
     add_work.add_argument("--title", required=True)
@@ -773,6 +790,61 @@ def handle_add(ctx: Context) -> Exit:
         human=f"Enrolled {created.name} ({created.instrument})"
         + (f" with {len(created_sessions)} session page(s)." if created_sessions else ".")
         + (f" Similarly named: {', '.join(similar)}." if similar else ""),
+    )
+    return Exit.OK
+
+
+def handle_rename(ctx: Context) -> Exit:
+    """Rename a learner in the database, and only there.
+
+    The name is identity everywhere: calendar titles, source folders, session
+    pages. Those were created under the old name and stay under it; what a
+    rename moves is what *future* matching reads. A duplicate new name is
+    refused before anything is written, for the same reason `learner add`
+    refuses one: two rows one keystroke apart is how a booking lands on the
+    wrong child.
+    """
+    args = ctx.args
+    new_name = args.new_name.strip()
+    if not new_name:
+        raise UsageError(
+            "The new name is empty.",
+            remedy='Pass --to "New Name".',
+        )
+
+    store = _store(ctx)
+    try:
+        learner = _resolve(ctx, store, args.name)
+        wanted = normalise(new_name)
+        duplicate = next((p for p in store.list_learners() if normalise(p.name) == wanted), None)
+        if duplicate is not None and duplicate.id != learner.id:
+            raise GateError(
+                f"{new_name} is already recorded (id={duplicate.id}).",
+                remedy=f'Use `baton learner show "{new_name}"` to see the existing '
+                "record. Nothing was written.",
+            )
+
+        if args.dry_run:
+            ctx.report.result(
+                {"from": learner.to_dict(), "to": new_name, "dry_run": True},
+                human=f"Would rename {learner.name} to {new_name} in the database.",
+            )
+            return Exit.OK
+
+        store.rename_learner(learner.id, new_name)
+    finally:
+        store.close()
+
+    ctx.report.result(
+        {
+            "learner": {**learner.to_dict(), "name": new_name},
+            "renamed_from": learner.name,
+        },
+        human=(
+            f"Renamed {learner.name} to {new_name} in the database.\n"
+            "    Calendar events, pages, and folders already carrying the old "
+            "name keep it; new bookings match the new name."
+        ),
     )
     return Exit.OK
 

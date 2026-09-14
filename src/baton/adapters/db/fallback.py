@@ -112,6 +112,9 @@ class FallbackStore:
     def set_active(self, learner_id: str, active: bool) -> None:
         self._write("set_active", learner_id, active)
 
+    def rename_learner(self, learner_id: str, name: str) -> None:
+        self._write("rename_learner", learner_id, name)
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         return self._write("add_learner", learner, extra)
 

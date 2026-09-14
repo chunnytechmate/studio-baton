@@ -273,6 +273,22 @@ class SqliteStore:
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 
+    def rename_learner(self, learner_id: str, name: str) -> None:
+        fields = self.schema.learners
+        self._ensure_columns(fields)
+        sql = (
+            f"UPDATE {fields.table} SET {fields.column('name')} = ? "  # noqa: S608
+            f"WHERE {fields.column('id')} = ?"
+        )
+        cursor = self._write(sql, (name, learner_id))
+        # Same refusal as `set_current_piece`: a rename that matched no row
+        # must not read back as "renamed" to the teacher.
+        if cursor.rowcount == 0:
+            raise StateError(
+                f"No learner with id {learner_id}; the name was not written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         fields = self.schema.learners
         self._ensure_columns(fields)

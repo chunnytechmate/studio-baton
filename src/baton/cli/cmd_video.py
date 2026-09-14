@@ -43,7 +43,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     group = parser.add_subparsers(dest="video_command", metavar="<subcommand>")
     parser.set_defaults(handler=_require_subcommand)
 
-    run_cmd = group.add_parser("run", help="Process every learner with clips waiting.")
+    run_cmd = group.add_parser(
+        "run",
+        help="Process every learner with clips waiting, then retry deferred deletions.",
+        description=(
+            "After the processing steps, the run also replays the cleanup "
+            "ledger: clips a previous run could only unfile are retried with "
+            "the cleanup credential. Whatever that credential still cannot "
+            "trash stays in the ledger as a warning; it never turns the run's "
+            "exit code into a failure."
+        ),
+    )
     run_cmd.add_argument(
         "--learner",
         action="append",
@@ -204,7 +214,13 @@ def _build(ctx: Context) -> VideoPipeline:
     )
 
 
-def _report(ctx: Context, jobs: list, *, verb: str) -> Exit:
+def _report(
+    ctx: Context,
+    jobs: list,
+    *,
+    verb: str,
+    cleanup_tail: dict[str, list[str]] | None = None,
+) -> Exit:
     """Render a run's outcome and pick the exit code."""
     cleanup = CleanupLedger.for_state(ctx.config.state_dir).summary()
     payload: dict[str, Any] = {
@@ -215,9 +231,14 @@ def _report(ctx: Context, jobs: list, *, verb: str) -> Exit:
         "skipped": sum(1 for job in jobs if job.status == "skipped"),
         "cleanup_pending": cleanup["pending"],
     }
+    if cleanup_tail is not None:
+        payload["cleanup_cleared"] = len(cleanup_tail["cleared_ids"])
 
     if not jobs:
-        ctx.report.result(payload, human="Nothing to process.")
+        human = "Nothing to process."
+        if cleanup_tail is not None and cleanup_tail["cleared_ids"]:
+            human += f"\n  ✓ cleanup: cleared {len(cleanup_tail['cleared_ids'])} leftover clip(s)"
+        ctx.report.result(payload, human=human)
         return Exit.OK
 
     lines = [f"{verb} {len(jobs)}: {payload['done']} done, {payload['failed']} failed"]
@@ -225,6 +246,8 @@ def _report(ctx: Context, jobs: list, *, verb: str) -> Exit:
         mark = _MARK.get(job.status, "·")
         detail = job.error or job.video_url or ""
         lines.append(f"  {mark} {job.learner_folder:<20} {job.status:<12} {detail}")
+    if cleanup_tail is not None and cleanup_tail["cleared_ids"]:
+        lines.append(f"  ✓ cleanup: cleared {len(cleanup_tail['cleared_ids'])} leftover clip(s)")
     if cleanup["pending"]:
         lines.append(
             f"  ⚠ {cleanup['pending']} clip(s) unfiled but not deleted: "
@@ -233,7 +256,10 @@ def _report(ctx: Context, jobs: list, *, verb: str) -> Exit:
     ctx.report.result(payload, human="\n".join(lines))
 
     # A partial run is not a success. Its exit code has to say so, while the
-    # per-learner report says which ones actually went.
+    # per-learner report says which ones actually went. Leftover ledger
+    # entries are a warning above, not a failure: they are a credential
+    # question, not a video one, and an agent branching on this code must
+    # read it as "the processing itself failed".
     return Exit.OK if not payload["failed"] else Exit.UPSTREAM
 
 
@@ -263,7 +289,12 @@ def handle_run(ctx: Context) -> Exit:
     with run_lock(ctx.config.state_dir, "video"):
         ctx.report.step("collecting clips")
         jobs = pipeline.run(only=ctx.args.only)
-    return _report(ctx, jobs, verb="processed")
+        # The tail: a run that finishes with unfiled clips owed would report
+        # them and stop, leaving the retry the machine could do itself to a
+        # person. Replayed under the same lock, so a concurrent run's ledger
+        # writes cannot interleave with it.
+        cleanup_tail = _replay_cleanup(ctx)
+    return _report(ctx, jobs, verb="processed", cleanup_tail=cleanup_tail)
 
 
 def handle_resume(ctx: Context) -> Exit:
@@ -274,6 +305,7 @@ def handle_resume(ctx: Context) -> Exit:
     with run_lock(ctx.config.state_dir, "video"):
         jobs = pipeline.resume()
         waiting = pipeline.waiting_clips()
+        cleanup_tail = _replay_cleanup(ctx)
     if not jobs and waiting:
         # "Nothing to process." here once sent the operator to bed while a
         # later `run` found clips waiting the whole time.
@@ -293,7 +325,7 @@ def handle_resume(ctx: Context) -> Exit:
             ),
         )
         return Exit.OK
-    return _report(ctx, jobs, verb="resumed")
+    return _report(ctx, jobs, verb="resumed", cleanup_tail=cleanup_tail)
 
 
 def handle_status(ctx: Context) -> Exit:
@@ -369,9 +401,6 @@ def handle_forget(ctx: Context) -> Exit:
 
 def handle_cleanup(ctx: Context) -> Exit:
     """Retry the deletions a run could only defer."""
-    from ..adapters.media.base import UNFILED
-    from ..errors import BatonError
-
     ledger = CleanupLedger.for_state(ctx.config.state_dir)
     seeded = 0
     if ctx.args.rebuild:
@@ -381,8 +410,49 @@ def handle_cleanup(ctx: Context) -> Exit:
             fresh = ledger.record_unfiled(list(job.clip_ids), job=job, now=_now_stamp())
             seeded += len(fresh)
 
-    source = _cleanup_source(ctx)
+    replay = _replay_cleanup(ctx)
+    cleared = replay["cleared_ids"]
+    remaining_ids = replay["remaining_ids"]
+    payload = {
+        "seeded": seeded,
+        "pending_before": len(cleared) + len(replay["remaining_ids"]),
+        "cleared": len(cleared),
+        "remaining": len(remaining_ids),
+        "cleared_ids": cleared,
+        "remaining_ids": remaining_ids[:50],
+    }
+    lines = [f"cleared {len(cleared)} of {payload['pending_before']} pending clip(s)"]
+    if seeded:
+        lines.insert(0, f"rebuild seeded {seeded} clip id(s) from job records")
+    if remaining_ids:
+        lines.append(f"  ⚠ {len(remaining_ids)} still undeletable with this credential")
+        lines.append(
+            "    Drive lets only the owner trash: give --credential-file the "
+            "authorized-user JSON of the account that uploads the clips."
+        )
+    ctx.report.result(payload, human="\n".join(lines))
+    return Exit.OK if not remaining_ids else Exit.UPSTREAM
+
+
+def _replay_cleanup(ctx: Context) -> dict[str, list[str]]:
+    """Retry every pending deletion in the ledger.
+
+    Shared by `video cleanup` and the tail of `run`/`resume`: a run's own
+    report kept saying "N clip(s) unfiled, run `baton video cleanup`", and in
+    production (2026-09-13, twice in one day) that meant a person repeated
+    the very retry the machine could have done. Blocked entries stay in the
+    ledger with their reason; leftovers are a warning, never a failure of
+    the video steps the run's exit code is about.
+    """
+    from ..adapters.media.base import UNFILED
+    from ..errors import BatonError
+
+    ledger = CleanupLedger.for_state(ctx.config.state_dir)
     entries = ledger.pending()
+    if not entries:
+        return {"cleared_ids": [], "remaining_ids": []}
+
+    source = _cleanup_source(ctx)
     cleared: list[str] = []
     blocked: list[tuple[str, str]] = []
     for entry in entries:
@@ -405,27 +475,10 @@ def handle_cleanup(ctx: Context) -> Exit:
         ledger.mark_cleared(cleared, now=_now_stamp())
     for clip_id, reason in blocked:
         ledger.mark_blocked([clip_id], reason=reason)
-
-    remaining = ledger.pending()
-    payload = {
-        "seeded": seeded,
-        "pending_before": len(entries),
-        "cleared": len(cleared),
-        "remaining": len(remaining),
+    return {
         "cleared_ids": cleared,
-        "remaining_ids": [item.clip_id for item in remaining[:50]],
+        "remaining_ids": [item.clip_id for item in ledger.pending()],
     }
-    lines = [f"cleared {len(cleared)} of {len(entries)} pending clip(s)"]
-    if seeded:
-        lines.insert(0, f"rebuild seeded {seeded} clip id(s) from job records")
-    if remaining:
-        lines.append(f"  ⚠ {len(remaining)} still undeletable with this credential")
-        lines.append(
-            "    Drive lets only the owner trash: give --credential-file the "
-            "authorized-user JSON of the account that uploads the clips."
-        )
-    ctx.report.result(payload, human="\n".join(lines))
-    return Exit.OK if not remaining else Exit.UPSTREAM
 
 
 def _cleanup_source(ctx: Context):
@@ -437,9 +490,12 @@ def _cleanup_source(ctx: Context):
         return open_source(ctx.config)
     from ..adapters.media.google import DriveSource
 
-    override = ctx.args.credential_file or str(
-        ctx.config.get("media.drive.cleanup_credentials_file", "")
-    )
+    # `--credential-file` is only ever registered on `cleanup`'s own
+    # subparser. The tail replay from `run`/`resume` reaches this same
+    # function with no such flag on its args, so the attribute may not
+    # exist at all; that is not the same as it being empty.
+    flag = getattr(ctx.args, "credential_file", None)
+    override = flag or str(ctx.config.get("media.drive.cleanup_credentials_file", ""))
     return DriveSource.from_config(ctx.config, credentials_file=override.strip() or None)
 
 
