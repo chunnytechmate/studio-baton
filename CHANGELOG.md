@@ -4,7 +4,7 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
-## 1.6.0 (unreleased)
+## 1.6.0 (2026-09-15)
 
 The web admin page needed to correct a learner's instrument, tone, or
 own-instrument flag after enrolment, and the only way to do that was to
