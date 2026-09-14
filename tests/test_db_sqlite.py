@@ -190,6 +190,31 @@ def test_untrash_of_an_unknown_id_refuses_rather_than_succeeding(store):
         store.untrash_learner("99")
 
 
+def test_update_learner_changes_only_the_named_fields(store):
+    before = next(item for item in store.list_learners() if item.id == "3")
+    store.update_learner("3", {"instrument": "violin", "has_instrument": False})
+    after = next(item for item in store.list_learners() if item.id == "3")
+    assert after.instrument == "violin"
+    assert after.has_instrument is False
+    # The fields not named stayed exactly as they were.
+    assert after.tone == before.tone
+    assert after.name == before.name
+
+
+def test_update_learner_of_an_unknown_field_refuses(store):
+    from baton.errors import ConfigError
+
+    with pytest.raises(ConfigError):
+        store.update_learner("3", {"favourite_colour": "blue"})
+
+
+def test_update_learner_of_an_unknown_id_refuses(store):
+    from baton.errors import StateError
+
+    with pytest.raises(StateError):
+        store.update_learner("99", {"tone": "child"})
+
+
 def test_add_learner_returns_the_stored_row_with_its_id(store):
     created = store.add_learner(
         Learner(id="", name="Elin Frost", instrument="violin", tone="child")

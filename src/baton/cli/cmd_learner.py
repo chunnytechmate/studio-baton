@@ -289,6 +289,37 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     untrash.add_argument("name", metavar="NAME")
     untrash.set_defaults(handler=handle_untrash)
 
+    edit = group.add_parser(
+        "edit",
+        help="Change a learner's instrument, tone, or own-instrument flag. Nothing else moves.",
+        description=(
+            "Edits the database row only, the same contract as `learner "
+            "rename`: pages, folders, and calendar entries keep whatever "
+            "they already carry, and what changes is what future reads "
+            "match against. At least one field must be given."
+        ),
+    )
+    edit.add_argument("name", metavar="NAME")
+    edit.add_argument("--instrument", metavar="INSTRUMENT", default=None,
+                      help="The instrument, in the studio's words.")
+    edit.add_argument("--tone", metavar="TONE", default=None,
+                      help="The summary tone, e.g. standard, casual, child.")
+    edit.add_argument(
+        "--has-instrument",
+        dest="has_instrument",
+        action="store_true",
+        default=None,
+        help="Record that they own an instrument.",
+    )
+    edit.add_argument(
+        "--no-has-instrument",
+        dest="has_instrument",
+        action="store_false",
+        help="Record that they do not own one yet.",
+    )
+    edit.add_argument("--dry-run", action="store_true", help="Show the change, and stop.")
+    edit.set_defaults(handler=handle_edit)
+
 
 def _require_subcommand(ctx: Context) -> Exit:
     raise UsageError(
@@ -963,6 +994,56 @@ def handle_untrash(ctx: Context) -> Exit:
     ctx.report.result(
         {"learner": {**learner.to_dict(), "deleted_at": None}},
         human=f"{learner.name} is back. Nothing about their history moved.",
+    )
+    return Exit.OK
+
+
+def handle_edit(ctx: Context) -> Exit:
+    """Edit a learner's instrument, tone, or own-instrument flag.
+
+    The database row only, like `learner rename`: session pages, source
+    folders, and calendar entries keep what they carry. Fields not named
+    on the command line are left exactly as they were.
+    """
+    args = ctx.args
+    fields: dict[str, Any] = {}
+    if args.instrument is not None:
+        if not args.instrument.strip():
+            raise UsageError(
+                "The instrument is empty.",
+                remedy='Pass --instrument "กีตาร์", or leave it out.',
+            )
+        fields["instrument"] = args.instrument.strip()
+    if args.tone is not None:
+        if not args.tone.strip():
+            raise UsageError("The tone is empty.", remedy='Pass --tone standard, or leave it out.')
+        fields["tone"] = args.tone.strip()
+    if args.has_instrument is not None:
+        fields["has_instrument"] = args.has_instrument
+    if not fields:
+        raise UsageError(
+            "`baton learner edit` needs at least one field to change.",
+            remedy="Editable fields: --instrument, --tone, --has-instrument/--no-has-instrument.",
+        )
+
+    store = _store(ctx)
+    try:
+        learner = _resolve(ctx, store, args.name)
+        if args.dry_run:
+            ctx.report.result(
+                {"learner": learner.to_dict(), "changes": fields, "dry_run": True},
+                human=f"Would change {learner.name}: {fields}.",
+            )
+            return Exit.OK
+        store.update_learner(learner.id, fields)
+        fresh = store.get_learner(learner.id)
+    finally:
+        store.close()
+
+    written = fresh if fresh is not None else learner
+    ctx.report.result(
+        {"learner": written.to_dict(), "changes": fields},
+        human=f"Changed {fields} on {written.name}. Nothing outside the row moved.",
     )
     return Exit.OK
 

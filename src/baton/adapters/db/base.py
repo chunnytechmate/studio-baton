@@ -188,6 +188,17 @@ class LearnerStore(Protocol):
         who was never trashed."""
         ...
 
+    def update_learner(self, learner_id: str, fields: Mapping[str, Any]) -> None:
+        """Change a learner's editable fields, and nothing else.
+
+        Keys are domain names, not column names: ``instrument``,
+        ``tone``, ``has_instrument``. A key this store does not know is a
+        :class:`~baton.errors.ConfigError` rather than a silent skip, and
+        an unknown id refuses instead of succeeding. Everything the row
+        holds besides the named fields stays exactly as it was.
+        """
+        ...
+
     def rename_learner(self, learner_id: str, name: str) -> None:
         """Change the name a learner is recorded under.
 

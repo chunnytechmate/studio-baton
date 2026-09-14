@@ -622,6 +622,48 @@ def test_list_and_all_refuse_together_with_trashed(studio, capsys):
     assert call(studio, "list", "--all", "--trashed") == Exit.USAGE
 
 
+# -- edit ----------------------------------------------------------------------
+
+
+def test_edit_changes_the_named_fields_and_nothing_else(studio, capsys):
+    assert call(studio, "edit", "Clara Nguyen", "--instrument", "violin") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["changes"] == {"instrument": "violin"}
+    assert payload["learner"]["instrument"] == "violin"
+
+    assert call(studio, "show", "Clara Nguyen") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["learner"]["instrument"] == "violin"
+
+
+def test_edit_has_instrument_flag_round_trip(studio, capsys):
+    assert call(studio, "edit", "Clara Nguyen", "--no-has-instrument") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["learner"]["has_instrument"] is False
+
+    assert call(studio, "edit", "Clara Nguyen", "--has-instrument") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["learner"]["has_instrument"] is True
+
+
+def test_edit_dry_run_writes_nothing(studio, capsys):
+    assert call(studio, "edit", "Clara Nguyen", "--tone", "child", "--dry-run") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is True
+
+    assert call(studio, "show", "Clara Nguyen") == Exit.OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["learner"]["tone"] != "child"
+
+
+def test_edit_without_any_field_is_usage(studio, capsys):
+    assert call(studio, "edit", "Clara Nguyen") == Exit.USAGE
+
+
+def test_edit_of_an_unknown_name_is_needs_human(studio, capsys):
+    assert call(studio, "edit", "Nobody At All", "--tone", "child") == Exit.NEEDS_HUMAN
+
+
 def test_the_status_commands_need_something_to_do(studio, capsys):
     assert call(studio, "deactivate") == Exit.USAGE
     assert call(studio, "activate") == Exit.USAGE

@@ -123,10 +123,19 @@ class FakeLearnerStore:
             if learner.id == str(learner_id):
                 self.learners[index] = replace(learner, name=name)
                 return
-        # The same refusal the real stores make: a rename that matched no
-        # row is not a success the CLI should report as done.
         raise StateError(
             f"No learner with id {learner_id}; the name was not written.",
+            remedy="Re-read the learner (`baton learner list`) and try again.",
+        )
+
+    def update_learner(self, learner_id: str, fields: Mapping[str, Any]) -> None:
+        self._check()
+        for index, learner in enumerate(self.learners):
+            if learner.id == str(learner_id):
+                self.learners[index] = replace(learner, **dict(fields))
+                return
+        raise StateError(
+            f"No learner with id {learner_id}; nothing was written.",
             remedy="Re-read the learner (`baton learner list`) and try again.",
         )
 

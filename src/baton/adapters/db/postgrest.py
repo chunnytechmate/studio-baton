@@ -317,6 +317,30 @@ class PostgrestStore:
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 
+    def update_learner(self, learner_id: str, fields: Mapping[str, Any]) -> None:
+        schema = self.schema.learners
+        body: dict[str, Any] = {}
+        for field, value in fields.items():
+            if field not in ("instrument", "tone", "has_instrument"):
+                raise ConfigError(
+                    f"{field!r} is not an editable learner field.",
+                    remedy="Editable fields are: instrument, tone, has_instrument.",
+                )
+            body[schema.column(field)] = value
+        updated = self._request(
+            "PATCH",
+            schema.table,
+            params=f"{schema.column('id')}=eq.{quote(str(learner_id))}",
+            json_body=body,
+            prefer="return=representation",
+        )
+        rows = updated if isinstance(updated, list) else [updated]
+        if not rows:
+            raise StateError(
+                f"No learner with id {learner_id}; nothing was written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         fields = self.schema.learners
         payload: dict[str, Any] = {fields.column("name"): learner.name}

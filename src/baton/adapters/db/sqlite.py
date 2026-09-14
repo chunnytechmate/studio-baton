@@ -333,6 +333,31 @@ class SqliteStore:
                 remedy="Re-read the learner (`baton learner list`) and try again.",
             )
 
+    def update_learner(self, learner_id: str, fields: Mapping[str, Any]) -> None:
+        schema = self.schema.learners
+        self._ensure_columns(schema)
+        assignments: list[str] = []
+        values: list[Any] = []
+        for field, value in fields.items():
+            if field not in ("instrument", "tone", "has_instrument"):
+                raise ConfigError(
+                    f"{field!r} is not an editable learner field.",
+                    remedy="Editable fields are: instrument, tone, has_instrument.",
+                )
+            assignments.append(f"{schema.column(field)} = ?")
+            values.append(value)
+        sql = (
+            f"UPDATE {schema.table} SET {', '.join(assignments)} "  # noqa: S608
+            f"WHERE {schema.column('id')} = ?"
+        )
+        values.append(learner_id)
+        cursor = self._write(sql, tuple(values))
+        if cursor.rowcount == 0:
+            raise StateError(
+                f"No learner with id {learner_id}; nothing was written.",
+                remedy="Re-read the learner (`baton learner list`) and try again.",
+            )
+
     def add_learner(self, learner: Learner, extra: Mapping[str, Any] | None = None) -> Learner:
         fields = self.schema.learners
         self._ensure_columns(fields)

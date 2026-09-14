@@ -20,7 +20,7 @@ from baton.adapters.db.base import FieldMap
 from baton.adapters.db.mapping import Schema
 from baton.adapters.db.postgrest import PostgrestStore
 from baton.domain.models import Learner, Piece, Session, Work
-from baton.errors import ConfigError, UpstreamError
+from baton.errors import ConfigError, StateError, UpstreamError
 
 
 class _Reply:
@@ -269,6 +269,54 @@ def test_set_active_without_a_mapping_refuses_before_any_request(monkeypatch):
 
 
 # -- trash / untrash -------------------------------------------------------------
+
+
+def test_update_learner_patches_only_the_named_columns(monkeypatch):
+    store = _store()
+    store.schema.learners.columns["instrument"] = "instrument"
+    store.schema.learners.columns["has_instrument"] = "has_instrument"
+
+    seen: dict[str, object] = {}
+
+    def patch(*args: object, **kwargs: object) -> _Reply:
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return _Reply(200, b'[{"id": 7}]', [{"id": 7}])
+
+    monkeypatch.setattr(postgrest_module, "http_request", patch)
+
+    store.update_learner("7", {"instrument": "กีตาร์", "has_instrument": True})
+
+    assert seen["kwargs"]["json"] == {"instrument": "กีตาร์", "has_instrument": True}
+    assert seen["args"][0] == "PATCH"
+    assert seen["args"][1].endswith("learners?id=eq.7")
+    assert seen["kwargs"]["headers"]["Prefer"] == "return=representation"
+
+
+def test_update_learner_of_an_unknown_field_refuses_before_any_request(monkeypatch):
+    store = _store()
+    store.schema.learners.columns["tone"] = "tone"
+
+    def fail(*_args, **_kwargs):
+        raise AssertionError("must refuse before any request")
+
+    monkeypatch.setattr(postgrest_module, "http_request", fail)
+
+    with pytest.raises(ConfigError):
+        store.update_learner("7", {"nickname": "nick"})
+
+
+def test_update_learner_on_an_unmatched_row_is_a_state_error(monkeypatch):
+    store = _store()
+    store.schema.learners.columns["tone"] = "tone"
+
+    def nobody(*_args, **_kwargs):
+        return _Reply(200, b"[]", [])
+
+    monkeypatch.setattr(postgrest_module, "http_request", nobody)
+
+    with pytest.raises(StateError):
+        store.update_learner("7", {"tone": "child"})
 
 
 def test_trash_learner_patches_the_mapped_column_with_a_timestamp(monkeypatch):

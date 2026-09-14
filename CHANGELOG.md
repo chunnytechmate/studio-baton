@@ -4,6 +4,28 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.6.0 (unreleased)
+
+The web admin page needed to correct a learner's instrument, tone, or
+own-instrument flag after enrolment, and the only way to do that was to
+edit the database by hand. `learner edit` is that fix.
+
+### Learners
+
+- **`baton learner edit NAME [--instrument ...] [--tone ...]
+  [--has-instrument|--no-has-instrument] [--dry-run]`.** Edits the
+  database row only, the same contract as `learner rename`: session
+  pages, source folders, and calendar entries keep what they carry, and
+  what changes is what future reads match against. Fields not named are
+  left exactly as they were; naming none is a usage error. An unknown
+  field name is a config error rather than a silent skip.
+
+### Upgrading
+
+Nothing to do: the editable columns (`instrument`, `tone`,
+`has_instrument`) are the ones `learner add` has written since the
+beginning, so every profile already maps them.
+
 ## 1.5.0 (2026-09-14)
 
 A learner taken out of the way with `deactivate` still shows up in the full
