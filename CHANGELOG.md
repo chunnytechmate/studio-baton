@@ -4,6 +4,37 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.4.0 (unreleased)
+
+A new learner taking over a leaver's slot was a delete-and-re-add, which
+threw away the id a session's history and piece assignment were keyed to.
+Two production incidents on 2026-09-13 also had a run leave leftover
+deletions for a person to retry by hand, and a phantom job with no name
+showing up in `video status`.
+
+### Learners
+
+- **`baton learner rename NAME --to NEW_NAME`.** Rewrites the database row
+  only: id, sessions, piece assignment, and recorded work all stay with it.
+  Calendar events, session pages, and source folders that already carry the
+  old name keep it; what moves is what future bookings and clips match
+  against. Refuses a name another learner already has, the same refusal
+  `learner add` makes. `--dry-run` shows the change without writing it.
+
+### Video
+
+- **`video run` and `video resume` replay the cleanup ledger themselves,
+  as their last step.** Clips a previous run could only unfile are retried
+  with the configured cleanup credential instead of waiting for
+  `baton video cleanup` to be run by hand, which production needed twice in
+  one day. Whatever the credential still cannot trash stays in the ledger
+  as a warning; it never turns the run's exit code into a failure, since a
+  credential question is not a video one.
+- **Fixed: the cleanup ledger's own file was misread as a job record.**
+  `cleanup.json` carries no learner folder, so `video status` reported a
+  phantom `in_progress` entry with no name after every run, and `resume`
+  would have tried to run it as a real folder.
+
 ## 1.3.0 (2026-09-13)
 
 A learner who stopped studying kept showing up next to everyone else's
