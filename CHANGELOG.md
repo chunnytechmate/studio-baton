@@ -4,7 +4,7 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
-## 1.5.0 (unreleased)
+## 1.5.0 (2026-09-14)
 
 A learner taken out of the way with `deactivate` still shows up in the full
 roster (`--all`), which is correct for someone who graduated but not for a
