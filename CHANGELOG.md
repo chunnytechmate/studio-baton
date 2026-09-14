@@ -4,7 +4,7 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
-## 1.4.0 (unreleased)
+## 1.4.0 (2026-09-14)
 
 A new learner taking over a leaver's slot was a delete-and-re-add, which
 threw away the id a session's history and piece assignment were keyed to.
