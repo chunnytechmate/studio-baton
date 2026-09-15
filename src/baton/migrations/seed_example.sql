@@ -41,3 +41,12 @@ INSERT INTO works (id, learner_id, title, type, video_link, performed_date) VALU
     (2, 1, 'Autumn Leaves',  'cover',   'https://example.invalid/watch/ada-autumn',    '2026-04-02'),
     (3, 3, 'Minuet in G',    'exam',    '',                                            '2026-07-30')
 ON CONFLICT DO NOTHING;
+
+-- Standing weekly slots. Ada and Clara overlap on nothing; Bruno's two
+-- Wednesday hours show a same-day double lesson.
+INSERT INTO lesson_slots (id, learner_id, weekday, start_time) VALUES
+    (1, 1, 'Monday',    '16:00'),
+    (2, 2, 'Wednesday', '15:00'),
+    (3, 2, 'Wednesday', '16:00'),
+    (4, 3, 'Friday',    '17:00')
+ON CONFLICT DO NOTHING;

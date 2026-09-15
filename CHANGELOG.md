@@ -4,6 +4,43 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.7.0 (2026-09-15)
+
+The recurring weekly schedule (which day, what time) lived nowhere: days rode
+as tags on the Notion dashboard, times were not recorded at all. `learner
+schedule-set` gives them a home in the learner database, and the roster
+carries them so one read answers "who comes when".
+
+### Learners
+
+- **New table `lesson_slots`** (one row per weekly hour: learner, weekday,
+  start time). Mapped through `db.tables.lesson_slots` / `db.fields.
+  lesson_slot` like every other table, so an existing schema can adopt its
+  own names.
+- **`baton learner schedule NAME`.** The learner's standing slots, Monday
+  first, then by start time. Empty is a normal answer.
+- **`baton learner schedule-set NAME [--slot "Monday 16:00"]...
+  [--dry-run]`.** Sends the full final set, so a retry cannot double-book;
+  omitting every `--slot` clears the schedule. A slot held by another
+  *active* learner refuses the whole save (exit `5`) and names the holder;
+  slots of learners who stopped or were trashed never clash, because they
+  are not coming. One slot is one hour: a two-hour lesson is two
+  consecutive slots. The day word is any case, the time is 24-hour.
+- **`learner list --json` carries `slots`** on each learner entry, so a
+  roster consumer reads everything in one call. The trashed roster carries
+  none. The human-readable roster is unchanged.
+- `learner schedule-set` validates the shape it is given, not the studio's
+  teaching hours: which hours exist on a menu is studio policy and lives at
+  the layer that knows it (the provisioner service enforces 09:00-19:00).
+
+### Upgrading
+
+Run the new `CREATE TABLE lesson_slots` from `migrations/postgres.sql` (or
+`sqlite.sql`) in your database, then `baton doctor` to confirm the mapping.
+Both files are `IF NOT EXISTS`, so re-running the whole migration against an
+existing database is safe. A profile that maps its own table names needs the
+new names under `db.tables.lesson_slots` / `db.fields.lesson_slot`.
+
 ## 1.6.0 (2026-09-15)
 
 The web admin page needed to correct a learner's instrument, tone, or

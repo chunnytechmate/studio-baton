@@ -12,12 +12,12 @@ thing produces tests that pass while production fails.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-from ..domain.models import Learner, Piece, Session, Work
-from ..errors import ConfigError, StateError
+from ..domain.models import Learner, LessonSlot, Piece, Session, Work, weekday_rank
+from ..errors import ConfigError, StateError, UsageError
 from .db.base import LearnerStore
 from .docs.base import (
     Block,
@@ -41,11 +41,13 @@ class FakeLearnerStore:
         sessions: list[Session] | None = None,
         pieces: list[Piece] | None = None,
         works: list[Work] | None = None,
+        slots: list[LessonSlot] | None = None,
     ) -> None:
         self.learners = list(learners or [])
         self.sessions = list(sessions or [])
         self.pieces = list(pieces or [])
         self.works = list(works or [])
+        self.slots = list(slots or [])
         self.closed = False
         #: Set to an exception to make every call raise: for testing the
         #: failover and error paths without an actual outage.
@@ -242,6 +244,42 @@ class FakeLearnerStore:
         )
         self.works.append(created)
         return created
+
+    # -- lesson slots --------------------------------------------------------
+
+    def list_slots(self, learner_id: str | None = None) -> list[LessonSlot]:
+        self._check()
+        if learner_id is None:
+            found = list(self.slots)
+        else:
+            found = [item for item in self.slots if item.learner_id == str(learner_id)]
+        return sorted(found, key=lambda item: (weekday_rank(item.weekday), item.start))
+
+    def set_slots(
+        self, learner_id: str, slots: Sequence[tuple[str, str]]
+    ) -> list[LessonSlot]:
+        self._check()
+        seen: set[tuple[str, str]] = set()
+        for weekday, start in slots:
+            if (weekday, start) in seen:
+                raise UsageError(
+                    f"The slot {weekday} {start} appears twice in one request.",
+                    remedy="Send each hour once; a longer lesson is two "
+                    "consecutive slots.",
+                )
+            seen.add((weekday, start))
+        self.slots = [item for item in self.slots if item.learner_id != str(learner_id)]
+        created = [
+            LessonSlot(
+                id=str(next(self._ids)),
+                learner_id=str(learner_id),
+                weekday=weekday,
+                start=start,
+            )
+            for weekday, start in slots
+        ]
+        self.slots.extend(created)
+        return self.list_slots(str(learner_id))
 
     # -- lifecycle ---------------------------------------------------------
 

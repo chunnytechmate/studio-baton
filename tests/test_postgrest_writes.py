@@ -56,6 +56,13 @@ def _store() -> PostgrestStore:
                 video_link="video_link",
                 performed_date="performed_date",
             ),
+            slots=fields(
+                "lesson_slots",
+                id="id",
+                learner_id="learner_id",
+                weekday="weekday",
+                start_time="start_time",
+            ),
         ),
     )
 

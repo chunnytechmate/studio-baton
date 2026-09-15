@@ -21,6 +21,7 @@ class Schema:
     sessions: FieldMap
     pieces: FieldMap
     works: FieldMap
+    slots: FieldMap
 
     @classmethod
     def from_config(cls, config: Config) -> Schema:
@@ -60,5 +61,12 @@ class Schema:
                 columns=fields.get("work", {}),
                 columns_setting="db.fields.work",
                 required=("id", "learner_id", "title"),
+            ),
+            slots=FieldMap.build(
+                table=str(tables.get("lesson_slots", "lesson_slots")),
+                table_setting="db.tables.lesson_slots",
+                columns=fields.get("lesson_slot", {}),
+                columns_setting="db.fields.lesson_slot",
+                required=("id", "learner_id", "weekday", "start_time"),
             ),
         )

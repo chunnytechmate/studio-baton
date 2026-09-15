@@ -12,11 +12,11 @@ identifiers are validated before they are ever interpolated into SQL.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from ...domain.models import Learner, Piece, Session, Work
+from ...domain.models import Learner, LessonSlot, Piece, Session, Work
 from ...errors import ConfigError
 
 #: A plain SQL identifier. Anything else is rejected rather than quoted, so a
@@ -285,6 +285,33 @@ class LearnerStore(Protocol):
 
     def add_work(self, work: Work) -> Work:
         """Record a finished work. Returns it with its assigned id."""
+        ...
+
+    # -- lesson slots --------------------------------------------------------
+
+    def list_slots(self, learner_id: str | None = None) -> list[LessonSlot]:
+        """Recurring weekly slots, ordered Monday-first then by start time.
+
+        Every slot in the studio when ``learner_id`` is ``None``, one
+        learner's slots otherwise. The all-studio read is what the clash
+        gate in ``learner schedule-set`` checks against, so it must stay a
+        single round trip, not a query per learner.
+        """
+        ...
+
+    def set_slots(
+        self, learner_id: str, slots: Sequence[tuple[str, str]]
+    ) -> list[LessonSlot]:
+        """Replace a learner's whole weekly schedule in one transaction.
+
+        ``slots`` is the full final set of ``(weekday, start)`` pairs; the
+        caller sends everything, so a retry cannot double-book. The same
+        contract the dashboard tags use. Duplicates within ``slots`` are a
+        :class:`~baton.errors.UsageError`; whether a slot may be taken at
+        all (another learner holding the same weekday and start) is checked
+        by the caller, which knows the other learners' statuses. Returns the
+        stored set, ids included.
+        """
         ...
 
     # -- lifecycle ---------------------------------------------------------

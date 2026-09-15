@@ -13,15 +13,15 @@ and 5xx are retried with backoff and a lost connection becomes a typed
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
 from ...core.config import Config
 from ...core.retry import http_request
-from ...domain.models import Learner, Piece, Session, Work
-from ...errors import ConfigError, StateError, UpstreamError
+from ...domain.models import Learner, LessonSlot, Piece, Session, Work, weekday_rank
+from ...errors import ConfigError, StateError, UpstreamError, UsageError
 from .base import FieldMap
 from .mapping import Schema
 
@@ -536,6 +536,78 @@ class PostgrestStore:
         )
         return self._represented(created, "work", self.driver, self._work)
 
+    # -- lesson slots --------------------------------------------------------
+
+    def _slot(self, row: dict[str, Any]) -> LessonSlot:
+        fields = self.schema.slots
+        return LessonSlot(
+            id=_text(row.get(fields.column("id"))),
+            learner_id=_text(row.get(fields.column("learner_id"))),
+            weekday=_text(row.get(fields.column("weekday"))),
+            start=_text(row.get(fields.column("start_time"))),
+            raw=row,
+        )
+
+    def list_slots(self, learner_id: str | None = None) -> list[LessonSlot]:
+        fields = self.schema.slots
+        filters = ""
+        if learner_id is not None:
+            filters = f"{fields.column('learner_id')}=eq.{quote(str(learner_id))}"
+        rows = self._rows(fields, filters=filters)
+        # Weekday words do not sort into a week on their own (Friday would
+        # lead), so the Monday-first order is applied here rather than in the
+        # query string.
+        slots = [self._slot(row) for row in rows]
+        slots.sort(key=lambda slot: (weekday_rank(slot.weekday), slot.start))
+        return slots
+
+    def set_slots(
+        self, learner_id: str, slots: Sequence[tuple[str, str]]
+    ) -> list[LessonSlot]:
+        fields = self.schema.slots
+        seen: set[tuple[str, str]] = set()
+        for weekday, start in slots:
+            if (weekday, start) in seen:
+                raise UsageError(
+                    f"The slot {weekday} {start} appears twice in one request.",
+                    remedy="Send each hour once; a longer lesson is two "
+                    "consecutive slots.",
+                )
+            seen.add((weekday, start))
+
+        # Plain PostgREST has no multi-statement transaction, so the replace
+        # is an ordered pair: clear, then insert the whole set at once. A
+        # failure between the two leaves this learner with no slots (a retry
+        # re-sends the full set) rather than a mix of old and new hours.
+        self._request(
+            "DELETE",
+            fields.table,
+            params=f"{fields.column('learner_id')}=eq.{quote(str(learner_id))}",
+        )
+        if slots:
+            columns = (
+                fields.column("learner_id"),
+                fields.column("weekday"),
+                fields.column("start_time"),
+            )
+            body = [
+                dict(zip(columns, (learner_id, weekday, start), strict=True))
+                for weekday, start in slots
+            ]
+            created = self._request(
+                "POST", fields.table, json_body=body, prefer="return=representation"
+            )
+            rows = created if isinstance(created, list) else [created]
+            if not rows or not isinstance(rows[0], dict):
+                raise UpstreamError(
+                    f"{self.driver} accepted the schedule but returned no "
+                    "representation to read the assigned ids from.",
+                    service=self.driver,
+                    remedy="The rows may exist on the server: check for them "
+                    "before retrying, or this replace will run twice.",
+                )
+        return self.list_slots(learner_id)
+
     # -- lifecycle ---------------------------------------------------------
 
     def health(self) -> None:
@@ -545,6 +617,7 @@ class PostgrestStore:
             self.schema.sessions,
             self.schema.pieces,
             self.schema.works,
+            self.schema.slots,
         ):
             self._request("GET", fields.table, params=f"{self._select_params(fields)}&limit=1")
 

@@ -215,4 +215,7 @@ def test_learner_list_json_is_unchanged_by_the_piece_annotation(studio, capsys):
         "current_piece_id",
         "is_active",
         "deleted_at",
+        # Added by the weekly-slots feature (1.7.0), not by the piece
+        # annotation: the roster carries each learner's schedule.
+        "slots",
     }

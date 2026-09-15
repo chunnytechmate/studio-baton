@@ -118,3 +118,54 @@ class Work:
             "drive_link": self.drive_link,
             "performed_date": self.performed_date,
         }
+
+
+#: The seven weekday names a slot may carry, Monday first. These are the
+#: words the Notion dashboard's day tags use, chosen over integers so the two
+#: stores never need a translation table between them.
+WEEKDAYS: tuple[str, ...] = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
+
+
+def weekday_rank(weekday: str) -> int:
+    """Where a weekday name sits in a Monday-first week.
+
+    Raises:
+        ValueError: The name is not one of the seven. Callers that accept
+            user input validate first; this is the ordering key, not a parser.
+    """
+    return WEEKDAYS.index(weekday)
+
+
+@dataclass(frozen=True)
+class LessonSlot:
+    """One recurring weekly hour: a learner, a weekday, a start time.
+
+    The calendar holds booked lessons with real dates; this is the standing
+    weekly pattern behind them. ``start`` is a 24-hour ``HH:MM`` string, kept
+    as text on purpose: it names a time of day, never a moment in time, so a
+    timezone would be a lie. ``duration_minutes`` is deliberately absent: a
+    slot *is* one hour in this model, and the booking pipeline decides real
+    event lengths when it creates them.
+    """
+
+    id: str
+    learner_id: str
+    weekday: str
+    start: str
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "learner_id": self.learner_id,
+            "weekday": self.weekday,
+            "start": self.start,
+        }

@@ -16,11 +16,11 @@ a second store just produces the same error twice and hides the real cause.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import Any
 
-from ...domain.models import Learner, Piece, Session, Work
+from ...domain.models import Learner, LessonSlot, Piece, Session, Work
 from ...errors import UpstreamError
 from .base import LearnerStore
 
@@ -104,6 +104,9 @@ class FallbackStore:
     def list_works(self, learner_id: str) -> list[Work]:
         return self._read("list_works", learner_id)
 
+    def list_slots(self, learner_id: str | None = None) -> list[LessonSlot]:
+        return self._read("list_slots", learner_id)
+
     # -- writes ------------------------------------------------------------
 
     def set_current_piece(self, learner_id: str, piece_id: str | None) -> None:
@@ -141,6 +144,11 @@ class FallbackStore:
 
     def add_work(self, work: Work) -> Work:
         return self._write("add_work", work)
+
+    def set_slots(
+        self, learner_id: str, slots: Sequence[tuple[str, str]]
+    ) -> list[LessonSlot]:
+        return self._write("set_slots", learner_id, slots)
 
     # -- lifecycle ---------------------------------------------------------
 

@@ -55,6 +55,7 @@ db:
     sessions: sessions
     pieces: pieces
     works: works
+    lesson_slots: lesson_slots
 
   # Column names, so an existing schema can be adopted without migrating it.
   fields:
@@ -93,6 +94,11 @@ db:
       video_link: video_link
       drive_link: drive_link
       performed_date: performed_date
+    lesson_slot:
+      id: id
+      learner_id: learner_id
+      weekday: weekday
+      start_time: start_time
 
 # ---------------------------------------------------------------------------
 # Session selection

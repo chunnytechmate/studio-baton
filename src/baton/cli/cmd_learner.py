@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from ..adapters.db import open_store
 from ..adapters.docs import VIDEO_LINK_BLOCKS, find_video_link, open_docs
 from ..adapters.docs.base import PreservePolicy
-from ..domain.models import Learner, Session, Work
+from ..domain.models import WEEKDAYS, Learner, Session, Work
 from ..domain.notion_urls import detect_week, parse_page_id
 from ..domain.prep import SectionRules
 from ..domain.resolve import normalise, resolve_learner
@@ -328,6 +328,42 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     edit.add_argument("--dry-run", action="store_true", help="Show the change, and stop.")
     edit.set_defaults(handler=handle_edit)
 
+    schedule = group.add_parser(
+        "schedule",
+        help="Show a learner's recurring weekly slots.",
+        description=(
+            "The standing weekly pattern: which days, what times. The "
+            "calendar holds booked lessons with real dates; this is what "
+            "backs them. Empty is a normal answer."
+        ),
+    )
+    schedule.add_argument("name", metavar="NAME")
+    schedule.set_defaults(handler=handle_schedule)
+
+    schedule_set = group.add_parser(
+        "schedule-set",
+        help="Replace a learner's whole weekly schedule.",
+        description=(
+            "Sends the full final set: every --slot is the whole schedule, "
+            "so a retry cannot double-book. Omitting --slot clears it. A "
+            "slot held by another active learner refuses the whole save and "
+            "names them; slots of learners who stopped or were trashed "
+            "never clash, because they are not coming. One slot is one "
+            "hour, so a two-hour lesson is two consecutive slots."
+        ),
+    )
+    schedule_set.add_argument("name", metavar="NAME")
+    schedule_set.add_argument(
+        "--slot",
+        action="append",
+        default=None,
+        metavar="DAY HH:MM",
+        help='One weekly hour, e.g. "Monday 16:00". Repeat the flag for '
+        "every slot; the set replaces the old schedule entirely.",
+    )
+    schedule_set.add_argument("--dry-run", action="store_true", help="Show the change, and stop.")
+    schedule_set.set_defaults(handler=handle_schedule_set)
+
 
 def _require_subcommand(ctx: Context) -> Exit:
     raise UsageError(
@@ -418,6 +454,7 @@ def handle_list(ctx: Context) -> Exit:
             everyone = store.list_learners(include_trashed=True)
             learners = [item for item in everyone if item.deleted_at]
             titles = {p.id: p.title for p in store.list_pieces()} if learners else {}
+            by_learner: dict[str, list[dict[str, Any]]] = {}
         else:
             everyone = store.list_learners()
             learners = everyone if ctx.args.all else [item for item in everyone if item.is_active]
@@ -426,6 +463,14 @@ def handle_list(ctx: Context) -> Exit:
             # catalogue is small, and knowing who is on what without a second
             # command is the whole point of a roster.
             titles = {p.id: p.title for p in store.list_pieces()} if learners else {}
+            # The weekly slots ride along so a roster consumer (the admin page)
+            # reads everything in one call. One query for every learner, not
+            # one per learner; trashed rows carry none, so that branch skips
+            # the read entirely.
+            by_learner = {}
+            if learners:
+                for slot in store.list_slots():
+                    by_learner.setdefault(slot.learner_id, []).append(slot.to_dict())
     finally:
         store.close()
 
@@ -444,7 +489,9 @@ def handle_list(ctx: Context) -> Exit:
         return Exit.OK
 
     payload = {
-        "learners": [item.to_dict() for item in learners],
+        "learners": [
+            dict(item.to_dict(), slots=by_learner.get(item.id, [])) for item in learners
+        ],
         "count": len(learners),
         "scope": "all" if ctx.args.all else "active",
         "hidden_inactive": hidden,
@@ -1052,6 +1099,130 @@ def handle_edit(ctx: Context) -> Exit:
     ctx.report.result(
         {"learner": written.to_dict(), "changes": fields},
         human=f"Changed {fields} on {written.name}. Nothing outside the row moved.",
+    )
+    return Exit.OK
+
+
+_SLOT_TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
+
+
+def _parse_slot(raw: str) -> tuple[str, str]:
+    """One ``--slot`` value, ``"Monday 16:00"``, into its canonical parts.
+
+    Raises:
+        UsageError: Not a weekday name and a 24-hour time, in that order.
+    """
+    parts = raw.split()
+    if len(parts) != 2:
+        raise UsageError(
+            f"`{raw}` is not a slot.",
+            remedy='A slot is "DAY HH:MM", e.g. "Monday 16:00".',
+        )
+    day_word, time_word = parts
+    weekday = next((day for day in WEEKDAYS if day.casefold() == day_word.casefold()), "")
+    if not weekday:
+        raise UsageError(
+            f"`{day_word}` is not a weekday.",
+            remedy=f"A slot's day is one of: {', '.join(WEEKDAYS)}.",
+        )
+    match = _SLOT_TIME.fullmatch(time_word)
+    if not match:
+        raise UsageError(
+            f"`{time_word}` is not a 24-hour time.",
+            remedy='A slot\'s time is "HH:MM", e.g. "16:00".',
+        )
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if hour > 23 or minute > 59:
+        raise UsageError(
+            f"`{time_word}` is not a time of day.",
+            remedy="Hours run 00-23 and minutes 00-59.",
+        )
+    return weekday, f"{hour:02d}:{minute:02d}"
+
+
+def _parse_slots(raw_slots: list[str] | None) -> list[tuple[str, str]]:
+    """Every ``--slot`` value, refusing an in-set duplicate before any read."""
+    parsed = [_parse_slot(raw) for raw in raw_slots or []]
+    seen: set[tuple[str, str]] = set()
+    for slot in parsed:
+        if slot in seen:
+            raise UsageError(
+                f"The slot {slot[0]} {slot[1]} appears twice in one request.",
+                remedy="Send each hour once; a longer lesson is two consecutive slots.",
+            )
+        seen.add(slot)
+    return parsed
+
+
+def handle_schedule(ctx: Context) -> Exit:
+    store = _store(ctx)
+    try:
+        learner = _resolve(ctx, store, ctx.args.name)
+        slots = store.list_slots(learner.id)
+    finally:
+        store.close()
+
+    payload = {"learner": learner.to_dict(), "slots": [slot.to_dict() for slot in slots]}
+    if not slots:
+        human = f"No slots recorded for {learner.name}."
+    else:
+        width = max(len(slot.weekday) for slot in slots)
+        human = "\n".join(f"  {slot.weekday:<{width}}  {slot.start}" for slot in slots)
+    ctx.report.result(payload, human=human)
+    return Exit.OK
+
+
+def handle_schedule_set(ctx: Context) -> Exit:
+    """Replace one learner's weekly schedule, whole set at a time.
+
+    The clash gate runs before the dry-run branch, so a dry run reports the
+    refusal it would refuse (the same order ``calendar book`` uses). Slots
+    held by inactive or trashed learners never clash: they are not coming.
+    """
+    slots = _parse_slots(ctx.args.slot)
+    store = _store(ctx)
+    try:
+        learner = _resolve(ctx, store, ctx.args.name)
+        others = {
+            item.id: item
+            for item in store.list_learners()
+            if item.id != learner.id and item.is_active
+        }
+        holders = {
+            (slot.weekday, slot.start): others[slot.learner_id].name
+            for slot in store.list_slots()
+            if slot.learner_id in others
+        }
+        for weekday, start in slots:
+            holder = holders.get((weekday, start))
+            if holder is not None:
+                raise GateError(
+                    f"{weekday} {start} is already {holder}'s slot.",
+                    missing=[
+                        {
+                            "field": "slot",
+                            "reason": f"{weekday} {start} is taken by {holder}",
+                            "how_to_fix": f"Pick another hour, or clear it from "
+                            f"{holder} first.",
+                        }
+                    ],
+                    remedy="Nothing was saved. The studio teaches one learner "
+                    "at a time, so one weekday-hour belongs to one learner.",
+                )
+        if ctx.args.dry_run:
+            ctx.report.result(
+                {"learner": learner.to_dict(), "slots": slots, "dry_run": True},
+                human=f"Would set {learner.name}'s schedule to "
+                f"{[f'{day} {start}' for day, start in slots]}.",
+            )
+            return Exit.OK
+        written = store.set_slots(learner.id, slots)
+    finally:
+        store.close()
+
+    ctx.report.result(
+        {"learner": learner.to_dict(), "slots": [slot.to_dict() for slot in written]},
+        human=f"Set {len(written)} slot(s) for {learner.name}. The old schedule is gone.",
     )
     return Exit.OK
 

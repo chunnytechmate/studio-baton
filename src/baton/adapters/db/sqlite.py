@@ -14,13 +14,13 @@ bound.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from ...core.config import Config
-from ...domain.models import Learner, Piece, Session, Work
-from ...errors import ConfigError, StateError, UpstreamError
+from ...domain.models import Learner, LessonSlot, Piece, Session, Work, weekday_rank
+from ...errors import ConfigError, StateError, UpstreamError, UsageError
 from .base import FieldMap
 from .mapping import Schema
 
@@ -573,6 +573,80 @@ class SqliteStore:
         rows = self._query(sql, (work_id,))
         return self._work(rows[0]) if rows else None
 
+    # -- lesson slots --------------------------------------------------------
+
+    def _slot(self, row: sqlite3.Row) -> LessonSlot:
+        fields = self.schema.slots
+        return LessonSlot(
+            id=_text(row[fields.column("id")]),
+            learner_id=_text(row[fields.column("learner_id")]),
+            weekday=_text(row[fields.column("weekday")]),
+            start=_text(row[fields.column("start_time")]),
+            raw=dict(row),
+        )
+
+    def list_slots(self, learner_id: str | None = None) -> list[LessonSlot]:
+        fields = self.schema.slots
+        self._ensure_columns(fields)
+        where = ""
+        params: tuple[Any, ...] = ()
+        if learner_id is not None:
+            where = f"{fields.column('learner_id')} = ?"
+            params = (learner_id,)
+        rows = self._query(self._select(fields, where=where), params)
+        # Weekday words do not sort into a week on their own (Friday would
+        # lead), so the Monday-first order is applied here rather than in SQL.
+        slots = [self._slot(row) for row in rows]
+        slots.sort(key=lambda slot: (weekday_rank(slot.weekday), slot.start))
+        return slots
+
+    def set_slots(
+        self, learner_id: str, slots: Sequence[tuple[str, str]]
+    ) -> list[LessonSlot]:
+        fields = self.schema.slots
+        self._ensure_columns(fields)
+        seen: set[tuple[str, str]] = set()
+        for weekday, start in slots:
+            if (weekday, start) in seen:
+                raise UsageError(
+                    f"The slot {weekday} {start} appears twice in one request.",
+                    remedy="Send each hour once; a longer lesson is two "
+                    "consecutive slots.",
+                )
+            seen.add((weekday, start))
+
+        # One transaction for the whole replace, so a failure halfway cannot
+        # leave this learner with half of their new schedule.
+        columns = (
+            fields.column("learner_id"),
+            fields.column("weekday"),
+            fields.column("start_time"),
+        )
+        placeholders = ", ".join("?" for _ in columns)
+        try:
+            self._db.execute(
+                f"DELETE FROM {fields.table} WHERE {fields.column('learner_id')} = ?",  # noqa: S608
+                (learner_id,),
+            )
+            for weekday, start in slots:
+                self._db.execute(
+                    f"INSERT INTO {fields.table} ({', '.join(columns)}) "  # noqa: S608
+                    f"VALUES ({placeholders})",
+                    (learner_id, weekday, start),
+                )
+            self._db.commit()
+        except sqlite3.IntegrityError as exc:
+            self._db.rollback()
+            raise UsageError(
+                f"The database refused the schedule: {exc}",
+                remedy="A duplicate slot is the usual cause; send each "
+                "weekday-hour pair once.",
+            ) from exc
+        except sqlite3.Error as exc:
+            self._db.rollback()
+            raise UpstreamError(f"SQLite write failed: {exc}", service="sqlite") from exc
+        return self.list_slots(learner_id)
+
     # -- lifecycle ---------------------------------------------------------
 
     def health(self) -> None:
@@ -587,6 +661,7 @@ class SqliteStore:
             self.schema.sessions,
             self.schema.pieces,
             self.schema.works,
+            self.schema.slots,
         ):
             self._ensure_columns(fields)
             self._query(self._select(fields) + " LIMIT 1")

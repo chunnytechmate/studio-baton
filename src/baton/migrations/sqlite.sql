@@ -69,6 +69,21 @@ CREATE TABLE IF NOT EXISTS works (
     created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- One row per recurring weekly hour: the day a learner comes and the time
+-- their lesson starts. The words in `weekday` are the same seven English day
+-- names the Notion dashboard tags use, so the two never need translating.
+-- The calendar holds the booked lessons; this table holds the standing
+-- weekly pattern behind them.
+CREATE TABLE IF NOT EXISTS lesson_slots (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    learner_id INTEGER NOT NULL REFERENCES learners(id) ON DELETE CASCADE,
+    weekday    TEXT    NOT NULL,
+    start_time TEXT    NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (learner_id, weekday, start_time)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_learner ON sessions (learner_id, number);
 CREATE INDEX IF NOT EXISTS idx_works_learner    ON works (learner_id, performed_date DESC);
+CREATE INDEX IF NOT EXISTS idx_lesson_slots_learner ON lesson_slots (learner_id, weekday, start_time);
 CREATE INDEX IF NOT EXISTS idx_learners_name    ON learners (name);
