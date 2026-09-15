@@ -299,9 +299,7 @@ class LearnerStore(Protocol):
         """
         ...
 
-    def set_slots(
-        self, learner_id: str, slots: Sequence[tuple[str, str]]
-    ) -> list[LessonSlot]:
+    def set_slots(self, learner_id: str, slots: Sequence[tuple[str, str]]) -> list[LessonSlot]:
         """Replace a learner's whole weekly schedule in one transaction.
 
         ``slots`` is the full final set of ``(weekday, start)`` pairs; the

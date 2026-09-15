@@ -255,17 +255,14 @@ class FakeLearnerStore:
             found = [item for item in self.slots if item.learner_id == str(learner_id)]
         return sorted(found, key=lambda item: (weekday_rank(item.weekday), item.start))
 
-    def set_slots(
-        self, learner_id: str, slots: Sequence[tuple[str, str]]
-    ) -> list[LessonSlot]:
+    def set_slots(self, learner_id: str, slots: Sequence[tuple[str, str]]) -> list[LessonSlot]:
         self._check()
         seen: set[tuple[str, str]] = set()
         for weekday, start in slots:
             if (weekday, start) in seen:
                 raise UsageError(
                     f"The slot {weekday} {start} appears twice in one request.",
-                    remedy="Send each hour once; a longer lesson is two "
-                    "consecutive slots.",
+                    remedy="Send each hour once; a longer lesson is two consecutive slots.",
                 )
             seen.add((weekday, start))
         self.slots = [item for item in self.slots if item.learner_id != str(learner_id)]

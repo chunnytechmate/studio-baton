@@ -76,9 +76,7 @@ def test_schedule_reads_the_seeded_slots(studio, capsys):
     assert call(studio, "schedule", "Ada Whitfield") == Exit.OK
 
     slots = payload(capsys)["slots"]
-    assert slots == [
-        {"id": "1", "learner_id": "1", "weekday": "Monday", "start": "16:00"}
-    ]
+    assert slots == [{"id": "1", "learner_id": "1", "weekday": "Monday", "start": "16:00"}]
 
 
 def test_schedule_orders_monday_first_then_time(studio, capsys):
@@ -158,6 +156,8 @@ def test_a_slot_held_by_another_active_learner_refuses_the_save(studio, capsys):
     # Ada's own slot is untouched.
     assert call(studio, "schedule", "Ada Whitfield") == Exit.OK
     assert payload(capsys)["slots"] != []
+
+
 def test_dry_run_reports_the_clash_it_would_refuse(studio):
     """The gate runs before the dry-run branch, same order as `calendar
     book`: a dry run must not say "would" about a save that could not happen."""

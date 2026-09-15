@@ -600,9 +600,7 @@ class SqliteStore:
         slots.sort(key=lambda slot: (weekday_rank(slot.weekday), slot.start))
         return slots
 
-    def set_slots(
-        self, learner_id: str, slots: Sequence[tuple[str, str]]
-    ) -> list[LessonSlot]:
+    def set_slots(self, learner_id: str, slots: Sequence[tuple[str, str]]) -> list[LessonSlot]:
         fields = self.schema.slots
         self._ensure_columns(fields)
         seen: set[tuple[str, str]] = set()
@@ -610,8 +608,7 @@ class SqliteStore:
             if (weekday, start) in seen:
                 raise UsageError(
                     f"The slot {weekday} {start} appears twice in one request.",
-                    remedy="Send each hour once; a longer lesson is two "
-                    "consecutive slots.",
+                    remedy="Send each hour once; a longer lesson is two consecutive slots.",
                 )
             seen.add((weekday, start))
 
@@ -639,8 +636,7 @@ class SqliteStore:
             self._db.rollback()
             raise UsageError(
                 f"The database refused the schedule: {exc}",
-                remedy="A duplicate slot is the usual cause; send each "
-                "weekday-hour pair once.",
+                remedy="A duplicate slot is the usual cause; send each weekday-hour pair once.",
             ) from exc
         except sqlite3.Error as exc:
             self._db.rollback()

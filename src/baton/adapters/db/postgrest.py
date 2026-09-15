@@ -561,17 +561,14 @@ class PostgrestStore:
         slots.sort(key=lambda slot: (weekday_rank(slot.weekday), slot.start))
         return slots
 
-    def set_slots(
-        self, learner_id: str, slots: Sequence[tuple[str, str]]
-    ) -> list[LessonSlot]:
+    def set_slots(self, learner_id: str, slots: Sequence[tuple[str, str]]) -> list[LessonSlot]:
         fields = self.schema.slots
         seen: set[tuple[str, str]] = set()
         for weekday, start in slots:
             if (weekday, start) in seen:
                 raise UsageError(
                     f"The slot {weekday} {start} appears twice in one request.",
-                    remedy="Send each hour once; a longer lesson is two "
-                    "consecutive slots.",
+                    remedy="Send each hour once; a longer lesson is two consecutive slots.",
                 )
             seen.add((weekday, start))
 

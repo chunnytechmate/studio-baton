@@ -489,9 +489,7 @@ def handle_list(ctx: Context) -> Exit:
         return Exit.OK
 
     payload = {
-        "learners": [
-            dict(item.to_dict(), slots=by_learner.get(item.id, [])) for item in learners
-        ],
+        "learners": [dict(item.to_dict(), slots=by_learner.get(item.id, [])) for item in learners],
         "count": len(learners),
         "scope": "all" if ctx.args.all else "active",
         "hidden_inactive": hidden,
@@ -1202,8 +1200,7 @@ def handle_schedule_set(ctx: Context) -> Exit:
                         {
                             "field": "slot",
                             "reason": f"{weekday} {start} is taken by {holder}",
-                            "how_to_fix": f"Pick another hour, or clear it from "
-                            f"{holder} first.",
+                            "how_to_fix": f"Pick another hour, or clear it from {holder} first.",
                         }
                     ],
                     remedy="Nothing was saved. The studio teaches one learner "

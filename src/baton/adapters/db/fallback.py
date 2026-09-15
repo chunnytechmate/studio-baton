@@ -145,9 +145,7 @@ class FallbackStore:
     def add_work(self, work: Work) -> Work:
         return self._write("add_work", work)
 
-    def set_slots(
-        self, learner_id: str, slots: Sequence[tuple[str, str]]
-    ) -> list[LessonSlot]:
+    def set_slots(self, learner_id: str, slots: Sequence[tuple[str, str]]) -> list[LessonSlot]:
         return self._write("set_slots", learner_id, slots)
 
     # -- lifecycle ---------------------------------------------------------
