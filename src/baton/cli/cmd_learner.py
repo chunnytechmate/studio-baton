@@ -300,10 +300,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     edit.add_argument("name", metavar="NAME")
-    edit.add_argument("--instrument", metavar="INSTRUMENT", default=None,
-                      help="The instrument, in the studio's words.")
-    edit.add_argument("--tone", metavar="TONE", default=None,
-                      help="The summary tone, e.g. standard, casual, child.")
+    edit.add_argument(
+        "--instrument",
+        metavar="INSTRUMENT",
+        default=None,
+        help="The instrument, in the studio's words.",
+    )
+    edit.add_argument(
+        "--tone",
+        metavar="TONE",
+        default=None,
+        help="The summary tone, e.g. standard, casual, child.",
+    )
     edit.add_argument(
         "--has-instrument",
         dest="has_instrument",
@@ -1016,7 +1024,7 @@ def handle_edit(ctx: Context) -> Exit:
         fields["instrument"] = args.instrument.strip()
     if args.tone is not None:
         if not args.tone.strip():
-            raise UsageError("The tone is empty.", remedy='Pass --tone standard, or leave it out.')
+            raise UsageError("The tone is empty.", remedy="Pass --tone standard, or leave it out.")
         fields["tone"] = args.tone.strip()
     if args.has_instrument is not None:
         fields["has_instrument"] = args.has_instrument
