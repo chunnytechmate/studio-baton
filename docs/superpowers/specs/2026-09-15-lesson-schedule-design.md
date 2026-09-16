@@ -168,3 +168,61 @@ page renders an empty column until its own deploy lands.
 1. Show the schedule on the Notion dashboard (a property mirroring slots).
 2. Feed Google Calendar from the schedule (no re-typing).
 3. Anything that writes to Supabase from outside `baton`.
+
+## Round 2 addendum (2026-09-15, later): standing events on Google Calendar
+
+Approved by the owner: approach A (standing weekly events), auto-sync
+after a web schedule save, events marked free (transparent). What the
+owner sees on their primary calendar (chunny.fujisawa@gmail.com) is one
+weekly recurring series per slot, titled `[icon ]Name · คาบประจำ`, one
+hour long, at the slot's weekday and start, forever.
+
+### Shape
+
+- One series per slot: `recurrence: RRULE:FREQ=WEEKLY;BYDAY=<mo..su>`,
+  `transparency: transparent`, marked with a private extended property
+  `batonStanding=1` plus `learnerId` so a sync can find and replace its
+  own events without touching anything a person typed.
+- The series starts at the *next* occurrence of the weekday (today never
+  counts, the same rule `whenever.py` gives weekday words).
+- The booking title shape is `Name (label N)`; standing titles never
+  contain ` (`, so the Scheduler's anchored matching cannot meet them.
+
+### Sync semantics
+
+- Full sync (`baton calendar standing-sync`): delete every standing
+  series, then create one per slot of every *active* learner. Inactive
+  learners' slots produce nothing, which is how someone who stopped
+  leaves the calendar. Idempotent; delete-before-create, no local state.
+- Scoped sync (`standing-sync --name X`): the same, for one learner's
+  events only. Fast enough to chain behind a web save.
+- `CalendarStore.list_between` filters standing events out entirely:
+  `calendar list`, `book`'s clash gate, and `in-progress` keep answering
+  only about booked lessons. The human still sees everything in the
+  calendar app, which is where standing times belong.
+- A learner deactivated through `/learners/status` is NOT auto-synced in
+  this round; the handover says to run a full standing-sync after
+  deactivating someone. (Known edge, accepted.)
+
+### Wiring
+
+- `POST /learners/schedule` (service): after baton accepts the schedule,
+  the service runs a scoped standing-sync for that learner, best-effort.
+  A calendar failure never fails the save; the response carries
+  `calendar_synced` (and `calendar_note` on failure) so the page can say
+  so.
+- Page: the save feedback appends the calendar note when present.
+
+### Testing
+
+- Fakes for everything (fake calendar gains standing support; pipeline
+  tests cover active-vs-inactive, scoped vs full, delete-before-create,
+  and the list_between filter).
+- One live round-trip against the real calendar with a clearly-named
+  `zz-standing-test` series: create, list, confirm the filter, delete,
+  confirm gone. Same session, like the Notion zz- learners.
+
+### Release
+
+1.8.0. Deploy order unchanged: PyPI release + venv reinstall here, then
+service restart, then the page deploy.

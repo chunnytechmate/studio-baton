@@ -26,10 +26,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from ..adapters.cal.base import CalendarEvent, CalendarStore
+from ..adapters.cal.base import CalendarEvent, CalendarStore, StandingSpec
 from ..adapters.db.base import LearnerStore
 from ..adapters.docs.base import DocStore
-from ..domain.models import Learner, Session
+from ..domain.models import WEEKDAYS, Learner, LessonSlot, Session
 from ..domain.status import DONE, IN_PROGRESS, NOT_STARTED, StatusVocabulary
 from ..domain.whenever import combine, parse_time, today_in
 from ..errors import BatonError, GateError, StateError, UsageError
@@ -82,14 +82,22 @@ def event_title(
     default_emoji: str = "",
 ) -> str:
     """The event's title, prefixed by the instrument's emoji when configured."""
-    icon = ""
-    if learner.instrument:
-        lookup = {str(k).casefold(): str(v) for k, v in (emoji or {}).items()}
-        icon = lookup.get(learner.instrument.strip().casefold(), default_emoji)
-    else:
-        icon = default_emoji
+    icon = event_icon(learner, emoji=emoji or {}, default_emoji=default_emoji)
     prefix = f"{icon} " if icon else ""
     return f"{prefix}{learner.name} ({session_label} {session_number})"
+
+
+def event_icon(learner: Learner, *, emoji: dict[str, Any], default_emoji: str = "") -> str:
+    """The instrument's configured emoji, or the studio's default, or none.
+
+    An instrument a studio has not mapped falls back to the default rather
+    than to nothing, so a booked lesson is never the one event on the
+    calendar without an icon.
+    """
+    if learner.instrument:
+        lookup = {str(k).casefold(): str(v) for k, v in emoji.items()}
+        return lookup.get(learner.instrument.strip().casefold(), default_emoji)
+    return default_emoji
 
 
 class Scheduler:
@@ -501,3 +509,172 @@ class Scheduler:
             return title.startswith(bare) or any(title.startswith(prefix) for prefix in with_icon)
 
         return [event for event in self.calendar.list_between(start, end) if ours(event.title)]
+
+
+# -- the standing weekly schedule ---------------------------------------------
+
+
+@dataclass
+class StandingResult:
+    """What one standing sync did, and what stands now."""
+
+    scope: str
+    """``"all"`` for the whole studio, otherwise the learner's name."""
+    deleted: int
+    created: int
+    standing: list[dict[str, Any]]
+    """The series on the calendar after the sync, as plain payloads."""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "scope": self.scope,
+            "deleted": self.deleted,
+            "created": self.created,
+            "standing": self.standing,
+        }
+
+
+class StandingSync:
+    """Keeps the calendar's standing weekly series equal to the schedule.
+
+    The database is the source of truth and the calendar is a projection, so
+    the sync is a rebuild: every series this sync owns is deleted, then one
+    series per slot of every active learner is created. Delete-before-create
+    with no local state means running it twice lands on the same answer, and
+    an inactive learner's slots simply produce nothing, which is how someone
+    who stopped leaves the calendar.
+
+    The series titles deliberately never contain ``" ("``, so the booking
+    pipeline's anchored title matching cannot meet them, and the calendar
+    store keeps them out of ``list_between`` besides.
+    """
+
+    def __init__(
+        self,
+        calendar: CalendarStore,
+        *,
+        timezone: str = "UTC",
+        event_emoji: dict[str, Any] | None = None,
+        default_emoji: str = "",
+        default_minutes: int = 60,
+    ) -> None:
+        self.calendar = calendar
+        self.timezone = timezone
+        self.event_emoji = event_emoji or {}
+        self.default_emoji = default_emoji
+        self.default_minutes = default_minutes
+
+    def _first_date(self, weekday: str, *, today: date | None) -> date:
+        """The next occurrence of a weekday: today never counts.
+
+        The same rule ``whenever.py`` gives weekday words, so a Monday slot
+        synced on a Monday starts next Monday, never the Monday already half
+        gone.
+        """
+        base = today or today_in(self.timezone)
+        target = WEEKDAYS.index(weekday)
+        return base + timedelta(days=(target - base.weekday()) % 7 or 7)
+
+    def _end_of(self, start: str) -> str:
+        hour, minute = (int(part) for part in start.split(":"))
+        total = hour * 60 + minute + self.default_minutes
+        if total >= 24 * 60:
+            raise UsageError(
+                f"A slot starting {start} cannot run {self.default_minutes} minutes "
+                "without crossing midnight.",
+                remedy="Standing slots are times of day, not moments; a series may "
+                "not spill into the next day.",
+            )
+        return f"{total // 60:02d}:{total % 60:02d}"
+
+    def _spec(self, learner: Learner, slot: LessonSlot) -> StandingSpec:
+        icon = event_icon(learner, emoji=self.event_emoji, default_emoji=self.default_emoji)
+        prefix = f"{icon} " if icon else ""
+        return StandingSpec(
+            learner_id=learner.id,
+            # No " (" anywhere: the booking matcher anchors on that shape and
+            # must never meet a standing series.
+            title=f"{prefix}{learner.name} · คาบประจำ",
+            weekday=slot.weekday,
+            start=slot.start,
+            end=self._end_of(slot.start),
+            timezone=self.timezone,
+            description=(
+                f"{learner.name} คาบประจำสัปดาห์ (สร้างโดย baton จากตารางเวลาเรียน "
+                "แก้เวลาที่ระบบแล้ว sync ใหม่ อย่าแก้ที่ปฏิทิน)"
+            ),
+        )
+
+    def sync(
+        self,
+        store: LearnerStore,
+        *,
+        learner: Learner | None = None,
+        today: date | None = None,
+        dry_run: bool = False,
+    ) -> StandingResult:
+        """Rebuild the standing set, whole studio or one learner.
+
+        A scoped sync (``learner`` given) also covers an inactive learner:
+        their series are deleted and nothing replaces them, so the scoped
+        path is what a web save chains for whoever it just wrote.
+
+        Raises:
+            UsageError: A slot's hour plus the default minutes crosses
+                midnight.
+        """
+        if learner is not None:
+            stale = self.calendar.list_standing(learner.id)
+            wanted: list[tuple[Learner, LessonSlot]] = (
+                [(learner, slot) for slot in store.list_slots(learner.id)]
+                if learner.is_active
+                else []
+            )
+            scope = learner.name
+        else:
+            stale = self.calendar.list_standing()
+            active = {item.id: item for item in store.list_learners() if item.is_active}
+            wanted = [
+                (active[slot.learner_id], slot)
+                for slot in store.list_slots()
+                if slot.learner_id in active
+            ]
+            scope = "all"
+
+        if dry_run:
+            return StandingResult(
+                scope=scope,
+                deleted=0,
+                created=0,
+                standing=[
+                    {
+                        "would_delete": event.id,
+                        "title": event.title,
+                    }
+                    for event in stale
+                ]
+                + [
+                    {
+                        "would_create": f"{learner_.name} {slot.weekday} {slot.start}",
+                    }
+                    for learner_, slot in wanted
+                ],
+            )
+
+        for event in stale:
+            self.calendar.delete(event.id)
+        for learner_, slot in wanted:
+            spec = self._spec(learner_, slot)
+            self.calendar.create_standing(
+                spec, first_date=self._first_date(spec.weekday, today=today).isoformat()
+            )
+
+        standing = self.calendar.list_standing(None if learner is None else learner.id)
+        return StandingResult(
+            scope=scope,
+            deleted=len(stale),
+            created=len(wanted),
+            standing=[
+                {"id": event.id, "title": event.title, "start": event.start} for event in standing
+            ],
+        )

@@ -653,6 +653,10 @@ class FakeCalendar:
     def __init__(self, events: list[Any] | None = None) -> None:
         self.events: list[Any] = list(events or [])
         self.deleted: list[str] = []
+        #: Standing series keyed by event id: the spec each one was built
+        #: from, so `list_standing` can filter by learner without pretending
+        #: CalendarEvent carries fields it does not have.
+        self.standing_specs: dict[str, Any] = {}
         self.fail_with: Exception | None = None
         self._ids = itertools.count(start=1)
 
@@ -676,14 +680,47 @@ class FakeCalendar:
 
     def list_between(self, start: str, end: str) -> list[Any]:
         self._check()
-        found = [event for event in self.events if start <= event.start < end]
+        # Standing series are not bookings: the real driver keeps them out of
+        # range answers and so does the fake, or a pipeline tested here would
+        # behave differently in production.
+        found = [
+            event
+            for event in self.events
+            if start <= event.start < end and event.id not in self.standing_specs
+        ]
         return sorted(found, key=lambda event: event.start)
 
     def delete(self, event_id: str) -> None:
         self._check()
         # Already gone is the desired state, matching the real driver.
         self.events = [event for event in self.events if event.id != event_id]
+        self.standing_specs.pop(event_id, None)
         self.deleted.append(event_id)
+
+    def list_standing(self, learner_id: str | None = None) -> list[Any]:
+        self._check()
+        wanted = [
+            event
+            for event in self.events
+            if event.id in self.standing_specs
+            and (learner_id is None or self.standing_specs[event.id].learner_id == str(learner_id))
+        ]
+        return sorted(wanted, key=lambda event: (event.title, event.start))
+
+    def create_standing(self, spec: Any, *, first_date: str) -> Any:
+        self._check()
+        from .cal.base import CalendarEvent
+
+        created = CalendarEvent(
+            id=f"st{next(self._ids)}",
+            title=spec.title,
+            start=f"{first_date}T{spec.start}:00",
+            end=f"{first_date}T{spec.end}:00",
+            description=spec.description,
+        )
+        self.events.append(created)
+        self.standing_specs[created.id] = spec
+        return created
 
     def health(self) -> None:
         self._check()

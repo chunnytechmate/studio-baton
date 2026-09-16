@@ -26,11 +26,15 @@ from typing import Any, ClassVar, TypeVar
 
 from ...core.config import Config
 from ...core.retry import RETRYABLE_STATUS, retry
+from ...domain.models import WEEKDAYS
 from ...errors import BatonError, ConfigError, UpstreamError
 from .. import google_http
-from .base import CalendarEvent
+from .base import STANDING_MARKER, CalendarEvent, StandingSpec
 
 _T = TypeVar("_T")
+
+#: Google's two-letter day codes, indexed the same as WEEKDAYS (Monday 0).
+_BYDAY = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
 
 class _Transient(Exception):
@@ -167,6 +171,16 @@ class GoogleCalendar:
             description=str(raw.get("description", "")),
         )
 
+    @staticmethod
+    def _is_standing(raw: dict[str, Any]) -> bool:
+        """Whether an event carries this sync's own marker.
+
+        Instances of a marked series inherit the master's private extended
+        properties, so one check covers masters and occurrences alike.
+        """
+        private = (raw.get("extendedProperties") or {}).get("private") or {}
+        return private.get(STANDING_MARKER) == "1"
+
     def create(self, event: CalendarEvent) -> CalendarEvent:
         request = self.service.events().insert(
             calendarId=self.calendar_id,
@@ -190,7 +204,10 @@ class GoogleCalendar:
             maxResults=250,
         )
         response = _calendar_call("listing", request.execute, attempts=self.attempts)
-        return [self._event(item) for item in response.get("items", [])]
+        # Standing series are the weekly pattern, not lessons anybody booked;
+        # every booking command keeps meaning the latter.
+        booked = [item for item in response.get("items", []) if not self._is_standing(item)]
+        return [self._event(item) for item in booked]
 
     def delete(self, event_id: str) -> None:
         request = self.service.events().delete(calendarId=self.calendar_id, eventId=event_id)
@@ -208,6 +225,50 @@ class GoogleCalendar:
                 raise
 
         _calendar_call("delete", once, attempts=self.attempts)
+
+    def list_standing(self, learner_id: str | None = None) -> list[CalendarEvent]:
+        """Every series this sync owns, by its private marker.
+
+        The marker search returns series masters (not their occurrences),
+        whatever their date, and never an event a person typed: only events
+        carrying the marker answer, and nobody else writes it.
+        """
+        filters = [f"{STANDING_MARKER}=1"]
+        if learner_id is not None:
+            filters.append(f"learnerId={learner_id}")
+        request = self.service.events().list(
+            calendarId=self.calendar_id,
+            privateExtendedProperty=filters,
+            maxResults=250,
+        )
+        response = _calendar_call("standing listing", request.execute, attempts=self.attempts)
+        return [self._event(item) for item in response.get("items", [])]
+
+    def create_standing(self, spec: StandingSpec, *, first_date: str) -> CalendarEvent:
+        """Create one weekly series starting on ``first_date``.
+
+        ``BYDAY`` states the weekday in the rule itself, so the series means
+        the same thing even if the start date is ever shifted by hand.
+        """
+        day = _BYDAY[WEEKDAYS.index(spec.weekday)]
+        request = self.service.events().insert(
+            calendarId=self.calendar_id,
+            body={
+                "summary": spec.title,
+                "description": spec.description,
+                # Free, not busy: the real lesson that gets booked on top of
+                # this hour must be the one the calendar counts as taken.
+                "transparency": "transparent",
+                "start": {"dateTime": f"{first_date}T{spec.start}:00", "timeZone": spec.timezone},
+                "end": {"dateTime": f"{first_date}T{spec.end}:00", "timeZone": spec.timezone},
+                "recurrence": [f"RRULE:FREQ=WEEKLY;BYDAY={day}"],
+                "extendedProperties": {
+                    "private": {STANDING_MARKER: "1", "learnerId": spec.learner_id}
+                },
+            },
+        )
+        created = _calendar_call("standing series", request.execute, attempts=self.attempts)
+        return self._event(created)
 
     def health(self) -> None:
         """Prove the credentials still work.

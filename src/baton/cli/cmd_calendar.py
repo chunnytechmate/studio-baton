@@ -23,7 +23,7 @@ from ..domain.whenever import combine, parse_date, parse_schedule, parse_time, t
 from ..errors import BatonError, UsageError
 from ..exits import Exit
 from ..pipelines.learner import LearnerHistory
-from ..pipelines.schedule import Scheduler
+from ..pipelines.schedule import Scheduler, StandingSync
 from .guard import guarded
 from .naming import warn_if_inactive
 
@@ -102,6 +102,35 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     when.add_argument("expression", metavar="EXPR")
     when.set_defaults(handler=handle_date)
+
+    standing = group.add_parser(
+        "standing",
+        help="Show the standing weekly series the schedule keeps on the calendar.",
+        description=(
+            "One series per lesson slot of every active learner, marked so "
+            "this list never includes an event a person typed. Booked "
+            "lessons (the `Name (Week N)` kind) are a different thing and "
+            "live on `calendar list`."
+        ),
+    )
+    standing.add_argument("--name", metavar="NAME", default=None, help="One learner only.")
+    standing.set_defaults(handler=handle_standing)
+
+    standing_sync = group.add_parser(
+        "standing-sync",
+        help="Rebuild the standing weekly series from the schedule.",
+        description=(
+            "Deletes every series this sync owns, then creates one per slot "
+            "of every active learner (--name: that learner only, whose "
+            "series are deleted even if inactive, which is how someone who "
+            "stopped leaves the calendar). Idempotent. A learner deactivated "
+            "through the web is not auto-synced: run this once after "
+            "deactivating somebody."
+        ),
+    )
+    standing_sync.add_argument("--name", metavar="NAME", default=None, help="One learner only.")
+    standing_sync.add_argument("--dry-run", action="store_true", help="Show the plan, and stop.")
+    standing_sync.set_defaults(handler=handle_standing_sync)
 
 
 def _require_subcommand(ctx: Context) -> Exit:
@@ -500,5 +529,88 @@ def handle_date(ctx: Context) -> Exit:
             "timezone": ctx.config.timezone,
         },
         human=day.isoformat(),
+    )
+    return Exit.OK
+
+
+# -- the standing weekly schedule ---------------------------------------------
+
+
+def _standing(ctx: Context) -> StandingSync:
+    return StandingSync(
+        open_calendar(ctx.config),
+        timezone=ctx.config.timezone,
+        event_emoji=ctx.config.section("calendar.event_emoji"),
+        default_emoji=str(ctx.config.get("calendar.default_event_emoji", "")),
+        default_minutes=int(ctx.config.get("calendar.default_minutes", 60)),
+    )
+
+
+def _resolve_for_standing(ctx: Context, store, name: str | None):
+    """The learner a scoped standing command works on, if one was named.
+
+    Inactive learners resolve on purpose: deleting their series is half of
+    what a scoped sync is for. Trashed learners do not, exactly like every
+    other command."""
+    if name is None:
+        return None
+    learner = resolve_learner(
+        name,
+        store.list_learners(),
+        aliases=ctx.config.get("db.aliases", {}) or {},
+        label=ctx.config.label("learner"),
+    )
+    warn_if_inactive(ctx, learner)
+    return learner
+
+
+@guarded("calendar")
+def handle_standing(ctx: Context) -> Exit:
+    sync = _standing(ctx)
+    store = open_store(ctx.config)
+    try:
+        learner = _resolve_for_standing(ctx, store, ctx.args.name)
+        learner_id = None if learner is None else learner.id
+        series = sync.calendar.list_standing(learner_id)
+    finally:
+        store.close()
+
+    payload = {
+        "scope": "all" if learner is None else learner.name,
+        "count": len(series),
+        "standing": [
+            {"id": event.id, "title": event.title, "start": event.start} for event in series
+        ],
+    }
+    if not series:
+        human = "No standing series on the calendar."
+    else:
+        human = "\n".join(f"  {event.title}  (from {event.start[:10]})" for event in series)
+    ctx.report.result(payload, human=human)
+    return Exit.OK
+
+
+@guarded("calendar")
+def handle_standing_sync(ctx: Context) -> Exit:
+    sync = _standing(ctx)
+    store = open_store(ctx.config)
+    try:
+        learner = _resolve_for_standing(ctx, store, ctx.args.name)
+        result = sync.sync(store, learner=learner, dry_run=ctx.args.dry_run)
+    finally:
+        store.close()
+
+    if ctx.args.dry_run:
+        ctx.report.result(
+            {"dry_run": True, **result.to_dict()},
+            human="Nothing was changed. The plan is in the JSON payload.",
+        )
+        return Exit.OK
+
+    ctx.report.result(
+        result.to_dict(),
+        human=f"Rebuilt the standing series for {result.scope}: deleted "
+        f"{result.deleted}, created {result.created}, {len(result.standing)} "
+        "now on the calendar.",
     )
     return Exit.OK

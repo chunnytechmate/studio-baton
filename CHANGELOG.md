@@ -4,6 +4,43 @@ Notable changes per release. Anything that changes what a studio has to do is
 under **Upgrading**; the rest is grouped by what it affects. Every release back
 to 0.1.0 has an entry, and every tag carries a GitHub release.
 
+## 1.8.0 (2026-09-15)
+
+The weekly schedule lived in the database but the calendar still had to be
+typed by hand. `calendar standing-sync` projects the schedule onto Google
+Calendar as one weekly recurring series per slot, so the studio's calendar
+shows who comes when forever, and re-running it after any change lands on
+exactly the same answer.
+
+### Calendar
+
+- **`baton calendar standing-sync [--name NAME] [--dry-run]`.** Rebuilds the
+  standing series: deletes every series this sync owns (found by a private
+  marker, so an event a person typed is never touched), then creates one
+  per slot of every active learner. `--name` scopes to one learner, whose
+  series are deleted even when inactive, which is how someone who stopped
+  leaves the calendar. Idempotent, delete-before-create, no local state.
+- **`baton calendar standing [--name NAME]`.** Lists the series the sync
+  owns, whatever their date.
+- Series titles are `[icon ]Name · คาบประจำ`, transparent (free), one hour
+  (or `calendar.default_minutes`), starting at the *next* occurrence of the
+  weekday: today never counts, the same rule weekday words get. Titles
+  never contain `" ("`, so the booking pipeline's anchored matching cannot
+  meet them.
+- **`CalendarStore.list_between` now filters standing series out**, so
+  `calendar list`, `book`'s clash gate, and `in-progress` keep answering
+  only about booked lessons. The calendar app still shows everything,
+  which is where standing times belong.
+- `CalendarStore` gains `list_standing` / `create_standing` and a
+  `StandingSpec`; the fake calendar in `adapters.fakes` grows the same.
+
+### Upgrading
+
+Nothing to do: no schema, config, or exit-code change. A learner deactivated
+through the web is not auto-synced by this release; run
+`calendar standing-sync` once after deactivating somebody (the service notes
+this too).
+
 ## 1.7.0 (2026-09-15)
 
 The recurring weekly schedule (which day, what time) lived nowhere: days rode
